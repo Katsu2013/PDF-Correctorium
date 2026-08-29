@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+  <style>text{font-family:'Segoe UI','Yu Gothic UI',sans-serif;fill:#222} .b{fill:#fff;stroke:#555;stroke-width:2}.h{fill:#e8edf3;stroke:#555;stroke-width:2}.t{font-size:18px}.s{font-size:14px}</style>
+  <rect width="1440" height="900" fill="#f5f5f5"/>
+  <rect class="h" x="10" y="10" width="1420" height="42"/><text class="t" x="25" y="38">ファイル　編集　表示　OCR　ページ　検証　ヘルプ</text>
+  <rect class="h" x="10" y="58" width="1420" height="52"/><text class="s" x="25" y="90">開く　保存　Undo　Redo　選択　OCR表示　検索　モード: OCR編集</text>
+  <rect class="b" x="10" y="116" width="230" height="690"/><text class="t" x="25" y="145">ページ / ナビゲータ</text>
+  <rect class="b" x="246" y="116" width="850" height="690"/><text class="t" x="570" y="145">PDF編集キャンバス</text><rect x="380" y="170" width="580" height="590" fill="#fafafa" stroke="#999"/><text class="s" x="540" y="470">PDF描画 + OCRオーバーレイ</text>
+  <rect class="b" x="1102" y="116" width="328" height="690"/><text class="t" x="1117" y="145">プロパティ</text><text class="s" x="1117" y="180">文字列 / 配置 / 変形</text><text class="s" x="1117" y="210">回転 / 組版 / 属性 / 状態</text>
+  <rect class="h" x="10" y="812" width="1420" height="42"/><text class="s" x="25" y="838">コメント　差分　履歴　検証結果　ログ（ドッキング可能）</text>
+  <rect class="h" x="10" y="860" width="1420" height="30"/><text class="s" x="25" y="881">ページ 12/320　120%　OCR編集　縦書き　未確認 18　修正済み 7　未保存</text>
+</svg>

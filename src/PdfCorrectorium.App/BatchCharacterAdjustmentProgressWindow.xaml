@@ -1,0 +1,36 @@
+<Window x:Class="PdfCorrectorium.App.BatchCharacterAdjustmentProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="前処理付き一括自動調整" Width="520" SizeToContent="Height"
+        MinWidth="460" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        ResizeMode="NoResize" Closing="Window_OnClosing">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="対象ページの文字を自動調整しています"
+                   FontSize="17" FontWeight="SemiBold" />
+        <TextBlock x:Name="StatusTextBlock" Grid.Row="1" Margin="0,10,0,8"
+                   Text="処理を準備しています..." />
+        <ProgressBar x:Name="AdjustmentProgressBar" Grid.Row="2" Height="18"
+                     Minimum="0" Maximum="100" Value="0"
+                     AutomationProperties.Name="一括自動調整の進捗" />
+        <Grid Grid.Row="3" Margin="0,6,0,0">
+            <TextBlock x:Name="PageProgressTextBlock" HorizontalAlignment="Left"
+                       Foreground="#52606D" Text="0 / 0 ページ" />
+            <TextBlock x:Name="PercentTextBlock" HorizontalAlignment="Right"
+                       FontWeight="SemiBold" Text="0%" />
+        </Grid>
+        <Grid Grid.Row="4" Margin="0,18,0,0">
+            <TextBlock x:Name="DetailTextBlock" VerticalAlignment="Center"
+                       Foreground="#52606D" Text="調整済み 0 行" />
+            <Button x:Name="CancelButton" HorizontalAlignment="Right" Width="100"
+                    Content="中止" Click="CancelButton_OnClick" />
+        </Grid>
+    </Grid>
+</Window>

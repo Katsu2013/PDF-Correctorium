@@ -1,0 +1,39 @@
+bin/
+obj/
+
+# qpdf is intentionally vendored for the portable Windows build.
+!tools/qpdf/bin/
+!tools/qpdf/bin/**
+.vs/
+.idea/
+.dotnet-cli/
+.dotnet/
+.dotnet-home/
+.nuget-packages/
+.appdata/
+.build-appdata/
+.codex/
+.agents/
+.sandbox-profile/
+TestResults/
+*.user
+*.suo
+*.tmp
+*.bak
+work/
+tmp/
+artifacts/
+
+# Generated releases and integration-test outputs. Keep the design documentation.
+outputs/*
+!outputs/PdfCorrectorium-Documentation/
+!outputs/PdfCorrectorium-Documentation/**
+
+# Keep the offline NuGet package itself, but not the expanded local cache.
+local-packages/*/
+
+# Downloaded upstream archive; the bundled runtime and licenses live under tools/qpdf.
+qpdf-*.zip
+
+# Runtime diagnostics can also appear below publish folders.
+**/logs/

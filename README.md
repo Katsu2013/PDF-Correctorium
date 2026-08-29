@@ -64,4 +64,3 @@ The design baseline is under `outputs/PdfCorrectorium-Documentation`. The Markdo
 ## License
 
 Apache License 2.0. Third-party components are tracked in `THIRD-PARTY-NOTICES.md`; an SBOM will be added before a stable distribution.
-

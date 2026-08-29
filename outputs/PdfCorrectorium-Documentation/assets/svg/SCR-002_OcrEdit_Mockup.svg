@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <style>text{font-family:'Segoe UI','Yu Gothic UI',sans-serif;fill:#20242a}.p{fill:#fff;stroke:#718096;stroke-width:2}.lab{font-size:16px}.ttl{font-size:21px;font-weight:600}</style>
+  <rect width="1280" height="760" fill="#eef2f7"/>
+  <rect x="20" y="20" width="850" height="720" rx="6" fill="#39424e"/>
+  <rect x="165" y="45" width="560" height="665" fill="#fff"/>
+  <text x="210" y="110" class="lab">画像上の縦書き・横書き混在ページ</text>
+  <g transform="rotate(-7 450 330)"><rect x="250" y="285" width="410" height="60" fill="#ff3b3025" stroke="#e53935" stroke-width="3"/><circle cx="455" cy="260" r="9" fill="#fff" stroke="#e53935" stroke-width="3"/><text x="275" y="322" class="ttl" fill="#c62828">第17章　斜めの見出し</text><rect x="244" y="279" width="12" height="12" fill="#fff" stroke="#e53935"/><rect x="654" y="333" width="12" height="12" fill="#fff" stroke="#e53935"/></g>
+  <rect class="p" x="890" y="20" width="370" height="720" rx="6"/><text x="910" y="55" class="ttl">OCRプロパティ</text>
+  <text x="910" y="95" class="lab">認識文字列</text><rect class="p" x="910" y="108" width="330" height="42"/><text x="922" y="136" class="lab">第11章　斜めの見出し</text>
+  <text x="910" y="182" class="lab">変更後</text><rect class="p" x="910" y="195" width="330" height="42"/><text x="922" y="223" class="lab">第17章　斜めの見出し</text>
+  <text x="910" y="272" class="ttl">配置・変形</text><text x="910" y="307" class="lab">X 124.50　Y 382.20</text><text x="910" y="338" class="lab">幅 210.00　高さ 24.00</text><text x="910" y="369" class="lab">回転 -7.00°　中心: 中央</text><text x="910" y="400" class="lab">補正: 混合　文字間隔 1.2</text>
+  <text x="910" y="445" class="ttl">組版・属性</text><text x="910" y="480" class="lab">文字方向: 横書き</text><text x="910" y="511" class="lab">検索 ✓　コピー ✓　読み上げ ✓</text>
+  <text x="910" y="556" class="ttl">レビュー</text><text x="910" y="591" class="lab">状態: 修正済み</text><rect x="910" y="630" width="150" height="44" rx="5" fill="#2367d1"/><text x="948" y="659" class="lab" fill="#fff">適用して次へ</text><rect class="p" x="1075" y="630" width="145" height="44" rx="5"/><text x="1111" y="659" class="lab">元に戻す</text>
+</svg>

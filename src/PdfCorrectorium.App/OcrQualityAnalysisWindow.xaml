@@ -1,0 +1,130 @@
+<Window x:Class="PdfCorrectorium.App.OcrQualityAnalysisWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OCR品質の異常候補"
+        Width="1040" Height="700" MinWidth="820" MinHeight="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TabControl x:Name="AnalysisTabs">
+            <TabItem Header="文字数の外れ値">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <WrapPanel Margin="0,0,0,8" VerticalAlignment="Center">
+                        <TextBlock Text="寸法の許容差（%）" VerticalAlignment="Center" />
+                        <TextBox x:Name="SizeToleranceTextBox" Text="15" Width="52" Margin="7,0,16,0" />
+                        <TextBlock Text="最低比較件数" VerticalAlignment="Center" />
+                        <TextBox x:Name="MinimumPeerCountTextBox" Text="4" Width="45" Margin="7,0,16,0" />
+                        <TextBlock Text="文字数比率" VerticalAlignment="Center" />
+                        <TextBox x:Name="CountRatioTextBox" Text="1.6" Width="52" Margin="7,0,16,0" />
+                        <Button x:Name="AnalyzeCountButton" Content="文書全体を分析" MinWidth="120" Padding="10,4"
+                                Click="AnalyzeCountButton_OnClick" />
+                    </WrapPanel>
+                    <TextBlock Grid.Row="1" Margin="0,0,0,8" Foreground="#56616C"
+                               Text="幅・高さ・書字方向が近い領域同士を比較し、文字数だけが極端に少ない／多い箇所を候補として表示します。" />
+                    <DataGrid x:Name="CountResultsGrid" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True"
+                              SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                              MouseDoubleClick="CountResultsGrid_OnMouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ページ" Binding="{Binding PageNumber}" Width="68" />
+                            <DataGridTextColumn Header="判定" Binding="{Binding KindDisplay}" Width="92" />
+                            <DataGridTextColumn Header="文字数" Binding="{Binding CharacterCount}" Width="66" />
+                            <DataGridTextColumn Header="標準文字数" Binding="{Binding ExpectedCharacterCount, StringFormat=0.0}" Width="82" />
+                            <DataGridTextColumn Header="比較件数" Binding="{Binding PeerCount}" Width="70" />
+                            <DataGridTextColumn Header="幅" Binding="{Binding Width, StringFormat=0.0}" Width="68" />
+                            <DataGridTextColumn Header="高さ" Binding="{Binding Height, StringFormat=0.0}" Width="68" />
+                            <DataGridTextColumn Header="方向" Binding="{Binding DirectionDisplay}" Width="70" />
+                            <DataGridTextColumn Header="OCR文字列" Binding="{Binding Text}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DockPanel Grid.Row="3" Margin="0,9,0,0">
+                        <Button Content="選択箇所へ移動" MinWidth="120" Padding="10,4" DockPanel.Dock="Right"
+                                Click="NavigateCountButton_OnClick" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="CountStatusTextBlock" Text="まだ分析していません。" />
+                            <ProgressBar x:Name="CountProgressBar" Height="7" Width="320" Margin="0,5,0,0"
+                                         Minimum="0" Maximum="100" HorizontalAlignment="Left" Visibility="Collapsed" />
+                        </StackPanel>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="キーワード幅の補正">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="キーワード" VerticalAlignment="Center" />
+                        <TextBox x:Name="KeywordTextBox" Grid.Column="1" Margin="8,0" MinHeight="27"
+                                 VerticalContentAlignment="Center" />
+                        <Button x:Name="AnalyzeKeywordButton" Grid.Column="2" Content="文書全体を分析"
+                                MinWidth="120" Padding="10,4" Click="AnalyzeKeywordButton_OnClick" />
+                    </Grid>
+                    <WrapPanel Grid.Row="1" Margin="0,9,0,7">
+                        <CheckBox x:Name="MatchCaseCheckBox" Content="大文字と小文字を区別" Margin="0,0,18,0" />
+                        <TextBlock Text="許容差（%）" VerticalAlignment="Center" />
+                        <TextBox x:Name="KeywordToleranceTextBox" Text="20" Width="52" Margin="7,0,16,0" />
+                        <TextBlock Text="最低出現件数" VerticalAlignment="Center" />
+                        <TextBox x:Name="MinimumReferenceCountTextBox" Text="3" Width="45" Margin="7,0,0,0" />
+                    </WrapPanel>
+                    <TextBlock Grid.Row="2" Margin="0,0,0,8" Foreground="#56616C"
+                               Text="同じ語の出現幅を行の高さ（縦書きは行の幅）で正規化し、中央値から外れた箇所を補正候補にします。固定済みの行・文字は変更しません。" />
+                    <DataGrid x:Name="KeywordResultsGrid" Grid.Row="3" AutoGenerateColumns="False" IsReadOnly="True"
+                              SelectionMode="Extended" SelectionUnit="FullRow" HeadersVisibility="Column"
+                              MouseDoubleClick="KeywordResultsGrid_OnMouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ページ" Binding="{Binding PageNumber}" Width="68" />
+                            <DataGridTextColumn Header="現在幅" Binding="{Binding CurrentSpan, StringFormat=0.0}" Width="75" />
+                            <DataGridTextColumn Header="基準幅" Binding="{Binding ReferenceSpan, StringFormat=0.0}" Width="75" />
+                            <DataGridTextColumn Header="差（%）" Binding="{Binding DeviationPercent, StringFormat=0.0}" Width="70" />
+                            <DataGridTextColumn Header="方向" Binding="{Binding DirectionDisplay}" Width="70" />
+                            <DataGridTextColumn Header="固定" Binding="{Binding LockDisplay}" Width="62" />
+                            <DataGridTextColumn Header="OCR文字列" Binding="{Binding Text}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DockPanel Grid.Row="4" Margin="0,9,0,0">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                            <Button Content="選択箇所へ移動" MinWidth="120" Padding="10,4" Margin="0,0,7,0"
+                                    Click="NavigateKeywordButton_OnClick" />
+                            <Button Content="選択候補を補正" MinWidth="120" Padding="10,4" Margin="0,0,7,0"
+                                    Click="CorrectSelectedKeywordButton_OnClick" />
+                            <Button Content="全候補を補正" MinWidth="112" Padding="10,4"
+                                    Click="CorrectAllKeywordButton_OnClick" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="KeywordStatusTextBlock" Text="キーワードを入力してください。" />
+                            <ProgressBar x:Name="KeywordProgressBar" Height="7" Width="320" Margin="0,5,0,0"
+                                         Minimum="0" Maximum="100" HorizontalAlignment="Left" Visibility="Collapsed" />
+                        </StackPanel>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="CancelAnalysisButton" Content="キャンセル" Width="96" Margin="0,0,8,0" Padding="10,4"
+                    Visibility="Collapsed" Click="CancelAnalysisButton_OnClick" />
+            <Button Content="閉じる" Width="90" Padding="10,4"
+                    IsCancel="True" Click="CloseButton_OnClick" />
+        </StackPanel>
+    </Grid>
+</Window>

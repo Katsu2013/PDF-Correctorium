@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <TargetPlatformMoniker>Windows,Version=7.0</TargetPlatformMoniker>
+    <TargetPlatformDisplayName>Windows</TargetPlatformDisplayName>
+    <TargetPlatformSdkPath>$(MSBuildProgramFiles32)\Windows Kits\10\</TargetPlatformSdkPath>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>PdfCorrectorium</AssemblyName>
+    <RootNamespace>PdfCorrectorium.App</RootNamespace>
+    <Product>PDF Correctorium</Product>
+    <Title>PDF Correctorium</Title>
+    <ApplicationIcon>Resources\Branding\PdfCorrectorium.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdfCorrectorium.Core\PdfCorrectorium.Core.csproj" />
+    <ProjectReference Include="..\PdfCorrectorium.ProjectFormat\PdfCorrectorium.ProjectFormat.csproj" />
+    <ProjectReference Include="..\PdfCorrectorium.Infrastructure\PdfCorrectorium.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="136.0.7060" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Windows 11 の WM_POINTER 入力経路を起動時から有効にし、スリープ復帰や
+      ペン／タッチ機器の再検出時に旧式 PenIMC.dll へ戻らないようにします。
+    -->
+    <RuntimeHostConfigurationOption
+      Include="Switch.System.Windows.Input.Stylus.EnablePointerSupport"
+      Value="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The application icon is embedded for the executable and all WPF windows. -->
+    <Resource Include="Resources\Branding\PdfCorrectorium.ico" />
+    <Resource Include="Resources\Branding\PdfCorrectorium-*.png" />
+    <Resource Include="Resources\Branding\FileTypes\*.png" />
+    <Resource Include="Resources\Branding\Variants\*.png" />
+    <Resource Include="Resources\Branding\Modes\*.png" />
+    <!-- File-type icons are copied beside the portable application for file association and installer use. -->
+    <Content Include="Resources\Branding\FileTypes\*.ico"
+             Link="Icons\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+    <None Update="portable.marker" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tools\qpdf\bin\**\*"
+          Link="%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\tools\qpdf\bin\qpdf.exe')" />
+    <None Include="..\..\tools\qpdf\licenses\**\*"
+          Link="licenses\qpdf\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\tools\qpdf\licenses')" />
+  </ItemGroup>
+
+</Project>

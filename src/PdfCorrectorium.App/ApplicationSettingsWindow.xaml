@@ -1,0 +1,292 @@
+<Window x:Class="PdfCorrectorium.App.ApplicationSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="設定" Width="620" Height="650" MinWidth="560" MinHeight="570"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResize">
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="既定値に戻す" Click="ResetButton_OnClick" Margin="3,3,16,3" />
+            <Button Content="キャンセル" IsCancel="True" Width="96" />
+            <Button Content="保存" IsDefault="True" Width="96" Click="SaveButton_OnClick" />
+        </StackPanel>
+
+        <TabControl>
+            <TabItem Header="表示">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="画面レイアウト" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,10">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="表示言語" VerticalAlignment="Center" />
+                            <ComboBox x:Name="UiLanguageComboBox" Grid.Column="1" SelectedValuePath="Tag">
+                                <ComboBoxItem Content="日本語" Tag="ja-JP" />
+                                <ComboBoxItem Content="English" Tag="en-US" />
+                            </ComboBox>
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="ツールバー表示" VerticalAlignment="Center" />
+                            <ComboBox x:Name="ToolbarDisplayModeComboBox" Grid.Column="1">
+                                <ComboBoxItem Content="アイコンのみ" />
+                                <ComboBoxItem Content="アイコン＋説明" />
+                            </ComboBox>
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="ツールバーサイズ" VerticalAlignment="Center" />
+                            <Slider x:Name="ToolbarButtonSizeSlider" Grid.Column="1" Minimum="28" Maximum="64" TickFrequency="2" IsSnapToTickEnabled="True" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=ToolbarButtonSizeSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <CheckBox x:Name="ShowPropertyHelpTextCheckBox"
+                                  Content="プロパティ領域に詳しい説明を表示する"
+                                  Margin="0,12,0,0" />
+                        <CheckBox x:Name="ShowPageListPanelCheckBox"
+                                  Content="ページ一覧を表示する"
+                                  Margin="0,8,0,0" />
+                        <CheckBox x:Name="ShowPropertiesPanelCheckBox"
+                                  Content="OCRプロパティを表示する"
+                                  Margin="0,8,0,0" />
+                        <CheckBox x:Name="ShowStatusBarCheckBox"
+                                  Content="ステータスバーを表示する"
+                                  Margin="0,8,0,0" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="ページ一覧の幅" VerticalAlignment="Center" />
+                            <Slider x:Name="PageListWidthSlider" Grid.Column="1" Minimum="160" Maximum="420" TickFrequency="10" IsSnapToTickEnabled="True" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=PageListWidthSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="プロパティ領域の幅" VerticalAlignment="Center" />
+                            <Slider x:Name="PropertiesPanelWidthSlider" Grid.Column="1" Minimum="240" Maximum="600" TickFrequency="10" IsSnapToTickEnabled="True" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=PropertiesPanelWidthSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+
+                        <Separator Margin="0,18,0,16" />
+                        <TextBlock Text="OCRオーバーレイ" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="表示色" VerticalAlignment="Center" />
+                            <TextBox x:Name="OcrOverlayColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Border x:Name="OcrOverlayPreview" Grid.Column="2" Margin="10,2,0,2" BorderBrush="#667085" BorderThickness="1" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
+                            <Slider x:Name="OcrOverlayOpacitySlider" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=OcrOverlayOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <CheckBox x:Name="ShowUnselectedCharacterCellBordersCheckBox"
+                                  Content="文字編集時、未選択のOCR行にも文字枠を表示する"
+                                  Margin="0,12,0,0" />
+                        <TextBlock Text="オフにすると、選択中のOCR行だけに文字単位の枠を表示します。文字の重ね表示はどちらの場合も各文字枠の位置と大きさに合わせます。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="文字編集枠の太さ" VerticalAlignment="Center" />
+                            <Slider x:Name="CharacterCellBorderThicknessSlider" Grid.Column="1"
+                                    Minimum="0.25" Maximum="2" TickFrequency="0.1"
+                                    ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding ElementName=CharacterCellBorderThicknessSlider, Path=Value, StringFormat={}{0:0.0}px}"
+                                       VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <TextBlock Text="表示倍率にかかわらず、画面上では同じ太さになるように表示します。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
+                        <CheckBox x:Name="ShowPageThumbnailsCheckBox"
+                                  Content="ページ一覧にサムネイルを表示する"
+                                  Margin="0,12,0,0" />
+                        <TextBlock Text="オンにするとページ画像を順次読み込みます。大きな文書では、必要なときだけオンにするとメモリ使用量を抑えられます。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
+
+                        <Separator Margin="0,18,0,16" />
+                        <TextBlock Text="文字幅の調整ハンドル" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="色" VerticalAlignment="Center" />
+                            <TextBox x:Name="CharacterHandleColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Border x:Name="CharacterHandlePreview" Grid.Column="2" Width="8" HorizontalAlignment="Center" Margin="10,2,0,2" BorderBrush="#667085" BorderThickness="1" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="太さ" VerticalAlignment="Center" />
+                            <Slider x:Name="CharacterHandleThicknessSlider" Grid.Column="1" Minimum="2" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=CharacterHandleThicknessSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
+                            <Slider x:Name="CharacterHandleOpacitySlider" Grid.Column="1" Minimum="15" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=CharacterHandleOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+
+                        <Separator Margin="0,18,0,16" />
+                        <TextBlock Text="領域のサイズ変更ハンドル" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="塗り色" VerticalAlignment="Center" />
+                            <TextBox x:Name="ResizeHandleFillColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Border x:Name="ResizeHandlePreview" Grid.Column="2" Width="16" Height="16" HorizontalAlignment="Center" Margin="10,2,0,2" BorderThickness="2" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="枠線色" VerticalAlignment="Center" />
+                            <TextBox x:Name="ResizeHandleBorderColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="大きさ" VerticalAlignment="Center" />
+                            <Slider x:Name="ResizeHandleSizeSlider" Grid.Column="1" Minimum="5" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=ResizeHandleSizeSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
+                            <Slider x:Name="ResizeHandleOpacitySlider" Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=ResizeHandleOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="編集">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="文字幅の自動推定" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="文字境界が空白へ偏る場合は均等性と文字画素の必須率を上げます。細い英字や記号を扱う場合は最小幅を下げてください。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,4" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="最小幅／行高さ" VerticalAlignment="Center" />
+                            <Slider x:Name="EstimationMinimumAspectSlider" Grid.Column="1" Minimum="5" Maximum="60" TickFrequency="5" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationMinimumAspectSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="最大幅／行高さ" VerticalAlignment="Center" />
+                            <Slider x:Name="EstimationMaximumAspectSlider" Grid.Column="1" Minimum="75" Maximum="400" TickFrequency="25" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationMaximumAspectSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="均等幅への寄せ方" VerticalAlignment="Center" />
+                            <Slider x:Name="EstimationUniformitySlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationUniformitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="文字画素の必須率" VerticalAlignment="Center" />
+                            <Slider x:Name="EstimationInkCoverageSlider" Grid.Column="1" Minimum="2" Maximum="50" TickFrequency="2" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationInkCoverageSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="文字情報への寄せ方" VerticalAlignment="Center" />
+                            <Slider x:Name="EstimationGlyphPriorSlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" />
+                            <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationGlyphPriorSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
+                        </Grid>
+                        <TextBlock Text="ひらがな・カタカナ・漢字を全角1字分へ寄せ、欧文は文字形状に応じた標準幅を使用します。「い」「け」など文字内部の隙間で分割される場合は上げ、装飾文字の画像上の幅を優先する場合は下げます。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                        <Separator Margin="0,20,0,16" />
+                        <TextBlock Text="Undo／Redo" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="保持する編集操作数" VerticalAlignment="Center" />
+                            <TextBox x:Name="UndoHistoryLimitTextBox" Grid.Column="1" />
+                        </Grid>
+                        <TextBlock Text="10～1000件で設定できます。値を小さくすると、古いUndo履歴から破棄されます。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="ショートカット">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16">
+                        <TextBlock Text="文字編集のショートカット" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="入力欄を選び、使用したいキーの組み合わせを実際に押してください。BackspaceまたはDeleteで割り当てを解除できます。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="250" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="前の文字へ移動" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="PreviousCharacterShortcutTextBox" Grid.Row="0" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="1" Text="次の文字へ移動" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="NextCharacterShortcutTextBox" Grid.Row="1" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="2" Text="選択文字の幅を狭める" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="DecreaseCharacterAdvanceShortcutTextBox" Grid.Row="2" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="3" Text="選択文字の幅を広げる" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="IncreaseCharacterAdvanceShortcutTextBox" Grid.Row="3" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="4" Text="選択行を画像から自動調整" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="EstimateCharacterAdvancesShortcutTextBox" Grid.Row="4" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="5" Text="選択文字以降を自動調整" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="EstimateCharacterSuffixAdvancesShortcutTextBox" Grid.Row="5" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="6" Text="選択行の文字幅を等分" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="EqualizeCharacterAdvancesShortcutTextBox" Grid.Row="6" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                            <TextBlock Grid.Row="7" Text="OCR取込時の文字幅へ戻す" VerticalAlignment="Center" Margin="0,4" />
+                            <TextBox x:Name="RestoreOriginalCharacterAdvancesShortcutTextBox" Grid.Row="7" Grid.Column="1" Margin="0,4"
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                        </Grid>
+                        <TextBlock Text="通常の文字キーにはCtrl、Alt、Winのいずれかが必要です。F1～F24は単独で割り当てられます。重複する割り当ては保存できません。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="0,14,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="保存・復旧">
+                <StackPanel Margin="16">
+                    <TextBlock Text="自動保存" FontSize="15" FontWeight="SemiBold" />
+                    <CheckBox x:Name="AutoSaveEnabledCheckBox"
+                              Content="編集内容を自動保存する"
+                              Margin="0,12,0,0" />
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="自動保存の間隔" VerticalAlignment="Center" />
+                        <TextBox x:Name="AutoSaveIntervalMinutesTextBox" Grid.Column="1" />
+                        <TextBlock Grid.Column="2" Text="分" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="自動保存は元PDFや通常のプロジェクトを直接上書きせず、復旧専用ファイルへ保存します。"
+                               Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+                    <Separator Margin="0,20,0,16" />
+                    <TextBlock Text="世代バックアップ" FontSize="15" FontWeight="SemiBold" />
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="保持する世代数" VerticalAlignment="Center" />
+                        <TextBox x:Name="BackupGenerationCountTextBox" Grid.Column="1" />
+                        <TextBlock Grid.Column="2" Text="世代" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="明示保存の直前に復元用コピーを作成します。1～20世代で設定できます。"
+                               Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="保存先">
+                <StackPanel Margin="16">
+                    <TextBlock Text="現在の動作モード" FontWeight="SemiBold" />
+                    <TextBlock x:Name="StorageModeTextBlock" Margin="0,4,0,14" />
+                    <TextBlock Text="設定ファイル" FontWeight="SemiBold" />
+                    <TextBox x:Name="SettingsPathTextBox" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    <TextBlock Text="Portable版では実行フォルダー内のconfig、インストール版ではAppDataへ保存します。" Foreground="#667085" TextWrapping="Wrap" Margin="0,12,0,0" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <TargetPlatformMoniker>Windows,Version=7.0</TargetPlatformMoniker>
+    <TargetPlatformDisplayName>Windows</TargetPlatformDisplayName>
+    <TargetPlatformSdkPath>$(MSBuildProgramFiles32)\Windows Kits\10\</TargetPlatformSdkPath>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PdfCorrectorium.App\PdfCorrectorium.App.csproj" />
+    <ProjectReference Include="..\..\src\PdfCorrectorium.ProjectFormat\PdfCorrectorium.ProjectFormat.csproj" />
+  </ItemGroup>
+</Project>

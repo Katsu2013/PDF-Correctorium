@@ -1,0 +1,166 @@
+<UserControl x:Class="PdfCorrectorium.App.IconGallery"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="1100"
+             d:DesignHeight="800"
+             Background="#F3F5F7">
+    <!--
+        Blend for Visual Studio でベクターアイコンを確認・編集するための開発用ギャラリー。
+        アプリケーションの通常画面からは表示しない。
+
+        各 Path の Data は Resources/VectorIcons.xaml の StreamGeometry を参照している。
+        Blendで形を調整した場合は、生成されたPath Dataを対応するリソースへ反映する。
+    -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- App.xamlを経由しないBlendの単体デザイン表示でも、アイコンを解決できるようにする。 -->
+                <ResourceDictionary Source="Resources/VectorIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="GalleryTileStyle" TargetType="Border">
+                <Setter Property="Width" Value="190" />
+                <Setter Property="Height" Value="142" />
+                <Setter Property="Margin" Value="6" />
+                <Setter Property="Padding" Value="9" />
+                <Setter Property="Background" Value="White" />
+                <Setter Property="BorderBrush" Value="#CCD3DA" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
+            <Style x:Key="GalleryIconViewboxStyle" TargetType="Viewbox">
+                <Setter Property="Width" Value="72" />
+                <Setter Property="Height" Value="72" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="GalleryIconPathStyle" TargetType="Path">
+                <Setter Property="Fill" Value="Transparent" />
+                <Setter Property="Stroke" Value="#263746" />
+                <Setter Property="StrokeThickness" Value="1.8" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="Stretch" Value="Uniform" />
+            </Style>
+            <Style x:Key="GalleryTitleStyle" TargetType="TextBlock">
+                <Setter Property="Margin" Value="0,6,0,0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+            <Style x:Key="GalleryKeyStyle" TargetType="TextBlock">
+                <Setter Property="Margin" Value="0,2,0,0" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="Foreground" Value="#667085" />
+                <Setter Property="FontFamily" Value="Consolas" />
+                <Setter Property="FontSize" Value="9" />
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#CCD3DA" BorderThickness="0,0,0,1" Padding="18,14">
+            <StackPanel>
+                <TextBlock Text="PDF Correctorium Icon Gallery" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock Margin="0,5,0,0"
+                           Foreground="#52606D"
+                           Text="アイコン形状: Resources/VectorIcons.xaml　／　BlendではPathを選択して形状を確認できます。"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <WrapPanel Margin="12" HorizontalAlignment="Left">
+                <!-- Application and file-association raster icons generated from the approved brand sheet. -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/PdfCorrectorium-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="アプリケーション" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectorium.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfDocument-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="一般PDF" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfDocument.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumProject-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="プロジェクト" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumProject.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumBackup-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="バックアップ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumBackup.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumAutosave-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="自動バックアップ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumAutosave.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumTemporary-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="一時ファイル" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumTemporary.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumRepair-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="修復中" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumRepair.ico" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/FileTypes/PdfCorrectoriumExport-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="エクスポート済み" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="PdfCorrectoriumExport.ico" /></StackPanel></Border>
+                <!-- Brand color variations retained as individual resources for theme and documentation use. -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Variants/PdfCorrectoriumColor-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="カラー" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Variants/Color" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Variants/PdfCorrectoriumDark-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ダーク" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Variants/Dark" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Variants/PdfCorrectoriumLight-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ライト" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Variants/Light" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Variants/PdfCorrectoriumMonochrome-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="モノクロ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Variants/Monochrome" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Variants/PdfCorrectoriumInverted-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="反転" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Variants/Inverted" /></StackPanel></Border>
+                <!-- Composite feature icons supplied with the approved brand set. -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/Project-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="プロジェクト機能" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/Project" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/Backup-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="バックアップ機能" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/Backup" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/Repair-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="修復モード" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/Repair" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/Validation-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="検証モード" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/Validation" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/Compare-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="比較モード" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/Compare" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Image Width="72" Height="72" Source="Resources/Branding/Modes/History-256.png" Stretch="Uniform" /><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ログ・履歴" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="Modes/History" /></StackPanel></Border>
+                <!-- しおり -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Bookmark}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="しおり" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Bookmark" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.BookmarkAdd}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="しおりを追加" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.BookmarkAdd" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.BookmarkAddChild}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="子しおりを追加" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.BookmarkAddChild" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.BookmarkGoTo}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="しおりへ移動" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.BookmarkGoTo" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.MoveUp}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="上へ移動" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.MoveUp" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.MoveDown}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="下へ移動" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.MoveDown" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Import}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="インポート" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Import" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Export}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="エクスポート" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Export" /></StackPanel></Border>
+
+                <!-- Common compact controls -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Minus}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="減らす" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Minus" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Plus}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="増やす" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Plus" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.RotateLeft}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="左回転" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.RotateLeft" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.RotationReset}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="回転を戻す" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.RotationReset" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.RotateRight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="右回転" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.RotateRight" /></StackPanel></Border>
+
+                <!-- ファイル／OCR操作 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.OpenPdf}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="PDFを開く" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.OpenPdf" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.OpenProject}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="プロジェクトを開く" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.OpenProject" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.SaveProject}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="上書き保存" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.SaveProject" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ExportPdf}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="PDF出力" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ExportPdf" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ImportOcr}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="OCR読込" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ImportOcr" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.OcrVisibility}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="OCR表示" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.OcrVisibility" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AddOcrRegion}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="OCR領域追加" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AddOcrRegion" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Delete}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="削除" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Delete" /></StackPanel></Border>
+
+                <!-- ページ移動／表示倍率 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.PreviousPage}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="前のページ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.PreviousPage" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.NextPage}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="次のページ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.NextPage" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ZoomOut}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="縮小" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ZoomOut" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ZoomIn}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="拡大" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ZoomIn" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitWidth}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="幅に合わせる" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitWidth" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitHeight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="高さに合わせる" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitHeight" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitPage}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ページ全体" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitPage" /></StackPanel></Border>
+
+                <!-- ページ一覧 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.PageInsert}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ページ追加" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.PageInsert" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.PageDelete}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ページ削除" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.PageDelete" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.PageRotateLeft}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="左へ90度回転" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.PageRotateLeft" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.PageRotateRight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="右へ90度回転" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.PageRotateRight" /></StackPanel></Border>
+
+                <!-- 複数領域の位置／サイズ調整 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.SetAlignmentReference}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="整列基準" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.SetAlignmentReference" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignLeft}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="左揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignLeft" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignRight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="右揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignRight" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignTop}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="上揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignTop" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignBottom}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="下揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignBottom" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignHorizontalCenter}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="左右中央揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignHorizontalCenter" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.AlignVerticalCenter}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="上下中央揃え" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.AlignVerticalCenter" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.EqualWidth}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="同じ幅" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.EqualWidth" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.EqualHeight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="同じ高さ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.EqualHeight" /></StackPanel></Border>
+
+                <!-- 読み順 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ReadingEarlier}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="読み順を前へ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ReadingEarlier" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ReadingLater}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="読み順を後へ" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ReadingLater" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.RecalculateReadingOrder}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="読み順再計算" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.RecalculateReadingOrder" /></StackPanel></Border>
+
+                <!-- 文字幅の調整 -->
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.EqualizeCharacterAdvances}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="文字送りを等分" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.EqualizeCharacterAdvances" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.RestoreCharacterAdvances}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="文字送りを戻す" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.RestoreCharacterAdvances" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.EstimateCharacterAdvances}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="文字送りを推定" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.EstimateCharacterAdvances" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.EstimateCharacterSuffix}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="選択文字以降を推定" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.EstimateCharacterSuffix" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Lock}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="位置・サイズを固定" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Lock" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.Unlock}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="固定を解除" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.Unlock" /></StackPanel></Border>
+            </WrapPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

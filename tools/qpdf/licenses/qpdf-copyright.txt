@@ -1,0 +1,11 @@
+qpdf version 12.3.2
+
+Copyright (c) 2005-2021 Jay Berkenbilt
+Copyright (c) 2022-2026 Jay Berkenbilt and Manfred Holger
+
+qpdf is licensed under the Apache License, Version 2.0.
+The complete license text is included in Apache-2.0.txt.
+
+Source: https://github.com/qpdf/qpdf
+Binary release: qpdf-12.3.2-msvc64.zip
+SHA-256: 8941870a604e7c87ed24566b038d46c24ce76616254d2383c578f60c0677f202

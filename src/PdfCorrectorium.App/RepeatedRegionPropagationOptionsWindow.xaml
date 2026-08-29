@@ -1,0 +1,68 @@
+<Window x:Class="PdfCorrectorium.App.RepeatedRegionPropagationOptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="定型領域の編集を他ページへ反映" Width="610" Height="560"
+        MinWidth="540" MinHeight="500" WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="キャンセル" IsCancel="True" Width="100" Margin="0,3,8,3" />
+            <Button x:Name="SearchButton" Content="候補を検索" IsDefault="True"
+                    MinWidth="120" Padding="12,5" Click="SearchButton_OnClick" />
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0">
+                <TextBlock Text="ヘッダー／フッターの編集を繰り返す"
+                           FontSize="18" FontWeight="SemiBold" />
+                <TextBlock Margin="0,7,0,0" TextWrapping="Wrap" Foreground="#52606D"
+                           Text="現在ページで選択した領域の位置と文字列を基準に、他ページの似た領域を探します。候補を確認してから、分割・削除・文字送りをまとめて反映できます。" />
+
+                <GroupBox Header="対象ページ" Margin="0,14,0,10" Padding="12,8">
+                    <StackPanel>
+                        <RadioButton x:Name="SelectedPagesRadioButton" Content="ページ一覧で選択したページ"
+                                     GroupName="Pages" Margin="0,4" Checked="TargetMode_OnChanged" />
+                        <RadioButton x:Name="SpecifiedPagesRadioButton" Content="ページを指定"
+                                     GroupName="Pages" Margin="0,4" Checked="TargetMode_OnChanged" />
+                        <TextBox x:Name="PageSpecificationTextBox" Margin="22,3,0,5" Padding="5,3"
+                                 ToolTip="例: 1,3,5-10" IsEnabled="False" />
+                        <RadioButton x:Name="AllPagesRadioButton" Content="全ページ（参照ページを除く）"
+                                     GroupName="Pages" Margin="0,4" IsChecked="True" Checked="TargetMode_OnChanged" />
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="反映内容" Margin="0,4,0,10" Padding="12,8">
+                    <StackPanel>
+                        <RadioButton x:Name="ReplaceStructureRadioButton"
+                                     Content="分割・位置・寸法・文字送りを反映"
+                                     GroupName="Mode" IsChecked="True" Margin="0,4" />
+                        <RadioButton x:Name="DeleteMatchesRadioButton"
+                                     Content="一致した領域を削除"
+                                     GroupName="Mode" Margin="0,4" />
+                        <CheckBox x:Name="PreserveTargetTextCheckBox" IsChecked="True" Margin="0,10,0,3">
+                            <TextBlock TextWrapping="Wrap"
+                                       Text="各ページの文字列を維持し、分割・文字幅比率だけ反映する" />
+                        </CheckBox>
+                        <TextBlock Margin="22,2,0,2" Foreground="#52606D" TextWrapping="Wrap"
+                                   Text="参照ページで途中の文字を削除した状態まで同じように複製する場合は、チェックを外してください。" />
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="候補の厳しさ" Padding="12,8">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="最低一致度" VerticalAlignment="Center" />
+                            <TextBlock x:Name="SimilarityValueTextBlock" DockPanel.Dock="Right"
+                                       Text="70%" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </DockPanel>
+                        <Slider x:Name="SimilaritySlider" Minimum="40" Maximum="95" Value="70"
+                                TickFrequency="5" IsSnapToTickEnabled="True"
+                                ValueChanged="SimilaritySlider_OnValueChanged" />
+                        <TextBlock Margin="0,5,0,0" Foreground="#52606D" TextWrapping="Wrap"
+                                   Text="数字だけ異なるページ番号などは同じ文字として比較します。候補が多すぎる場合は値を上げてください。" />
+                    </StackPanel>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

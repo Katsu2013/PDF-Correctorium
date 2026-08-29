@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700">
+  <style>text{font-family:'Segoe UI','Yu Gothic UI',sans-serif;fill:#222}.box{fill:#fff;stroke:#667085;stroke-width:2}.ttl{font-size:24px;font-weight:600}.t{font-size:18px}</style>
+  <rect width="1100" height="700" fill="#f4f6f8"/><rect class="box" x="40" y="35" width="1020" height="620" rx="8"/><text class="ttl" x="70" y="80">プロジェクト診断</text>
+  <text class="t" x="80" y="135" fill="#17823b">✓ ZIPコンテナ</text><text class="t" x="80" y="180" fill="#17823b">✓ manifest.json / Format 1.0</text><text class="t" x="80" y="225" fill="#17823b">✓ 元PDF参照・ハッシュ一致</text><text class="t" x="80" y="270" fill="#b26a00">⚠ OCRページ 320件中1件に警告</text><text class="t" x="80" y="315" fill="#17823b">✓ コメント・ブックマーク</text><text class="t" x="80" y="360" fill="#b26a00">⚠ Undo履歴末尾に不完全データ</text>
+  <rect x="70" y="410" width="960" height="115" fill="#fff8e1" stroke="#b26a00"/><text class="t" x="90" y="447">修復候補: 自動保存からOCRページを復元し、不完全なUndo末尾を除去します。</text><text class="t" x="90" y="482">元プロジェクトは変更せず、保全コピーと修復済み新規ファイルを作成します。</text>
+  <rect x="70" y="565" width="180" height="50" rx="5" fill="#2166d1"/><text class="t" x="105" y="597" fill="#fff">修復を実行</text><rect class="box" x="270" y="565" width="180" height="50" rx="5"/><text class="t" x="302" y="597">詳細を表示</text><rect class="box" x="470" y="565" width="220" height="50" rx="5"/><text class="t" x="498" y="597">診断結果を保存</text>
+</svg>

@@ -1,0 +1,110 @@
+<Window x:Class="PdfCorrectorium.App.OcrSearchReplaceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="透明テキストの検索と置換"
+        Width="900" Height="580" MinWidth="720" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="92" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="検索する文字列" VerticalAlignment="Center" />
+            <TextBox x:Name="SearchTextBox" Grid.Column="1" Margin="8,2,8,2" MinHeight="22"
+                     VerticalContentAlignment="Center" KeyDown="SearchTextBox_OnKeyDown" />
+            <Button x:Name="SearchButton" Grid.Column="2" Content="検索" Width="86" MinHeight="22"
+                    IsDefault="True" Click="SearchButton_OnClick" Margin="2,2,2,2" />
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,9,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="92" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="置換後の文字列" VerticalAlignment="Center" />
+            <TextBox x:Name="ReplacementTextBox" Grid.Column="1" Margin="8,2,8,2" MinHeight="22"
+                     VerticalContentAlignment="Center" />
+            <Button x:Name="ReplaceAllButton" Grid.Column="2" Content="すべて置換" Width="86" MinHeight="22"
+                    Click="ReplaceAllButton_OnClick" Margin="2,2,2,2" />
+        </Grid>
+
+        <StackPanel Grid.Row="2" Margin="100,10,0,8">
+            <WrapPanel>
+                <CheckBox x:Name="MatchCaseCheckBox" Content="大文字と小文字を区別" Margin="0,0,18,0" />
+                <CheckBox x:Name="CurrentPageOnlyCheckBox" Content="現在ページのみ" Margin="0,0,18,0" />
+                <CheckBox x:Name="InvisibleOnlyCheckBox" Content="不可視テキストのみ" IsChecked="True" Margin="0,0,18,0"
+                          ToolTip="オフにすると、PDF内の可視テキストも検索対象になります。" />
+                <CheckBox x:Name="WholeRegionMatchCheckBox" Content="行ブロック全体に一致" Margin="0,0,18,0" />
+                <CheckBox x:Name="UseRegularExpressionCheckBox" Content="正規表現を使用" />
+            </WrapPanel>
+            <TextBlock Margin="0,5,0,0" Foreground="#6B7280" FontSize="11"
+                       Text="正規表現では、置換文字列に $1 などのグループ参照を使用できます。" />
+        </StackPanel>
+
+        <Border x:Name="SearchProgressPanel" Grid.Row="3" Margin="100,0,0,8" Padding="10,7"
+                BorderBrush="#C8CDD3" BorderThickness="1" Background="#F8FAFC" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock x:Name="SearchProgressTextBlock" Margin="0,0,0,5" Text="検索を準備しています..." />
+                    <ProgressBar x:Name="SearchProgressBar" Height="8" Minimum="0" Maximum="100" />
+                </StackPanel>
+                <Button x:Name="CancelSearchButton" Grid.Column="1" Content="キャンセル" MinWidth="86"
+                        Margin="12,0,0,0" Padding="9,3" Click="CancelSearchButton_OnClick" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4" BorderBrush="#C8CDD3" BorderThickness="1" Background="White">
+            <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                      SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                      MouseDoubleClick="ResultsGrid_OnMouseDoubleClick"
+                      SelectionChanged="ResultsGrid_OnSelectionChanged">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ページ" Binding="{Binding PageDisplay}" Width="86" />
+                    <DataGridTextColumn Header="一致位置" Binding="{Binding StartIndex}" Width="72" />
+                    <DataGridTemplateColumn Header="前後の文字列" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                    <Run Text="{Binding PreviewPrefix, Mode=OneWay}" /><Run Text="{Binding PreviewMatchedText, Mode=OneWay}"
+                                         Foreground="#D32F2F" FontWeight="Bold" /><Run Text="{Binding PreviewSuffix, Mode=OneWay}" />
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <Grid Grid.Row="5" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" Foreground="#4B5563"
+                       Text="検索する文字列を入力してください。" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="前へ" Width="68" Margin="4,0" Click="PreviousButton_OnClick" />
+                <Button Content="次へ" Width="68" Margin="4,0" Click="NextButton_OnClick" />
+                <Button Content="1件置換" Width="78" Margin="12,0,4,0" Click="ReplaceButton_OnClick" />
+                <Button Content="閉じる" Width="68" Margin="12,0,0,0" IsCancel="True" Click="CloseButton_OnClick" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
