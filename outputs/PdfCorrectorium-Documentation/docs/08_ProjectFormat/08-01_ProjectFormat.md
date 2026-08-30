@@ -6,7 +6,7 @@
 
 ## 2. 構成
 
-dev.122が実際に読み書きする構成は次のとおり。ページJSONは`project.json`と同じページモデルの複製であり、サムネイルは再生成可能な任意キャッシュである。
+dev.124が実際に読み書きする構成は次のとおり。ページJSONは`project.json`と同じページモデルの複製であり、サムネイルは再生成可能な任意キャッシュである。
 
 ```text
 project.pdfocrproj
@@ -20,21 +20,23 @@ project.pdfocrproj
 
 `ocr/imported`、`edits`、`review`、`history`、`validation`、`settings`、`attachments`の分離エントリは目標設計であり、現行形式には作成されない。レビュー状態、しおり、表示設定等の実装済み情報は`project.json`へ含める。コメント、タグ、監査履歴、検証レポート、UI作業状態は未実装である。
 
+校正・確認モードで更新した領域のレビュー状態も保存対象となる。一方、校正の選択モードと状態フィルターは一時UI状態であり、`project.json`には保存しない。
+
 ## 3. manifest
 
 ```json
 {
   "format": "PdfCorrectoriumProject",
-  "formatVersion": "1.0",
-  "minimumApplicationVersion": "0.1.0",
-  "applicationVersion": "0.1.0",
+  "formatVersion": "1.1",
+  "minimumApplicationVersion": "1.0.0-dev.123",
+  "applicationVersion": "1.0.0-dev.124",
   "projectId": "uuid",
   "createdAtUtc": "2026-07-20T00:00:00Z",
   "lastSavedAtUtc": "2026-07-20T00:00:00Z"
 }
 ```
 
-上記`0.1.0`はdev.122実装が現在出力する値である。配布版表示との連動が未実装であり、Version 1.0安定化前に実際のアプリ版を記録するよう修正する。
+dev.123から保存形式を1.1とし、保存アプリ版はビルドの情報から取得する。dev.124でアプリ版を進めても形式1.1と最小対応アプリ版dev.123は変えない。`HasEditedText`を導入し、意図的な空文字を未編集と区別する。1.0は互換読込し、次回保存時に1.1へ更新する。**新しく保存した1.1はdev.122以前で開けない**ため、旧版利用が必要な場合は元プロジェクトまたは保存時バックアップを保管する。一般的な移行・ロールバックUIは未実装である。
 
 ## 4. 元PDF
 
@@ -47,11 +49,13 @@ Portable: <app>/workspaces/<project-id>/
 Installed: %LocalAppData%/PdfCorrectorium/Workspaces/<project-id>/
 ```
 
-現行実装は作業PDF、PDF出力用一時ファイル、キャッシュを作業領域へ置く。ロックファイル、セッションID、最終チェックポイント、起動時の自動復旧候補提示は目標設計であり未実装である。保存済みプロジェクトに対する自動保存ファイルとバックアップからの明示復旧は実装済みである。
+現行実装は作業PDF、PDF出力用一時ファイル、キャッシュを作業領域へ置く。ロックファイル、セッションID、最終チェックポイント、起動時の自動復旧候補提示は目標設計であり未実装である。保存済みプロジェクトの自動保存・バックアップ復元に加え、dev.123では未保存プロジェクトを`<WorkspaceDirectory>/recovery/<project-id>.autosave.pdfocrproj`へ元PDFを内包して保存する。該当ファイルを明示的に開いて復旧する。
 
 ## 6. 安全保存
 
 作業領域を整合性検査 → 新しいZIPを一時生成 → ZIP/JSON/必須参照検証 → 世代バックアップ → 原子的置換、の順とする。元ファイルへ直接追記しない。
+
+dev.123で空文字編集の保持と、画面から戻す際の親領域・補正方式・出力属性欠落を修正した。ただしZIP検証の成功だけで全属性・全入力の無損失を保証するものではない。常設した保存・PDF出力試験の範囲は[テスト戦略](../11_Test/11-01_TestStrategy.md)を参照する。
 
 ## 7. バックアップ
 
@@ -77,7 +81,7 @@ Installed: %LocalAppData%/PdfCorrectorium/Workspaces/<project-id>/
 
 ## 9. 互換性
 
-- 旧`PdfOcrEditorProject`形式識別子は同じ形式バージョンであれば互換読込する。一般的な明示移行器は未実装である。
+- 旧`PdfOcrEditorProject`形式識別子と形式1.0/1.1を互換読込し、未対応形式は検証・読込の双方で拒否する。一般的な明示移行器は未実装である。
 - 新形式を古いアプリで開く場合は読み取り専用または拒否し、理由を表示する。
 - 移行は冪等性、データ保持、ロールバックをテストする。
 - JSON Schemaは未同梱であり、各formatVersionごとの公開が必要である。

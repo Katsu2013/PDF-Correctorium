@@ -52,8 +52,10 @@ public sealed record OcrTextRegion
     public Guid? ParentRegionId { get; init; }
     /// <summary>OCR取込時点の文字列です。</summary>
     public string OriginalText { get; init; } = string.Empty;
-    /// <summary>利用者が修正した文字列。未修正時は空文字列です。</summary>
+    /// <summary>利用者が修正した文字列。意図的な空文字編集はHasEditedTextで区別します。</summary>
     public string EditedText { get; init; } = string.Empty;
+    /// <summary>空文字を含む編集値が明示的に存在するか。旧形式の非空編集値も引き続き読み込みます。</summary>
+    public bool HasEditedText { get; init; }
     /// <summary>OCR取込時点の位置、寸法、回転、文字送りです。</summary>
     public required TextGeometry OriginalGeometry { get; init; }
     /// <summary>利用者が編集した現在の位置、寸法、回転、文字送りです。</summary>
@@ -83,7 +85,7 @@ public sealed record OcrTextRegion
     /// <summary>PDF出力時に既存領域を削除する予定かを示します。</summary>
     public bool IsDeleted { get; init; }
     /// <summary>編集文字列が存在する場合は編集値を、存在しない場合は元の認識値を返します。</summary>
-    public string EffectiveText => string.IsNullOrEmpty(EditedText) ? OriginalText : EditedText;
+    public string EffectiveText => HasEditedText || !string.IsNullOrEmpty(EditedText) ? EditedText : OriginalText;
     /// <summary>文字列、幾何情報、書字方向、追加・削除状態のいずれかが変更されたかを返します。</summary>
     public bool IsModified =>
         IsAdded ||
@@ -98,6 +100,7 @@ public sealed record OcrTextRegion
     public OcrTextRegion EditText(string text) => this with
     {
         EditedText = text,
+        HasEditedText = true,
         ReviewStatus = ReviewStatus.Modified,
     };
 

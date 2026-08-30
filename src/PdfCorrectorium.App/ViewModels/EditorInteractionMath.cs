@@ -5,6 +5,20 @@ namespace PdfCorrectorium.App.ViewModels;
 /// </summary>
 public static class EditorInteractionMath
 {
+    /// <summary>25～100%を左半分、100～400%を右半分へ割り当て、0～100のスライダー位置へ変換します。</summary>
+    public static double ZoomPercentToSliderPosition(double zoomPercent)
+    {
+        var zoom = double.IsNaN(zoomPercent) ? 100 : Math.Clamp(zoomPercent, 25, 400);
+        return zoom <= 100 ? (zoom - 25) / 75 * 50 : 50 + (zoom - 100) / 300 * 50;
+    }
+
+    /// <summary>左右で異なる線形スケールを持つスライダー位置を倍率へ戻します。中央の50は100%です。</summary>
+    public static double SliderPositionToZoomPercent(double sliderPosition)
+    {
+        var position = double.IsNaN(sliderPosition) ? 50 : Math.Clamp(sliderPosition, 0, 100);
+        return position <= 50 ? 25 + position / 50 * 75 : 100 + (position - 50) / 50 * 300;
+    }
+
     /// <summary>
     /// ページ幅が表示領域へ収まる倍率をパーセントで計算します。
     /// </summary>

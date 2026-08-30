@@ -20,37 +20,84 @@
             ボタン種別ごとのスタイルから参照することで、余白を変更するときに
             複数のツールバーを個別修正しなくて済むようにする。
         -->
-        <Thickness x:Key="ToolbarButtonPadding">4</Thickness>
+        <Thickness x:Key="ToolbarButtonPadding">2</Thickness>
 
-        <Style x:Key="ToolbarIconButtonStyle" TargetType="Button">
-            <Setter Property="MinWidth" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
-            <Setter Property="Height" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+        <Style TargetType="ToolBarTray">
+            <Setter Property="Background" Value="{StaticResource ToolbarBrush}" />
+        </Style>
+        <Style TargetType="ToolBar">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style x:Key="ToolbarIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="MinWidth" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="Height" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
-            <Setter Property="Margin" Value="2" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="ToolTipService.ShowDuration" Value="12000" />
             <Style.Triggers>
-                <!-- アイコンのみの表示では、設定値を一辺とする正方形に固定する。 -->
+                <!-- アイコンのみの表示では、余白を詰めた正方形に固定する。 -->
                 <DataTrigger Binding="{Binding DataContext.ShowToolbarText, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
-                    <Setter Property="Width" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    <Setter Property="Width" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="ToolbarIconToggleStyle" TargetType="ToggleButton">
-            <Setter Property="MinWidth" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
-            <Setter Property="Height" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="MinWidth" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <Setter Property="Height" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
-            <Setter Property="Margin" Value="2" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid>
+                            <Border x:Name="ToggleChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4">
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                            <Border x:Name="ActiveRail" Height="2" Background="{StaticResource AccentBrush}"
+                                    VerticalAlignment="Bottom" Margin="4,0" Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="#F2F4F6" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="#F3B1B1" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="ActiveRail" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ToggleChrome" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
                 <!-- アイコンのみの表示では、通常ボタンと同じ正方形に固定する。 -->
                 <DataTrigger Binding="{Binding DataContext.ShowToolbarText, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
-                    <Setter Property="Width" Value="{Binding DataContext.ToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    <Setter Property="Width" Value="{Binding DataContext.CompactToolbarButtonSize, RelativeSource={RelativeSource AncestorType=Window}}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -64,27 +111,32 @@
         </Style>
         <Style x:Key="ToolbarLabelStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Margin" Value="6,0,1,0" />
+            <Setter Property="Margin" Value="4,0,0,0" />
             <Setter Property="Visibility" Value="{Binding DataContext.ShowToolbarText, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}" />
         </Style>
-        <Style x:Key="PropertyIconButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="34" />
+        <Style x:Key="PropertyIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <!-- 24pxアイコンとキーボードフォーカス時の2px枠を収める。 -->
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
-            <Setter Property="Margin" Value="3" />
+            <Setter Property="Margin" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="ToolTipService.ShowDuration" Value="12000" />
         </Style>
         <!-- 左ペインの小型操作ボタンは、文字記号ではなくベクターアイコンを使う。
              OSのフォント構成や高DPI倍率に左右されず、常に同じ形で表示するための共通スタイル。 -->
-        <Style x:Key="LeftPaneIconButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="30" />
-            <Setter Property="Height" Value="30" />
+        <Style x:Key="LeftPaneIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
             <Setter Property="MinHeight" Value="0" />
             <Setter Property="Padding" Value="{StaticResource ToolbarButtonPadding}" />
             <Setter Property="Margin" Value="1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="ToolTipService.ShowDuration" Value="12000" />
@@ -97,6 +149,53 @@
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- タブと切替ボタンの外観は App.xaml の共通スタイルを使用する。 -->
+        <Style x:Key="PageListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="Padding" Value="5,4" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemChrome"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="3,0,0,0"
+                                CornerRadius="2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="#F2F4F6" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="ItemChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 共通スタイルに別名を付け、既存の画面内参照を維持する。 -->
+        <Style x:Key="ToolbarComboBoxItemStyle" TargetType="ComboBoxItem" BasedOn="{StaticResource ModernComboBoxItemStyle}" />
+        <Style x:Key="RoundedToolbarComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource ModernComboBoxStyle}">
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ToolbarComboBoxItemStyle}" />
+        </Style>
+        <Style x:Key="BrandModeComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource RoundedToolbarComboBoxStyle}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="PaneTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <HierarchicalDataTemplate DataType="{x:Type vm:BookmarkNodeViewModel}" ItemsSource="{Binding Children}">
             <DockPanel ToolTip="{Binding PageNumber, StringFormat=ページ {0}}" LastChildFill="True">
                 <Viewbox Width="13" Height="16" Margin="0,0,5,0" VerticalAlignment="Center">
@@ -106,17 +205,19 @@
                           StrokeLineJoin="Round"
                           Data="{StaticResource IconGeometry.Bookmark}" />
                 </Viewbox>
-                <TextBlock DockPanel.Dock="Right" Text="{Binding PageNumber, StringFormat=  p.{0}}" Foreground="#667085" VerticalAlignment="Center" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding PageNumber, StringFormat=  p.{0}}" Foreground="#667085" FontWeight="Normal" VerticalAlignment="Center" />
                 <Grid MinWidth="70">
                     <TextBlock x:Name="BookmarkTitleText"
                                Text="{Binding Title}"
                                Padding="2,1"
+                               FontWeight="Normal"
                                VerticalAlignment="Center" />
                     <TextBox x:Name="BookmarkTitleEditor"
                              Tag="BookmarkTitleEditor"
                              Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                              Visibility="Collapsed"
                              Padding="2,0"
+                             FontWeight="Normal"
                              VerticalContentAlignment="Center"
                              PreviewKeyDown="BookmarkTitleEditor_OnPreviewKeyDown"
                              LostKeyboardFocus="BookmarkTitleEditor_OnLostKeyboardFocus" />
@@ -130,14 +231,14 @@
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
     </Window.Resources>
-    <Grid Background="#EEF1F4">
+    <Grid Background="{StaticResource AppBackgroundBrush}">
     <DockPanel>
-        <Menu DockPanel.Dock="Top">
+        <Menu DockPanel.Dock="Top" Background="White" Foreground="{StaticResource PrimaryTextBrush}">
             <MenuItem Header="ファイル(_F)">
                 <MenuItem Header="PDFを開く..." Command="{Binding OpenPdfCommand}" InputGestureText="Ctrl+O" />
                 <MenuItem Header="プロジェクトを開く..." Command="{Binding OpenProjectCommand}" />
                 <MenuItem Header="NDLOCR-Liteデータを読み込む..." Command="{Binding ImportOcrDataCommand}" />
-                <MenuItem Header="文書のプロパティ..." Click="DocumentPropertiesMenuItem_OnClick" />
+                <MenuItem x:Name="DocumentPropertiesMenuItem" Header="文書のプロパティ..." IsEnabled="{Binding HasDocument}" Click="DocumentPropertiesMenuItem_OnClick" />
                 <Separator />
                 <MenuItem Header="プロジェクトを上書き保存" Command="{Binding SaveProjectCommand}" InputGestureText="Ctrl+S" />
                 <MenuItem Header="プロジェクトを別名で保存..." Command="{Binding SaveProjectAsCommand}" InputGestureText="Ctrl+Shift+S" />
@@ -149,12 +250,12 @@
                 <MenuItem Header="元に戻す" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}" />
                 <MenuItem Header="やり直す" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}" />
                 <Separator />
-                <MenuItem Header="透明テキストを検索..." InputGestureText="Ctrl+F" Click="FindOcrTextMenuItem_OnClick" />
-                <MenuItem Header="透明テキストを置換..." InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick" />
+                <MenuItem x:Name="FindOcrTextMenuItem" Header="透明テキストを検索..." IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+F" Click="FindOcrTextMenuItem_OnClick" />
+                <MenuItem x:Name="ReplaceOcrTextMenuItem" Header="透明テキストを置換..." IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick" />
                 <Separator />
-                <MenuItem Header="設定..." Click="ApplicationSettingsMenuItem_OnClick" />
+                <MenuItem x:Name="ApplicationSettingsMenuItem" Header="設定..." Click="ApplicationSettingsMenuItem_OnClick" />
             </MenuItem>
-            <MenuItem Header="表示(_V)">
+            <MenuItem x:Name="ViewMenu" Header="表示(_V)">
                 <MenuItem Header="ページ一覧"
                           IsCheckable="True"
                           IsChecked="{Binding ShowPageListPanel, Mode=TwoWay}" />
@@ -169,7 +270,7 @@
                           IsCheckable="True"
                           IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}" />
             </MenuItem>
-            <MenuItem Header="しおり(_B)">
+            <MenuItem x:Name="BookmarkMenu" Header="しおり(_B)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="現在のページにしおりを追加" Command="{Binding AddBookmarkCommand}" />
                 <MenuItem Header="選択中のしおりへ子しおりを追加" Command="{Binding AddChildBookmarkCommand}" />
                 <MenuItem Header="選択中のしおりを削除" Command="{Binding DeleteBookmarkCommand}" />
@@ -177,8 +278,9 @@
                 <MenuItem Header="しおりをインポート..." Command="{Binding ImportBookmarksCommand}" />
                 <MenuItem Header="しおりをエクスポート..." Command="{Binding ExportBookmarksCommand}" />
             </MenuItem>
-            <MenuItem Header="OCR(_O)">
+            <MenuItem x:Name="OcrMenu" Header="OCR(_O)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="透明テキスト領域を追加"
+                          IsEnabled="{Binding CanAddOcrRegion}"
                           IsCheckable="True"
                           IsChecked="{Binding IsAddOcrRegionMode, Mode=TwoWay}" />
                 <MenuItem Header="選択した透明テキスト領域を削除"
@@ -186,14 +288,16 @@
                           InputGestureText="Delete" />
                 <Separator />
                 <MenuItem Header="前処理付き一括自動調整..."
+                          IsEnabled="{Binding CanEditGeometry}"
                           Click="BatchCharacterAdjustmentMenuItem_OnClick" />
                 <MenuItem Header="選択領域の編集を他ページへ反映..."
+                          IsEnabled="{Binding CanEditGeometry}"
                           Click="RepeatedRegionPropagationMenuItem_OnClick" />
                 <Separator />
                 <MenuItem Header="OCR品質の異常候補..."
                           Click="OcrQualityAnalysisMenuItem_OnClick" />
             </MenuItem>
-            <MenuItem Header="ページ(_P)">
+            <MenuItem x:Name="PageMenu" Header="ページ(_P)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="ページを挿入..." Command="{Binding InsertPagesCommand}" />
                 <MenuItem Header="選択ページを削除" Command="{Binding DeletePagesCommand}" InputGestureText="Delete" />
                 <Separator />
@@ -209,31 +313,48 @@
                           Command="{Binding OptimizeDocumentImagesCommand}"
                           ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します" />
             </MenuItem>
-            <MenuItem Header="検証(_A)">
+            <MenuItem x:Name="ValidationMenu" Header="検証(_A)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="現在のプロジェクトを検証(_V)" Click="ValidateProjectMenuItem_OnClick" />
-                <MenuItem Header="バックアップから復旧(_R)" Click="RestoreProjectMenuItem_OnClick" />
+                <MenuItem x:Name="RestoreProjectMenuItem" Header="バックアップから復旧(_R)" IsEnabled="{Binding CanRestoreProjectBackup}" Click="RestoreProjectMenuItem_OnClick" />
             </MenuItem>
-            <MenuItem Header="ヘルプ(_H)">
+            <MenuItem x:Name="HelpMenu" Header="ヘルプ(_H)">
                 <MenuItem Header="ログフォルダーを開く(_L)" Click="OpenLogFolderMenuItem_OnClick" />
                 <Separator />
                 <MenuItem Header="バージョン情報(_A)" Click="AboutMenuItem_OnClick" />
             </MenuItem>
         </Menu>
 
-        <Border DockPanel.Dock="Top" BorderThickness="0,0,0,1">
-            <ToolBarTray IsLocked="False">
-                <ToolBar x:Name="MainToolbarPanel" Band="0" BandIndex="0" Padding="6,2">
+        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1">
+            <ToolBarTray IsLocked="False" Background="{StaticResource ToolbarBrush}">
+                <ToolBar x:Name="MainToolbarPanel" Band="0" BandIndex="0" Padding="4,2" Background="Transparent">
                     <Button Command="{Binding OpenPdfCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="PDFを開く">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}" MaxWidth="64">
-                                <Path Data="{StaticResource IconGeometry.OpenPdf}" StrokeThickness="1.5" StrokeLineJoin="Round" >
-                                    <Path.Stroke>
-                                        <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
-                                    </Path.Stroke>
-                                    <Path.Fill>
-                                        <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
-                                    </Path.Fill>
-                                </Path>
+                                <Grid Width="24" Height="24">
+                                    <Path Data="{StaticResource IconGeometry.OpenFolderBack}"
+                                          Fill="Transparent"
+                                          StrokeThickness="1.7"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round">
+                                        <Path.Stroke>
+                                            <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+                                        </Path.Stroke>
+                                    </Path>
+                                    <Path Data="{StaticResource IconGeometry.OpenPdfBadge}" Fill="#D32F2F" Stroke="#D32F2F" StrokeThickness="1" StrokeLineJoin="Round" />
+                                    <Path Data="{StaticResource IconGeometry.OpenPdfBadgeFold}" Fill="Transparent" Stroke="White" StrokeThickness="1.15" StrokeLineJoin="Round" />
+                                    <Path Data="{StaticResource IconGeometry.OpenPdfBadgeLines}" Fill="Transparent" Stroke="White" StrokeThickness="1.15" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    <Path Data="{StaticResource IconGeometry.OpenFolderFront}"
+                                          Fill="White"
+                                          StrokeThickness="1.7"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round">
+                                        <Path.Stroke>
+                                            <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+                                        </Path.Stroke>
+                                    </Path>
+                                </Grid>
                             </Viewbox>
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="PDFを開く" />
                         </StackPanel>
@@ -241,11 +362,34 @@
                     <Button Command="{Binding OpenProjectCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="プロジェクトを開く">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}" MaxWidth="64">
-                                <Path Fill="#D9A441" StrokeThickness="1.4" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.OpenProject}" >
-                                    <Path.Stroke>
-                                        <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
-                                    </Path.Stroke>
-                                </Path>
+                                <Grid Width="24" Height="24">
+                                    <Path Data="{StaticResource IconGeometry.OpenFolderBack}"
+                                          Fill="Transparent"
+                                          StrokeThickness="1.7"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round">
+                                        <Path.Stroke>
+                                            <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+                                        </Path.Stroke>
+                                    </Path>
+                                    <Path Data="{StaticResource IconGeometry.OpenProjectBadge}" Fill="#D32F2F" Stroke="#D32F2F" StrokeThickness="1" StrokeLineJoin="Round" />
+                                    <Path Data="{StaticResource IconGeometry.OpenProjectBadgeSelection}" Fill="Transparent" Stroke="White" StrokeThickness="1" />
+                                    <Rectangle Width="1.8" Height="1.8" Fill="White" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="13.1,3.1,0,0" />
+                                    <Rectangle Width="1.8" Height="1.8" Fill="White" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="19.1,3.1,0,0" />
+                                    <Rectangle Width="1.8" Height="1.8" Fill="White" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="13.1,10.1,0,0" />
+                                    <Rectangle Width="1.8" Height="1.8" Fill="White" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="19.1,10.1,0,0" />
+                                    <Path Data="{StaticResource IconGeometry.OpenFolderFront}"
+                                          Fill="White"
+                                          StrokeThickness="1.7"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round">
+                                        <Path.Stroke>
+                                            <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+                                        </Path.Stroke>
+                                    </Path>
+                                </Grid>
                             </Viewbox>
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="プロジェクトを開く" />
                         </StackPanel>
@@ -253,10 +397,7 @@
                     <Button Command="{Binding SaveProjectCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="プロジェクトを上書き保存 (Ctrl+S)">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}" MaxWidth="64">
-                                <Path StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.SaveProject}" >
-                                    <Path.Fill>
-                                        <SolidColorBrush Color="{DynamicResource AccentColor}"/>
-                                    </Path.Fill>
+                                <Path StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.SaveProject}" Fill="#263746">
                                     <Path.Stroke>
                                         <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
                                     </Path.Stroke>
@@ -281,22 +422,22 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="OCR読込" />
                         </StackPanel>
                     </Button>
-                    <Separator Margin="8,0" />
-                    <ToggleButton IsChecked="{Binding IsOcrOverlayVisible}" Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="OCRを表示／非表示">
+                    <Separator Margin="4,0" />
+                    <ToggleButton IsChecked="{Binding IsOcrOverlayVisible}" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="OCRを表示／非表示">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}" MaxWidth="64">
-                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.OcrVisibility}" />
+                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.OcrVisibility}" />
                             </Viewbox>
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="OCR表示" />
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton IsChecked="{Binding IsAddOcrRegionMode, Mode=TwoWay}"
-                              IsEnabled="{Binding HasPreview}"
+                              IsEnabled="{Binding CanAddOcrRegion}"
                               Style="{StaticResource ToolbarIconToggleStyle}"
                               ToolTip="透明テキスト領域を追加。オンにしてページ上をドラッグします。">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
-                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.AddOcrRegion}" />
+                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.AddOcrRegion}" />
                             </Viewbox>
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="領域追加" />
                         </StackPanel>
@@ -311,7 +452,7 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="削除" />
                         </StackPanel>
                     </Button>
-                    <Separator Margin="8,0" />
+                    <Separator Margin="4,0" />
                     <Button Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoPrevious}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="前のページ">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
@@ -322,8 +463,9 @@
                     </Button>
                     <!-- Smoke tests and accessibility automation continue to read the full summary from this element. -->
                     <TextBlock x:Name="ToolbarPageSummary" Text="{Binding PageSummary}" Visibility="Collapsed" />
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="3,0">
                         <TextBox x:Name="ToolbarPageNumberBox"
+                                 IsEnabled="{Binding HasDocument}"
                                  Width="48"
                                  MinHeight="25"
                                  Padding="4,1"
@@ -346,7 +488,7 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="次へ" />
                         </StackPanel>
                     </Button>
-                    <Separator Margin="8,0" />
+                    <Separator Margin="4,0" />
                     <Button Command="{Binding ZoomOutCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="縮小">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
@@ -363,7 +505,7 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="拡大" />
                         </StackPanel>
                     </Button>
-                    <Button Click="FitWidthButton_OnClick" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ幅に合わせる">
+                    <Button Click="FitWidthButton_OnClick" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ幅に合わせる">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
                                 <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.FitWidth}" />
@@ -371,18 +513,15 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="幅に合わせる" />
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding ActualSizeCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="100%で表示">
+                    <Button Command="{Binding ActualSizeCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="実際のサイズ（100%）で表示" AutomationProperties.Name="100%で表示">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
-                                <Grid>
-                                    <Ellipse Stroke="#263746" StrokeThickness="1.7" />
-                                    <TextBlock Text="1:1" Foreground="#263746" FontSize="8" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Grid>
+                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.65" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.ActualSize}" />
                             </Viewbox>
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="100%" />
                         </StackPanel>
                     </Button>
-                    <Button Click="FitHeightButton_OnClick" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ高さに合わせる（上下ぴったり）">
+                    <Button Click="FitHeightButton_OnClick" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ高さに合わせる（上下ぴったり）">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
                                 <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.FitHeight}" />
@@ -390,7 +529,7 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="高さに合わせる" />
                         </StackPanel>
                     </Button>
-                    <Button Click="FitPageButton_OnClick" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ全体を表示">
+                    <Button Click="FitPageButton_OnClick" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="ページ全体を表示">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
                                 <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.7" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.FitPage}" />
@@ -398,13 +537,13 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="ページ全体" />
                         </StackPanel>
                     </Button>
-                    <Separator Margin="8,0" />
-                    <ComboBox x:Name="EditUnitSelector" Width="110" Margin="4,3" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位">
+                    <Separator Margin="4,0" />
+                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUsePreview}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}">
                         <ComboBoxItem Content="行編集" />
                         <ComboBoxItem Content="段落編集" />
                         <ComboBoxItem Content="文字編集" />
                     </ComboBox>
-                    <ComboBox Width="150" Margin="8,3" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}">
+                    <ComboBox IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}">
                         <ComboBoxItem Content="OCR編集" />
                         <ComboBoxItem Content="読み順編集" />
                         <ComboBoxItem Content="校正・確認" />
@@ -413,7 +552,7 @@
             </ToolBarTray>
         </Border>
 
-        <StatusBar DockPanel.Dock="Bottom" Background="#F8FAFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+        <StatusBar DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                    Visibility="{Binding ShowStatusBar, Converter={StaticResource BooleanToVisibilityConverter}}">
             <StatusBar.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -422,18 +561,29 @@
             </StatusBar.ItemsPanel>
             <Separator DockPanel.Dock="Right" >
             </Separator>
-            <StatusBarItem DockPanel.Dock="Right" ToolTip="表示倍率。－/＋、スライダー、または倍率表示から変更できます。" Padding="2,0,4,0">
+            <StatusBarItem DockPanel.Dock="Right" IsEnabled="{Binding CanUsePreview}" ToolTip="表示倍率。－/＋、スライダー、または倍率表示から変更できます。" Padding="2,0,4,0">
                 <StackPanel Orientation="Horizontal">
-                    <Button Command="{Binding ZoomOutCommand}" Width="20" Height="20" Padding="0" ToolTip="縮小" MinHeight="20" BorderThickness="1,1,1,1" Margin="2,2,2,2" BorderBrush="{x:Null}" Background="{x:Null}" AutomationProperties.Name="縮小">
+                    <Button x:Name="StatusZoomOutButton" Command="{Binding ZoomOutCommand}" Style="{StaticResource FlatStatusBarButtonStyle}" ToolTip="縮小" AutomationProperties.Name="縮小">
                         <Viewbox Width="12" Height="12">
                             <Path Fill="Transparent" Stroke="#263746" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconGeometry.Minus}" Height="24" Width="24" />
                         </Viewbox>
                     </Button>
-                    <Slider x:Name="StatusZoomSlider" Minimum="25" Maximum="400" TickFrequency="1" IsSnapToTickEnabled="False"
+                    <!-- 中央の位置50を100%とし、左右で倍率の変化量を変える。 -->
+                    <Slider x:Name="StatusZoomSlider" Minimum="0" Maximum="100" IsSnapToTickEnabled="False"
+                            Style="{StaticResource CenteredZoomSliderStyle}" IsMoveToPointEnabled="True"
                             SmallChange="1" LargeChange="10"
-                            Value="{Binding ZoomPercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            Width="92" Margin="2,0" VerticalAlignment="Center" />
-                    <Button Command="{Binding ZoomInCommand}" Width="20" Height="20" Padding="0,0,0,0" ToolTip="拡大" MinHeight="20" Margin="2,2,2,2" BorderBrush="{x:Null}" Background="{x:Null}" AutomationProperties.Name="拡大">
+                            Value="{Binding ZoomSliderPosition, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            ToolTip="{Binding ZoomDisplay}" AutomationProperties.Name="表示倍率"
+                            AutomationProperties.HelpText="{Binding ZoomDisplay}"
+                            Width="92" Margin="2,0" VerticalAlignment="Center">
+                        <Slider.CommandBindings>
+                            <CommandBinding Command="Slider.IncreaseSmall" Executed="StatusZoomSlider_OnChangeZoom" CanExecute="StatusZoomSlider_OnCanChangeZoom" />
+                            <CommandBinding Command="Slider.DecreaseSmall" Executed="StatusZoomSlider_OnChangeZoom" CanExecute="StatusZoomSlider_OnCanChangeZoom" />
+                            <CommandBinding Command="Slider.IncreaseLarge" Executed="StatusZoomSlider_OnChangeZoom" CanExecute="StatusZoomSlider_OnCanChangeZoom" />
+                            <CommandBinding Command="Slider.DecreaseLarge" Executed="StatusZoomSlider_OnChangeZoom" CanExecute="StatusZoomSlider_OnCanChangeZoom" />
+                        </Slider.CommandBindings>
+                    </Slider>
+                    <Button x:Name="StatusZoomInButton" Command="{Binding ZoomInCommand}" Style="{StaticResource FlatStatusBarButtonStyle}" ToolTip="拡大" AutomationProperties.Name="拡大">
                         <Viewbox Width="12" Height="12">
                             <Path Fill="Transparent" Stroke="#263746" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconGeometry.Plus}" />
                         </Viewbox>
@@ -443,7 +593,7 @@
                               IsEditable="True"
                               IsTextSearchEnabled="False"
                               StaysOpenOnEdit="True"
-                              Width="70" Height="20" Padding="1,0" Margin="2,0,0,0"
+                              Width="70" Height="20" MinHeight="20" Padding="6,0,24,0" Margin="2,0,0,0"
                               VerticalContentAlignment="Center"
                               SelectionChanged="StatusZoomComboBox_OnSelectionChanged"
                               PreviewKeyDown="StatusZoomComboBox_OnPreviewKeyDown"
@@ -499,7 +649,7 @@
                 <ColumnDefinition Width="{Binding PropertiesPanelColumnWidth}" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="6,6,6,6">
+            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="8,6">
                 <TabControl>
                     <TabItem Header="ページ" Padding="10,2,10,2" Margin="0,0,0,0">
                         <DockPanel Margin="4">
@@ -508,14 +658,14 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="ページ一覧" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center" />
+                                <TextBlock Text="ページ一覧" Style="{StaticResource PaneTitleStyle}" />
                                 <ToggleButton Grid.Column="1"
                                       Content="サムネイル"
                                       IsChecked="{Binding ShowPageThumbnails, Mode=TwoWay}"
                                       Padding="7,3"
                                       ToolTip="ページ画像の表示をオン／オフします" />
                             </Grid>
-                            <Border DockPanel.Dock="Top" Background="#F4F6F8" BorderBrush="#D0D5DD" BorderThickness="0,0,0,1" Padding="3" Margin="0,0,0,6">
+                            <Border DockPanel.Dock="Top" Background="#F8F9FA" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="3" Margin="0,0,0,8">
                                 <DockPanel LastChildFill="True">
                                     <ToolBarTray DockPanel.Dock="Top" IsLocked="True" HorizontalAlignment="Stretch">
                                         <ToolBar x:Name="PageCommandToolBar" Band="0" BandIndex="0" HorizontalAlignment="Stretch">
@@ -572,6 +722,7 @@
                                     </Grid>
                                 </DockPanel>
                             </Border>
+                            <Grid>
                             <ListBox x:Name="PageList"
                              ItemsSource="{Binding PageItems}"
                              SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
@@ -585,7 +736,10 @@
                              DragLeave="PageList_OnDragLeave"
                              Drop="PageList_OnDrop"
                              AllowDrop="True"
-                             HorizontalContentAlignment="Stretch">
+                             HorizontalContentAlignment="Stretch"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ItemContainerStyle="{StaticResource PageListItemStyle}">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="ページを挿入..." Command="{Binding PlacementTarget.DataContext.InsertPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -605,7 +759,7 @@
                                                 <Border x:Name="ThumbnailFrame"
                                                 Width="{Binding DataContext.PageThumbnailSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 Height="{Binding DataContext.PageThumbnailHeight, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                Background="#EEF1F4" BorderBrush="#CBD3DA" BorderThickness="1">
+                                                Background="#F4F6F8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                                                     <Grid>
                                                         <TextBlock Text="読込中..." Foreground="#667085" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                         <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
@@ -616,14 +770,33 @@
                                         </StackPanel>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                <Setter TargetName="ThumbnailFrame" Property="BorderBrush" Value="#FF0078D4" />
+                                                <Setter TargetName="ThumbnailFrame" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                                 <Setter TargetName="ThumbnailFrame" Property="BorderThickness" Value="3" />
-                                                <Setter TargetName="ThumbnailFrame" Property="Background" Value="#FFEAF4FF" />
+                                                <Setter TargetName="ThumbnailFrame" Property="Background" Value="{StaticResource AccentSoftBrush}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Margin="12">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PageItems.Count}" Value="0">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Viewbox Width="34" Height="34" HorizontalAlignment="Center" Margin="0,0,0,10" Opacity="0.42">
+                                        <Path Data="{StaticResource IconGeometry.OpenPdfBadge}" Fill="Transparent" Stroke="#667085" StrokeThickness="1.2" />
+                                    </Viewbox>
+                                    <TextBlock Text="PDFを開くとページが表示されます"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               TextAlignment="Center" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Grid>
                         </DockPanel>
                     </TabItem>
                     <TabItem Header="しおり" Margin="0,0,0,0" Padding="10,2,10,2">
@@ -635,7 +808,7 @@
                                         <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.BookmarkAdd}" />
                                     </Viewbox>
                                 </Button>
-                                <Button Command="{Binding AddChildBookmarkCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" ToolTip="選択中のしおりの下に追加" Margin="2" AutomationProperties.Name="子しおりを追加">
+                                <Button Command="{Binding AddChildBookmarkCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" ToolTip="選択中のしおりの子として追加" Margin="2" AutomationProperties.Name="選択中のしおりの子として追加">
                                     <Viewbox Style="{StaticResource LeftPaneIconViewboxStyle}">
                                         <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.BookmarkAddChild}" />
                                     </Viewbox>
@@ -678,6 +851,7 @@
                             </ToolBarTray>
                             <TreeView x:Name="BookmarkTree"
                                   ItemsSource="{Binding BookmarkItems}"
+                                  FontWeight="Normal"
                                   SelectedItemChanged="BookmarkTree_OnSelectedItemChanged"
                                   AllowDrop="True"
                                   PreviewMouseLeftButtonDown="BookmarkTree_OnPreviewMouseLeftButtonDown"
@@ -699,6 +873,9 @@
                                 <TreeView.ItemContainerStyle>
                                     <Style TargetType="TreeViewItem">
                                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                        <!-- 各行のクリック領域を保ったまま、上下に少し余白を加える。 -->
+                                        <Setter Property="Padding" Value="1,2" />
+                                        <Setter Property="FontWeight" Value="Normal" />
                                         <EventSetter Event="PreviewMouseRightButtonDown" Handler="BookmarkTreeItem_OnPreviewMouseRightButtonDown" />
                                         <EventSetter Event="MouseDoubleClick" Handler="BookmarkTreeItem_OnMouseDoubleClick" />
                                     </Style>
@@ -708,10 +885,10 @@
                     </TabItem>
                 </TabControl>
             </Border>
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#D8DEE4" />
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
 
             <Grid Grid.Column="2" Margin="4">
-                <Border Background="#3D4652" CornerRadius="4">
+                <Border Background="{StaticResource CanvasSurroundBrush}" CornerRadius="5">
                     <DockPanel>
                         <Grid>
                             <ScrollViewer x:Name="PreviewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="4"
@@ -724,7 +901,8 @@
                                         VerticalAlignment="Top"
                                         PreviewMouseRightButtonDown="PreviewPageHost_OnPreviewMouseRightButtonDown">
                                     <Border.ContextMenu>
-                                        <ContextMenu Opened="PreviewContextMenu_OnOpened">
+                                        <ContextMenu Opened="PreviewContextMenu_OnOpened"
+                                                     IsEnabled="{Binding PlacementTarget.DataContext.CanUsePreview, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="透明テキスト領域を追加"
                                                       Tag="AddOcrRegion"
                                                       IsCheckable="True"
@@ -850,6 +1028,9 @@
                                                                         </MultiDataTrigger.Conditions>
                                                                         <Setter Property="Visibility" Value="Visible" />
                                                                     </MultiDataTrigger>
+                                                                    <DataTrigger Binding="{Binding DataContext.IsReviewMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                             <Style x:Key="RotationHandleStyle" TargetType="Thumb">
@@ -886,6 +1067,9 @@
                                                                         </MultiDataTrigger.Conditions>
                                                                         <Setter Property="Visibility" Value="Visible" />
                                                                     </MultiDataTrigger>
+                                                                    <DataTrigger Binding="{Binding DataContext.IsReviewMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Grid.Resources>
@@ -1093,7 +1277,7 @@
                                                                 </DataTemplate>
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
-                                                        <Canvas Visibility="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                        <Canvas x:Name="CharacterAdvanceHandles" Visibility="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                 ClipToBounds="False">
                                                             <Thumb Canvas.Left="{Binding CharacterSelectionRight}"
                                                                    Canvas.Top="{Binding CharacterSelectionTop}"
@@ -1146,7 +1330,7 @@
                                                                 </Thumb.RenderTransform>
                                                             </Thumb>
                                                         </Canvas>
-                                                        <Border x:Name="AlignmentReferenceBadge" Background="#FF1976D2" CornerRadius="2" RenderTransformOrigin="1,1"
+                                                        <Border x:Name="AlignmentReferenceBadge" Background="#FFD32F2F" CornerRadius="2" RenderTransformOrigin="1,1"
                                                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-22,0,0"
                                                                 Padding="5,2" Visibility="Collapsed">
                                                             <Border.RenderTransform>
@@ -1212,7 +1396,7 @@
                                                                 <Condition Binding="{Binding IsAlignmentReference}" Value="True" />
                                                                 <Condition Binding="{Binding DataContext.IsLineEditMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                                                             </MultiDataTrigger.Conditions>
-                                                            <Setter TargetName="RegionBody" Property="BorderBrush" Value="#FF1976D2" />
+                                                            <Setter TargetName="RegionBody" Property="BorderBrush" Value="#FFD32F2F" />
                                                             <Setter TargetName="RegionBody" Property="BorderThickness" Value="3" />
                                                             <Setter TargetName="AlignmentReferenceBadge" Property="Visibility" Value="Visible" />
                                                         </MultiDataTrigger>
@@ -1238,6 +1422,12 @@
                                                             <Setter TargetName="RegionBody" Property="Background" Value="#70FFD54F" />
                                                             <Setter TargetName="RegionBody" Property="ToolTip" Value="位置・サイズをロック済み（自動調整対象外）" />
                                                         </MultiDataTrigger>
+                                                        <DataTrigger Binding="{Binding DataContext.IsReviewMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter TargetName="RegionBody" Property="Cursor" Value="Arrow" />
+                                                            <Setter TargetName="RotationConnector" Property="Visibility" Value="Collapsed" />
+                                                            <Setter TargetName="AlignmentReferenceBadge" Property="Visibility" Value="Collapsed" />
+                                                            <Setter TargetName="CharacterAdvanceHandles" Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ListBox.ItemTemplate>
@@ -1245,15 +1435,15 @@
                                         <Canvas IsHitTestVisible="False">
                                             <Border x:Name="MarqueeSelectionRectangle"
                                                     Visibility="Collapsed"
-                                                    Background="#2878B7FF"
-                                                    BorderBrush="#FF1875D1"
+                                                    Background="#28D32F2F"
+                                                    BorderBrush="#FFD32F2F"
                                                     BorderThickness="1" />
                                         </Canvas>
                                     </Grid>
                                 </Border>
                             </ScrollViewer>
 
-                            <Border Width="620" Height="700" Background="White" BorderBrush="#CBD3DA" BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Width="620" Height="700" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Setter Property="Visibility" Value="Collapsed" />
@@ -1265,9 +1455,14 @@
                                     </Style>
                                 </Border.Style>
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding DocumentTitle}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                    <TextBlock Text="{Binding DocumentDescription}" TextAlignment="Center" Foreground="#667085" Margin="20,12,20,0" TextWrapping="Wrap" MaxWidth="480" />
-                                    <Button Content="PDFを開く" Command="{Binding OpenPdfCommand}" Margin="0,24,0,0" />
+                                    <Image Source="/PdfCorrectorium;component/Resources/Branding/PdfCorrectorium-128.png"
+                                           Width="88" Height="88" Stretch="Uniform" Margin="0,0,0,22" />
+                                    <TextBlock Text="{Binding DocumentTitle}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{StaticResource PrimaryTextBrush}" />
+                                    <TextBlock Text="{Binding DocumentDescription}" TextAlignment="Center" Foreground="{StaticResource SecondaryTextBrush}" Margin="20,12,20,0" TextWrapping="Wrap" MaxWidth="500" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,26,0,0">
+                                        <Button Content="PDFを開く" Command="{Binding OpenPdfCommand}" Style="{StaticResource PrimaryButtonStyle}" MinWidth="180" />
+                                        <Button Content="プロジェクトを開く" Command="{Binding OpenProjectCommand}" MinWidth="180" Margin="10,3,3,3" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
 
@@ -1291,36 +1486,75 @@
                     </DockPanel>
                 </Border>
             </Grid>
-            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="#D8DEE4" />
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
 
             <Border Grid.Column="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="6,2,6,2">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8">
                     <StackPanel>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="OCRプロパティ" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center" />
+                            <TextBlock Text="OCRプロパティ" Style="{StaticResource PaneTitleStyle}" />
                             <ToggleButton Grid.Column="1"
                                       Content="説明"
                                       IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}"
                                       Padding="7,3"
                                       ToolTip="操作説明の表示／非表示" />
                         </Grid>
-                        <TextBlock Text="{Binding OverlaySummary}" Foreground="#59636E" />
-                        <Separator Margin="0,16" />
+                        <TextBlock Text="{Binding OverlaySummary}" Foreground="{StaticResource SecondaryTextBrush}" />
+                        <Separator Margin="0,14" />
+                        <StackPanel x:Name="ReviewPanel" Visibility="{Binding IsReviewMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock Text="校正・確認" Style="{StaticResource PaneTitleStyle}" />
+                            <TextBlock Text="文字と確認ステータスを編集できます。枠の移動・変形操作は無効です。"
+                                       TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,5,0,8" />
+                            <ComboBox x:Name="ReviewFilterComboBox" ItemsSource="{Binding ReviewFilterOptions}"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedIndex="{Binding ReviewFilterIndex, Mode=TwoWay}" ToolTip="確認対象の絞り込み" />
+                            <TextBlock Text="{Binding ReviewSummary}" Margin="0,8,0,4" Foreground="{StaticResource SecondaryTextBrush}" />
+                            <ListBox x:Name="ReviewTargetList" ItemsSource="{Binding ReviewItems}" MaxHeight="132"
+                                     SelectedItem="{Binding SelectedReviewItem, Mode=TwoWay}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="ReviewTargetList_OnPreviewMouseLeftButtonDown">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="3,4" ToolTip="{Binding Text}">
+                                            <TextBlock Text="{Binding ReadingOrder, StringFormat={}{0}.}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,6,0" />
+                                            <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="このページに該当する領域はありません。前／次の対象で別のページも検索できます。"
+                                       Visibility="{Binding HasNoReviewItems, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       TextWrapping="Wrap" Margin="0,5,0,0" Foreground="{StaticResource SecondaryTextBrush}" />
+                            <UniformGrid Columns="2" Margin="0,7,0,0">
+                                <Button x:Name="PreviousReviewButton" Content="前の対象" Command="{Binding PreviousReviewCommand}"
+                                        Click="ReviewNavigationButton_OnClick" Margin="0,0,3,0" />
+                                <Button x:Name="NextReviewButton" Content="次の対象" Command="{Binding NextReviewCommand}"
+                                        Click="ReviewNavigationButton_OnClick" Margin="3,0,0,0" />
+                            </UniformGrid>
+                            <Button x:Name="VerifyAndNextButton" Content="確認済みにして次へ" Command="{Binding VerifyAndNextCommand}"
+                                    Click="ReviewNavigationButton_OnClick" Margin="0,6,0,0"
+                                    ToolTip="選択中の1領域を確認済みにして、ページ順・読み順で次の対象へ移動します。" />
+                            <StackPanel Visibility="{Binding IsReviewNavigating, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,6,0,0">
+                                <ProgressBar IsIndeterminate="True" Height="3" />
+                                <Button Content="検索を中止" Command="{Binding CancelReviewNavigationCommand}" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <Separator Margin="0,14" />
+                        </StackPanel>
                         <StackPanel Visibility="{Binding HasMultipleSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="複数領域の整列" FontWeight="SemiBold" FontSize="15" />
-                            <TextBlock Text="{Binding SelectedOverlayCount, StringFormat=選択中: {0}領域}" Foreground="#59636E" Margin="0,3,0,8" />
-                            <Border Background="#E8F2FC" BorderBrush="#FF1976D2" BorderThickness="1" CornerRadius="3" Padding="8" Margin="0,0,0,6">
-                                <TextBlock Text="{Binding AlignmentReferenceDescription}" TextWrapping="Wrap" Foreground="#124A7A" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedOverlayCount, StringFormat=選択中: {0}領域}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,3,0,8" />
+                            <Border Background="{StaticResource AccentSoftBrush}" BorderBrush="#F0A0A0" BorderThickness="1" CornerRadius="4" Padding="9" Margin="0,0,0,8">
+                                <TextBlock Text="{Binding AlignmentReferenceDescription}" TextWrapping="Wrap" Foreground="#8F1F1F" FontWeight="SemiBold" />
                             </Border>
                             <UniformGrid x:Name="AlignmentIconPanel" Columns="3" HorizontalAlignment="Center" Margin="0,0,0,4">
                                 <Button Command="{Binding SetAlignmentReferenceCommand}" Style="{StaticResource PropertyIconButtonStyle}"
                                     ToolTip="現在のOCR領域をサイズの基準に設定" AutomationProperties.Name="現在のOCR領域をサイズの基準に設定">
                                     <Viewbox>
-                                        <Path Fill="Transparent" Stroke="#1976D2" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconGeometry.SetAlignmentReference}" />
+                                        <Path Fill="Transparent" Stroke="#D32F2F" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconGeometry.SetAlignmentReference}" />
                                     </Viewbox>
                                 </Button>
                                 <Button Command="{Binding EqualWidthCommand}" Style="{StaticResource PropertyIconButtonStyle}"
@@ -1393,6 +1627,7 @@
                                   Margin="0,3,0,10" />
                             <TextBlock Text="文字方向" />
                             <ComboBox ItemsSource="{Binding WritingModeOptions}"
+                                  IsEnabled="{Binding CanEditGeometry}"
                                   DisplayMemberPath="DisplayName"
                                   SelectedValuePath="Value"
                                   SelectedValue="{Binding SelectedWritingMode, Mode=TwoWay}"
@@ -1504,7 +1739,7 @@
                                 <TextBlock Text="文字の送り幅" Margin="0,8,0,0" />
                                 <TextBox x:Name="SelectedCharacterAdvanceTextBox"
                                      Text="{Binding SelectedCharacterAdvance, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}"
-                                     IsEnabled="{Binding SelectedOverlay.HasUnlockedSelectedCharacters}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown"
+                                     IsEnabled="{Binding CanEditSelectedCharacterAdvance}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown"
                                      LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus"
                                      PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"
                                      ToolTip="複数文字を選択している場合、固定されていないすべての選択文字を同じ送り幅へ変更します。" />
@@ -1562,7 +1797,7 @@
                                             <Path Fill="Transparent" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
                                                 <Path.Style>
                                                     <Style TargetType="{x:Type Path}">
-                                                        <Setter Property="Stroke" Value="#286DA8" />
+                                                        <Setter Property="Stroke" Value="#D32F2F" />
                                                         <Setter Property="Data" Value="{StaticResource IconGeometry.Lock}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding AreSelectedCharactersLocked}" Value="True">
@@ -1600,14 +1835,14 @@
                                             <Style TargetType="Button" BasedOn="{StaticResource PropertyIconButtonStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding IsSelectedGeometryLocked}" Value="True">
-                                                        <Setter Property="Background" Value="#D7EBFA" />
-                                                        <Setter Property="BorderBrush" Value="#286DA8" />
+                                                        <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Button.Style>
                                         <Viewbox>
-                                            <Path Fill="Transparent" Stroke="#286DA8" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Lock}" />
+                                            <Path Fill="Transparent" Stroke="#D32F2F" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Lock}" />
                                         </Viewbox>
                                     </Button>
                                     <TextBlock Text="領域の位置・サイズを固定" VerticalAlignment="Center" Margin="5,0,4,0" />
@@ -1640,7 +1875,7 @@
                                    Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <ToolBarTray IsLocked="True" HorizontalAlignment="Left" Margin="0,6,0,0">
-                                <ToolBar x:Name="RotationPresetToolBar" Band="0" BandIndex="0">
+                                <ToolBar x:Name="RotationPresetToolBar" Band="0" BandIndex="0" IsEnabled="{Binding IsSelectedGeometryEditable}">
                                 <Button Tag="-90" Click="RotatePresetButton_OnClick" Style="{StaticResource PropertyIconButtonStyle}" ToolTip="左へ90度回転" AutomationProperties.Name="左へ90度回転">
                                     <Viewbox>
                                         <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.RotateLeft}" />
@@ -1662,8 +1897,21 @@
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <Separator Margin="0,16" />
                         </StackPanel>
-                        <TextBlock Text="文字枠を選択すると編集項目が表示されます。文書情報は［ファイル］→［文書のプロパティ］で確認できます。" TextWrapping="Wrap" Foreground="#667085"
-                               Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <Border Background="#FAFBFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,4,0,0">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSelectedOverlay}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="OCR領域を選択するとプロパティを編集できます"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

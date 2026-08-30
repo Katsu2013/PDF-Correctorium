@@ -168,7 +168,7 @@ public sealed record OcrTextSearchMatch(
 /// PDFそのものは編集操作のたびに変更せず、<see cref="OverlayRegionViewModel"/> の編集状態として保持します。
 /// プロジェクト保存時はその状態を.pdfocrprojへ格納し、PDF出力時にだけ元PDFへ反映します。
 /// </remarks>
-public sealed class MainWindowViewModel : INotifyPropertyChanged
+public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 {
     /// <summary>極端に処理時間の長い正規表現から編集画面を保護するための上限時間です。</summary>
     private static readonly TimeSpan SearchRegexTimeout = TimeSpan.FromSeconds(2);
@@ -216,6 +216,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private ApplicationSettings _applicationSettings;
     /// <summary>現在開いている編集プロジェクト。閲覧だけの場合はnullです。</summary>
     private PdfCorrectoriumProject? _project;
+    /// <summary>プロジェクトモデルだけでなく、元PDFの読込も完了したことを保持します。</summary>
+    private bool _hasDocument;
+    private bool _isOpeningDocument;
     /// <summary>現在のPDFに対応付けられたNDLOCR-Lite取込結果です。</summary>
     private NdlOcrDocument? _ndlOcrDocument;
     /// <summary>ページ切替時に古いプレビュー描画を中止するためのトークン源です。</summary>
@@ -312,6 +315,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _hasPageStructureEdits;
     /// <summary>自動保存間隔を判定する基準となる、最後に自動保存または通常保存したUTC日時です。</summary>
     private DateTimeOffset _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastUserActivityAtUtc = DateTimeOffset.UtcNow;
+    private long _lastAutoSavedEditStateId = -1;
+
+    /// <summary>操作停止による自動保存を、キーボード・ポインター入力から延期します。</summary>
+    internal void NotifyUserActivity() => _lastUserActivityAtUtc = DateTimeOffset.UtcNow;
+
+    /// <summary>未保存プロジェクトも復元できる、自動保存先の絶対パスです。</summary>
+    public string? AutoSaveRecoveryPath => _project is null ? null : _projectFilePath is not null
+        ? ProjectPackageService.GetAutoSavePath(_projectFilePath)
+        : Path.Combine(_paths.WorkspaceDirectory, "recovery", $"{_project.ProjectId:N}.autosave.pdfocrproj");
     /// <summary>タイマーが重複して同じプロジェクトを自動保存しないための排他フラグです。</summary>
     private bool _autoSaveInProgress;
 
@@ -339,68 +352,69 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         _packages.BackupGenerationCount = _applicationSettings.BackupGenerationCount;
         _close = close;
         RefreshLocalizedOptions();
-        OpenPdfCommand = new AsyncCommand(OpenPdfAsync);
-        OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
-        ImportOcrDataCommand = new AsyncCommand(ImportOcrDataAsync, () => _resolvedPdfPath is not null);
-        SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => _project is not null);
-        SaveProjectAsCommand = new AsyncCommand(SaveProjectAsAsync, () => _project is not null);
-        ExportPdfCommand = new AsyncCommand(ExportPdfAsync, () => _project is not null && _resolvedPdfPath is not null);
+        OpenPdfCommand = new AsyncCommand(OpenPdfAsync, () => !IsOpeningDocument);
+        OpenProjectCommand = new AsyncCommand(OpenProjectAsync, () => !IsOpeningDocument);
+        ImportOcrDataCommand = new AsyncCommand(ImportOcrDataAsync, () => HasDocument);
+        SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => HasDocument);
+        SaveProjectAsCommand = new AsyncCommand(SaveProjectAsAsync, () => HasDocument);
+        ExportPdfCommand = new AsyncCommand(ExportPdfAsync, () => HasDocument);
         OptimizeCurrentPageImageCommand = new AsyncCommand(
             OptimizeCurrentPageImageAsync,
-            () => _project is not null && _resolvedPdfPath is not null && SelectedPage is not null);
+            () => HasDocument && SelectedPage is not null);
         OptimizeDocumentImagesCommand = new AsyncCommand(
             OptimizeDocumentImagesAsync,
-            () => _project is not null && _resolvedPdfPath is not null);
-        InsertPagesCommand = new AsyncCommand(InsertPagesAsync, () => _project is not null && _resolvedPdfPath is not null);
+            () => HasDocument);
+        InsertPagesCommand = new AsyncCommand(InsertPagesAsync, () => HasDocument);
         DeletePagesCommand = new AsyncCommand(DeleteSelectedPagesAsync, CanDeleteSelectedPages);
         RotatePagesLeftCommand = new AsyncCommand(() => RotateSelectedPagesAsync(-90), CanModifySelectedPages);
         RotatePagesRightCommand = new AsyncCommand(() => RotateSelectedPagesAsync(90), CanModifySelectedPages);
-        PreviousPageCommand = new RelayCommand(GoToPreviousPage);
-        NextPageCommand = new RelayCommand(GoToNextPage);
-        ZoomInCommand = new RelayCommand(() => ChangeZoomStep(increase: true), () => ZoomPercent < 400);
-        ZoomOutCommand = new RelayCommand(() => ChangeZoomStep(increase: false), () => ZoomPercent > 25);
-        ActualSizeCommand = new RelayCommand(() => ZoomPercent = 100);
-        AddBookmarkCommand = new RelayCommand(AddBookmark, () => _project is not null && SelectedPage is not null);
-        AddChildBookmarkCommand = new RelayCommand(AddChildBookmark, () => SelectedBookmark is not null);
-        DeleteBookmarkCommand = new RelayCommand(DeleteBookmark, () => SelectedBookmark is not null);
-        MoveBookmarkUpCommand = new RelayCommand(() => MoveBookmark(-1), () => CanMoveBookmark(-1));
-        MoveBookmarkDownCommand = new RelayCommand(() => MoveBookmark(1), () => CanMoveBookmark(1));
-        GoToBookmarkCommand = new RelayCommand(GoToBookmark, () => SelectedBookmark is not null);
-        ImportBookmarksCommand = new AsyncCommand(ImportBookmarksAsync, () => _project is not null);
-        ExportBookmarksCommand = new AsyncCommand(ExportBookmarksAsync, () => BookmarkItems.Count > 0);
+        PreviousPageCommand = new RelayCommand(GoToPreviousPage, () => CanGoPrevious);
+        NextPageCommand = new RelayCommand(GoToNextPage, () => CanGoNext);
+        ZoomInCommand = new RelayCommand(() => ChangeZoomStep(increase: true), () => CanUsePreview && ZoomPercent < 400);
+        ZoomOutCommand = new RelayCommand(() => ChangeZoomStep(increase: false), () => CanUsePreview && ZoomPercent > 25);
+        ActualSizeCommand = new RelayCommand(() => ZoomPercent = 100, () => CanUsePreview);
+        AddBookmarkCommand = new RelayCommand(AddBookmark, () => HasDocument && SelectedPage is not null);
+        AddChildBookmarkCommand = new RelayCommand(AddChildBookmark, () => HasDocument && SelectedBookmark is not null);
+        DeleteBookmarkCommand = new RelayCommand(DeleteBookmark, () => HasDocument && SelectedBookmark is not null);
+        MoveBookmarkUpCommand = new RelayCommand(() => MoveBookmark(-1), () => HasDocument && CanMoveBookmark(-1));
+        MoveBookmarkDownCommand = new RelayCommand(() => MoveBookmark(1), () => HasDocument && CanMoveBookmark(1));
+        GoToBookmarkCommand = new RelayCommand(GoToBookmark, () => HasDocument && SelectedBookmark is not null);
+        ImportBookmarksCommand = new AsyncCommand(ImportBookmarksAsync, () => HasDocument);
+        ExportBookmarksCommand = new AsyncCommand(ExportBookmarksAsync, () => HasDocument && BookmarkItems.Count > 0);
         UndoCommand = new RelayCommand(Undo, () => _undo.Count > 0);
         RedoCommand = new RelayCommand(Redo, () => _redo.Count > 0);
-        EqualWidthCommand = new RelayCommand(EqualizeSelectedWidths, () => _selectedOverlays.Count > 1);
-        EqualHeightCommand = new RelayCommand(EqualizeSelectedHeights, () => _selectedOverlays.Count > 1);
-        AlignLeftCommand = new RelayCommand(() => AlignSelection("left"), () => _selectedOverlays.Count > 1);
-        AlignRightCommand = new RelayCommand(() => AlignSelection("right"), () => _selectedOverlays.Count > 1);
-        AlignTopCommand = new RelayCommand(() => AlignSelection("top"), () => _selectedOverlays.Count > 1);
-        AlignBottomCommand = new RelayCommand(() => AlignSelection("bottom"), () => _selectedOverlays.Count > 1);
-        AlignHorizontalCenterCommand = new RelayCommand(() => AlignSelection("horizontal-center"), () => _selectedOverlays.Count > 1);
-        AlignVerticalCenterCommand = new RelayCommand(() => AlignSelection("vertical-center"), () => _selectedOverlays.Count > 1);
-        SetAlignmentReferenceCommand = new RelayCommand(SetAlignmentReference, () => HasMultipleSelection && SelectedOverlay is not null);
-        MoveReadingEarlierCommand = new RelayCommand(() => MoveSelectedReadingOrder(-1), CanMoveReadingEarlier);
-        MoveReadingLaterCommand = new RelayCommand(() => MoveSelectedReadingOrder(1), CanMoveReadingLater);
-        RecalculateReadingOrderCommand = new RelayCommand(RecalculateReadingOrder, () => OverlayItems.Any(region => !region.IsDeleted));
-        EqualizeCharacterAdvancesCommand = new RelayCommand(EqualizeCharacterAdvances, CanEqualizeCharacterAdvances);
-        RestoreOriginalCharacterAdvancesCommand = new RelayCommand(RestoreOriginalCharacterAdvances, CanRestoreOriginalCharacterAdvances);
-        EstimateCharacterAdvancesCommand = new RelayCommand(EstimateCharacterAdvances, CanEstimateCharacterAdvances);
-        EstimateCharacterSuffixAdvancesCommand = new RelayCommand(EstimateCharacterSuffixAdvances, CanEstimateCharacterSuffixAdvances);
+        EqualWidthCommand = GeometryCommand(EqualizeSelectedWidths, () => _selectedOverlays.Count > 1);
+        EqualHeightCommand = GeometryCommand(EqualizeSelectedHeights, () => _selectedOverlays.Count > 1);
+        AlignLeftCommand = GeometryCommand(() => AlignSelection("left"), () => _selectedOverlays.Count > 1);
+        AlignRightCommand = GeometryCommand(() => AlignSelection("right"), () => _selectedOverlays.Count > 1);
+        AlignTopCommand = GeometryCommand(() => AlignSelection("top"), () => _selectedOverlays.Count > 1);
+        AlignBottomCommand = GeometryCommand(() => AlignSelection("bottom"), () => _selectedOverlays.Count > 1);
+        AlignHorizontalCenterCommand = GeometryCommand(() => AlignSelection("horizontal-center"), () => _selectedOverlays.Count > 1);
+        AlignVerticalCenterCommand = GeometryCommand(() => AlignSelection("vertical-center"), () => _selectedOverlays.Count > 1);
+        SetAlignmentReferenceCommand = GeometryCommand(SetAlignmentReference, () => HasMultipleSelection && SelectedOverlay is not null);
+        MoveReadingEarlierCommand = GeometryCommand(() => MoveSelectedReadingOrder(-1), CanMoveReadingEarlier);
+        MoveReadingLaterCommand = GeometryCommand(() => MoveSelectedReadingOrder(1), CanMoveReadingLater);
+        RecalculateReadingOrderCommand = GeometryCommand(RecalculateReadingOrder, () => OverlayItems.Any(region => !region.IsDeleted));
+        EqualizeCharacterAdvancesCommand = GeometryCommand(EqualizeCharacterAdvances, CanEqualizeCharacterAdvances);
+        RestoreOriginalCharacterAdvancesCommand = GeometryCommand(RestoreOriginalCharacterAdvances, CanRestoreOriginalCharacterAdvances);
+        EstimateCharacterAdvancesCommand = GeometryCommand(EstimateCharacterAdvances, CanEstimateCharacterAdvances);
+        EstimateCharacterSuffixAdvancesCommand = GeometryCommand(EstimateCharacterSuffixAdvances, CanEstimateCharacterSuffixAdvances);
         PreviousCharacterCommand = new RelayCommand(() => MoveCharacterSelection(-1), CanMoveToPreviousCharacter);
         NextCharacterCommand = new RelayCommand(() => MoveCharacterSelection(1), CanMoveToNextCharacter);
-        DecreaseCharacterAdvanceCommand = new RelayCommand(() => AdjustCharacterSelectionAdvance(-1), CanAdjustCharacterSelectionAdvance);
-        IncreaseCharacterAdvanceCommand = new RelayCommand(() => AdjustCharacterSelectionAdvance(1), CanAdjustCharacterSelectionAdvance);
-        SplitRegionAtSelectedCharacterCommand = new RelayCommand(SplitRegionAtSelectedCharacter, CanSplitRegionAtSelectedCharacter);
-        MergeSelectedRegionsCommand = new RelayCommand(MergeSelectedRegions, CanMergeSelectedRegions);
-        ToggleSelectedCharacterLockCommand = new RelayCommand(ToggleSelectedCharacterLock, CanToggleSelectedCharacterLock);
-        ToggleGeometryLockCommand = new RelayCommand(
+        DecreaseCharacterAdvanceCommand = GeometryCommand(() => AdjustCharacterSelectionAdvance(-1), CanAdjustCharacterSelectionAdvance);
+        IncreaseCharacterAdvanceCommand = GeometryCommand(() => AdjustCharacterSelectionAdvance(1), CanAdjustCharacterSelectionAdvance);
+        SplitRegionAtSelectedCharacterCommand = GeometryCommand(SplitRegionAtSelectedCharacter, CanSplitRegionAtSelectedCharacter);
+        MergeSelectedRegionsCommand = GeometryCommand(MergeSelectedRegions, CanMergeSelectedRegions);
+        ToggleSelectedCharacterLockCommand = GeometryCommand(ToggleSelectedCharacterLock, CanToggleSelectedCharacterLock);
+        ToggleGeometryLockCommand = GeometryCommand(
             ToggleGeometryLock,
             () => _selectedOverlays.Any(region => !region.IsDeleted) || SelectedOverlay is { IsDeleted: false });
-        DecreaseLineCharacterSizeCommand = new RelayCommand(() => AdjustSelectedLineCharacterSizes(-1), CanAdjustSelectedLineCharacterSizes);
-        IncreaseLineCharacterSizeCommand = new RelayCommand(() => AdjustSelectedLineCharacterSizes(1), CanAdjustSelectedLineCharacterSizes);
-        DeleteOcrRegionsCommand = new RelayCommand(DeleteSelectedOcrRegions, () => _selectedOverlays.Count > 0);
-        ToggleAddOcrRegionModeCommand = new RelayCommand(() => IsAddOcrRegionMode = !IsAddOcrRegionMode, () => HasPreview);
+        DecreaseLineCharacterSizeCommand = GeometryCommand(() => AdjustSelectedLineCharacterSizes(-1), CanAdjustSelectedLineCharacterSizes);
+        IncreaseLineCharacterSizeCommand = GeometryCommand(() => AdjustSelectedLineCharacterSizes(1), CanAdjustSelectedLineCharacterSizes);
+        DeleteOcrRegionsCommand = GeometryCommand(DeleteSelectedOcrRegions, () => _selectedOverlays.Count > 0);
+        ToggleAddOcrRegionModeCommand = new RelayCommand(() => IsAddOcrRegionMode = !IsAddOcrRegionMode, () => CanAddOcrRegion);
         ExitCommand = new RelayCommand(_close);
+        InitializeReview();
     }
 
     /// <summary>
@@ -409,6 +423,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public void RefreshLocalization()
     {
         RefreshLocalizedOptions();
+        OnPropertyChanged(nameof(ReviewSummary));
         foreach (var page in PageItems) page.RefreshLocalization();
 
         OnPropertyChanged(nameof(StorageModeText));
@@ -428,26 +443,33 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>確認状態と書字方向の選択肢を現在の表示言語で再構築します。</summary>
     private void RefreshLocalizedOptions()
     {
-        // ItemsSource を空にしてから再投入すると、ComboBox の TwoWay バインディングが
-        // 一時的な未選択値を編集モデルへ書き戻す場合があります。コレクションを丸ごと
-        // 差し替えることで、言語切替を表示だけの操作に保ちます。
-        ReviewStatusOptions =
-        [
-            new(ReviewStatus.Unreviewed, LocalizationService.Translate("未確認")),
-            new(ReviewStatus.Verified, LocalizationService.Translate("確認済み")),
-            new(ReviewStatus.Modified, LocalizationService.Translate("修正済み")),
-            new(ReviewStatus.NeedsReview, LocalizationService.Translate("要再確認")),
-            new(ReviewStatus.Excluded, LocalizationService.Translate("OCR対象外")),
-            new(ReviewStatus.Deferred, LocalizationService.Translate("保留")),
-        ];
-        OnPropertyChanged(nameof(ReviewStatusOptions));
+        _refreshingLocalizedOptions = true;
+        try
+        {
+            // Suppress transient deselection writes while replacing localized options,
+            // then explicitly restore the selection from the unchanged document values.
+            ReviewStatusOptions =
+            [
+                new(ReviewStatus.Unreviewed, LocalizationService.Translate("未確認")),
+                new(ReviewStatus.Verified, LocalizationService.Translate("確認済み")),
+                new(ReviewStatus.Modified, LocalizationService.Translate("修正済み")),
+                new(ReviewStatus.NeedsReview, LocalizationService.Translate("要再確認")),
+                new(ReviewStatus.Excluded, LocalizationService.Translate("OCR対象外")),
+                new(ReviewStatus.Deferred, LocalizationService.Translate("保留")),
+            ];
+            OnPropertyChanged(nameof(ReviewStatusOptions));
 
-        WritingModeOptions =
-        [
-            new(WritingMode.Horizontal, LocalizationService.Translate("横書き")),
-            new(WritingMode.Vertical, LocalizationService.Translate("縦書き")),
-        ];
-        OnPropertyChanged(nameof(WritingModeOptions));
+            WritingModeOptions =
+            [
+                new(WritingMode.Horizontal, LocalizationService.Translate("横書き")),
+                new(WritingMode.Vertical, LocalizationService.Translate("縦書き")),
+            ];
+            OnPropertyChanged(nameof(WritingModeOptions));
+            OnPropertyChanged(nameof(SelectedReviewStatus));
+            OnPropertyChanged(nameof(SelectedWritingMode));
+            foreach (var option in ReviewFilterOptions) option.RefreshLocalization();
+        }
+        finally { _refreshingLocalizedOptions = false; }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -529,6 +551,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public ApplicationSettings CurrentApplicationSettings => _applicationSettings;
     /// <summary>現在のプロジェクトに保存されているPDF初期表示設定です。</summary>
     public ViewerSettings CurrentViewerSettings => _project?.ViewerSettings ?? new ViewerSettings();
+    /// <summary>現在のプロジェクトに保存されている、編集後のPDF文書情報です。</summary>
+    public PdfDocumentMetadata? CurrentDocumentMetadata => _project?.DocumentMetadata;
+    /// <summary>現在のプロジェクトで選択されているPDF出力バージョンです。</summary>
+    public PdfOutputVersion CurrentOutputPdfVersion => _project?.OutputPdfVersion ?? PdfOutputVersion.Automatic;
+    /// <summary>現在のプロジェクトで編集されたPDF文書全体の言語タグです。</summary>
+    public string? CurrentDocumentLanguage => _project?.DocumentLanguage;
     public string EqualizeCharacterAdvancesToolTip => LocalizationService.IsEnglish
         ? $"Make all selected lines equal width ({DisplayShortcut(_applicationSettings.EqualizeCharacterAdvancesShortcut)})"
         : $"選択中のすべての行を等幅にする（{DisplayShortcut(_applicationSettings.EqualizeCharacterAdvancesShortcut)}）";
@@ -544,6 +572,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         : $"選択文字以降を画像から自動調整（{DisplayShortcut(_applicationSettings.EstimateCharacterSuffixAdvancesShortcut)}）";
     public bool ShowToolbarText => _applicationSettings.ShowToolbarText;
     public double ToolbarButtonSize => _applicationSettings.ToolbarButtonSize;
+    /// <summary>保存済みのサイズ設定とアイコン寸法を保ち、ボタン外周の余白だけを4px詰めます。</summary>
+    public double CompactToolbarButtonSize => Math.Max(24, ToolbarButtonSize - 4);
     public double ToolbarIconSize => Math.Clamp(_applicationSettings.ToolbarButtonSize - 16, 14, 36);
     public bool ShowPropertyHelpText
     {
@@ -653,7 +683,79 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string DocumentTitle { get => LocalizationService.Translate(_documentTitle); private set => Set(ref _documentTitle, value); }
     public string DocumentDescription { get => LocalizationService.Translate(_documentDescription); private set => Set(ref _documentDescription, value); }
     public string SourcePdfPath { get => _sourcePdfPath; private set => Set(ref _sourcePdfPath, value); }
-    public string ProjectPath { get => _projectPath; private set => Set(ref _projectPath, value); }
+    public string ProjectPath
+    {
+        get => _projectPath;
+        private set
+        {
+            Set(ref _projectPath, value);
+            OnPropertyChanged(nameof(CanRestoreProjectBackup));
+        }
+    }
+    /// <summary>元PDFの初期ページまで正常に読み込めた場合だけ文書操作を許可します。</summary>
+    public bool HasDocument
+    {
+        get => _hasDocument;
+        private set
+        {
+            if (!Set(ref _hasDocument, value)) return;
+            if (!value)
+            {
+                _renderCancellation?.Cancel();
+                CancelReviewNavigation();
+                IsAddOcrRegionMode = false;
+            }
+            OnPropertyChanged(nameof(CanRestoreProjectBackup));
+            NotifyPreviewAvailability();
+            NotifyNavigationState();
+            SaveProjectCommand.RaiseCanExecuteChanged();
+            SaveProjectAsCommand.RaiseCanExecuteChanged();
+            ImportOcrDataCommand.RaiseCanExecuteChanged();
+            ExportPdfCommand.RaiseCanExecuteChanged();
+            OptimizeCurrentPageImageCommand.RaiseCanExecuteChanged();
+            RaisePageManagementCommands();
+            AddBookmarkCommand.RaiseCanExecuteChanged();
+            AddChildBookmarkCommand.RaiseCanExecuteChanged();
+            DeleteBookmarkCommand.RaiseCanExecuteChanged();
+            MoveBookmarkUpCommand.RaiseCanExecuteChanged();
+            MoveBookmarkDownCommand.RaiseCanExecuteChanged();
+            GoToBookmarkCommand.RaiseCanExecuteChanged();
+            ImportBookmarksCommand.RaiseCanExecuteChanged();
+            ExportBookmarksCommand.RaiseCanExecuteChanged();
+            NotifyReviewState();
+        }
+    }
+    /// <summary>読込済み文書のプレビュー操作を許可する場合は<c>true</c>。</summary>
+    public bool CanUsePreview => HasDocument && HasPreview;
+    /// <summary>復旧対象となる保存先がある文書だけ、バックアップ復旧操作を許可します。</summary>
+    public bool CanRestoreProjectBackup => HasDocument && _projectFilePath is not null;
+    public bool IsOpeningDocument
+    {
+        get => _isOpeningDocument;
+        private set
+        {
+            if (!Set(ref _isOpeningDocument, value)) return;
+            OpenPdfCommand.RaiseCanExecuteChanged();
+            OpenProjectCommand.RaiseCanExecuteChanged();
+            NotifyReviewState();
+        }
+    }
+
+    // Non-interactive diagnostics replace only the modal error display, not the loading path.
+    internal Action<string, Exception>? ErrorDialogOverride { get; set; }
+    internal Action? CommitPendingInputs { get; set; }
+    internal Func<MessageBoxResult>? DocumentSwitchPromptOverride { get; set; }
+    internal Func<Task<bool>>? SaveBeforeSwitchOverride { get; set; }
+
+    private void NotifyPreviewAvailability()
+    {
+        OnPropertyChanged(nameof(CanUsePreview));
+        OnPropertyChanged(nameof(CanAddOcrRegion));
+        ZoomInCommand.RaiseCanExecuteChanged();
+        ZoomOutCommand.RaiseCanExecuteChanged();
+        ActualSizeCommand.RaiseCanExecuteChanged();
+        ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
+    }
     public string SourceHash { get => _sourceHash; private set => Set(ref _sourceHash, value); }
     public string StatusMessage { get => LocalizationService.Translate(_statusMessage); private set => Set(ref _statusMessage, value); }
     public string PageSummary { get => LocalizationService.Translate(_pageSummary); private set => Set(ref _pageSummary, value); }
@@ -674,7 +776,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             if (!Set(ref _previewImage, value)) return;
             OnPropertyChanged(nameof(HasPreview));
-            ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
+            NotifyPreviewAvailability();
             if (value is null) IsAddOcrRegionMode = false;
         }
     }
@@ -686,13 +788,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => _isAddOcrRegionMode;
         set
         {
+            if (value && !CanEditGeometry) return;
             if (!Set(ref _isAddOcrRegionMode, value)) return;
             StatusMessage = value
                 ? "OCR領域追加モード: ページ上の追加位置をドラッグしてください。"
                 : "OCR領域追加モードを終了しました。";
         }
     }
-    public bool IsPreviewLoading { get => _isPreviewLoading; private set => Set(ref _isPreviewLoading, value); }
+    public bool IsPreviewLoading
+    {
+        get => _isPreviewLoading;
+        private set { if (Set(ref _isPreviewLoading, value)) NotifyReviewState(); }
+    }
     /// <summary>PDFの生成と保存後検証が進行中の場合は<c>true</c>です。</summary>
     public bool IsPdfExporting { get => _isPdfExporting; private set => Set(ref _isPdfExporting, value); }
     public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set => Set(ref _isOcrOverlayVisible, value); }
@@ -703,6 +810,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             if (!Set(ref _editorModeIndex, Math.Clamp(value, 0, 2))) return;
             OnPropertyChanged(nameof(IsReadingOrderMode));
+            OnEditorModeChanged();
         }
     }
     public bool IsReadingOrderMode => EditorModeIndex == 1;
@@ -757,6 +865,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => SelectedOverlay?.SelectedCharacterAdvance ?? 0;
         set
         {
+            if (!CanEditGeometry) return;
             if (SelectedOverlay is not { HasCharacterSelection: true } region) return;
             region.SelectedCharacterAdvance = value;
             OnPropertyChanged();
@@ -782,7 +891,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     }
     /// <summary>選択中のOCR領域を移動、変形、回転できるかを示します。</summary>
     public bool IsSelectedGeometryEditable =>
-        GetSelectedGeometryLockTargets().Any(region => !region.IsGeometryLocked);
+        CanEditGeometry && GetSelectedGeometryLockTargets().Any(region => !region.IsGeometryLocked);
     public int SelectedCharacterCount => SelectedOverlay?.SelectedCharacterCount ?? 0;
     public string CharacterSelectionSummary => SelectedCharacterCount switch
     {
@@ -803,6 +912,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => SelectedOverlay?.ReviewStatus ?? ReviewStatus.Unreviewed;
         set
         {
+            if (_refreshingLocalizedOptions) return;
             var affected = _selectedOverlays.Count > 0
                 ? _selectedOverlays.ToArray()
                 : SelectedOverlay is null ? [] : [SelectedOverlay];
@@ -829,7 +939,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
         set
         {
-            if (value is null) return;
+            if (value is null || !CanEditGeometry || _refreshingLocalizedOptions) return;
             var affected = (_selectedOverlays.Count > 0
                     ? _selectedOverlays.ToArray()
                     : SelectedOverlay is null ? [] : [SelectedOverlay])
@@ -864,6 +974,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ZoomFactor));
             OnPropertyChanged(nameof(InverseZoomFactor));
             OnPropertyChanged(nameof(ZoomDisplay));
+            OnPropertyChanged(nameof(ZoomSliderPosition));
             NotifyCharacterCellBorderThicknesses();
             ZoomInCommand.RaiseCanExecuteChanged();
             ZoomOutCommand.RaiseCanExecuteChanged();
@@ -872,6 +983,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public double ZoomFactor => ZoomPercent / 100d;
     public double InverseZoomFactor => 1d / ZoomFactor;
     public string ZoomDisplay => $"{ZoomPercent:0}%";
+
+    /// <summary>倍率スライダー専用の位置（0～100）。実際の倍率とは分離し、中央を100%にします。</summary>
+    public double ZoomSliderPosition
+    {
+        get => EditorInteractionMath.ZoomPercentToSliderPosition(ZoomPercent);
+        set => ZoomPercent = EditorInteractionMath.SliderPositionToZoomPercent(value);
+    }
 
     /// <summary>
     /// 現在値から次の標準倍率へ拡大または縮小します。
@@ -904,6 +1022,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (!Set(ref _selectedOverlay, value)) return;
+            NotifyReviewState();
             OnPropertyChanged(nameof(HasSelectedOverlay));
             NotifyCharacterSelectionState();
             OnPropertyChanged(nameof(SelectedReviewStatus));
@@ -922,8 +1041,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string AlignmentReferenceDescription => _alignmentReference is null
         ? "基準領域は未設定です"
         : $"基準: 「{Abbreviate(_alignmentReference.Text)}」\n幅 {_alignmentReference.Width:0.0} / 高さ {_alignmentReference.Height:0.0}";
-    public bool CanGoPrevious => SelectedPage?.PageNumber > 1;
-    public bool CanGoNext => SelectedPage is not null && SelectedPage.PageNumber < PageItems.Count;
+    public bool CanGoPrevious => HasDocument && SelectedPage?.PageNumber > 1;
+    public bool CanGoNext => HasDocument && SelectedPage is not null && SelectedPage.PageNumber < PageItems.Count;
 
     /// <summary>
     /// アプリ設定を保存し、変更された表示・編集補助設定を実行中の画面へ反映します。
@@ -942,6 +1061,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CurrentApplicationSettings));
             OnPropertyChanged(nameof(ShowToolbarText));
             OnPropertyChanged(nameof(ToolbarButtonSize));
+            OnPropertyChanged(nameof(CompactToolbarButtonSize));
             OnPropertyChanged(nameof(ToolbarIconSize));
             OnPropertyChanged(nameof(ShowPropertyHelpText));
             OnPropertyChanged(nameof(ShowPageListPanel));
@@ -1000,23 +1120,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusMessage = "PDFの初期表示設定を更新しました。";
     }
 
+    /// <summary>文書プロパティで確定した初期表示設定と文書情報を編集モデルへ反映します。</summary>
+    public void UpdateDocumentProperties(
+        ViewerSettings settings,
+        PdfDocumentMetadata metadata,
+        PdfOutputVersion outputPdfVersion,
+        string documentLanguage)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(metadata);
+        if (_project is null ||
+            (_project.ViewerSettings == settings &&
+             _project.DocumentMetadata == metadata &&
+             _project.OutputPdfVersion == outputPdfVersion &&
+             string.Equals(_project.DocumentLanguage, documentLanguage, StringComparison.Ordinal)))
+            return;
+
+        _project = _project with
+        {
+            ViewerSettings = settings,
+            DocumentMetadata = metadata,
+            OutputPdfVersion = outputPdfVersion,
+            DocumentLanguage = documentLanguage,
+        };
+        OnPropertyChanged(nameof(CurrentViewerSettings));
+        OnPropertyChanged(nameof(CurrentDocumentMetadata));
+        OnPropertyChanged(nameof(CurrentOutputPdfVersion));
+        OnPropertyChanged(nameof(CurrentDocumentLanguage));
+        MarkNonUndoableChange();
+        StatusMessage = "PDFの文書情報と初期表示設定を更新しました。";
+    }
+
     /// <summary>設定した間隔が経過し、未保存編集がある場合だけ作業用の自動保存ファイルを更新します。</summary>
     public async Task AutoSaveIfDueAsync()
     {
-        if (_project is null || _projectFilePath is null || !HasUnsavedChanges ||
-            !_applicationSettings.AutoSaveEnabled || _autoSaveInProgress || IsBackgroundOperationVisible)
+        if (_autoSaveInProgress || IsBackgroundOperationVisible || IsOpeningDocument) return;
+        var idle = DateTimeOffset.UtcNow - _lastUserActivityAtUtc >= TimeSpan.FromSeconds(30);
+        if (idle) CommitPendingInputs?.Invoke();
+        if (_project is null || !HasUnsavedChanges ||
+            !_applicationSettings.AutoSaveEnabled || _autoSaveInProgress || IsBackgroundOperationVisible || IsOpeningDocument)
             return;
-        if (DateTimeOffset.UtcNow - _lastAutoSaveAtUtc <
+        if (_lastAutoSavedEditStateId == _currentEditStateId) return;
+        if (!idle && DateTimeOffset.UtcNow - _lastAutoSaveAtUtc <
             TimeSpan.FromMinutes(_applicationSettings.AutoSaveIntervalMinutes))
             return;
 
         _autoSaveInProgress = true;
+        var stateId = _currentEditStateId;
         try
         {
             SynchronizeProjectPages();
-            var autoSavePath = ProjectPackageService.GetAutoSavePath(_projectFilePath);
-            await _packages.SaveAutoSaveAsync(autoSavePath, _project, _hasPageStructureEdits, _thumbnailCache);
+            var autoSavePath = AutoSaveRecoveryPath!;
+            await _packages.SaveAutoSaveAsync(autoSavePath, _project,
+                _hasPageStructureEdits || _project.SourcePdf.IsEmbedded || _projectFilePath is null, _thumbnailCache);
             _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
+            _lastAutoSavedEditStateId = stateId;
+            if (_projectFilePath is null)
+                StatusMessage = LocalizationService.IsEnglish
+                    ? $"Recovery project saved: {autoSavePath}"
+                    : $"復旧用プロジェクトを自動保存しました: {autoSavePath}";
             await _log.WriteAsync(LogLevel.Information, "project.autosave",
                 $"Autosaved project {_project.ProjectId} to {autoSavePath}");
         }
@@ -1042,7 +1204,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             SynchronizeProjectPages();
-            await _packages.SaveAutoSaveAsync(validationPath, _project, _hasPageStructureEdits, _thumbnailCache);
+            await _packages.SaveAutoSaveAsync(validationPath, _project, _hasPageStructureEdits || _project.SourcePdf.IsEmbedded, _thumbnailCache);
             var result = await _packages.ValidateAsync(validationPath);
             StatusMessage = result.IsValid ? "プロジェクトの検証が完了しました。" : "プロジェクトの検証で問題が見つかりました。";
             return result;
@@ -1116,6 +1278,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(_selectedPage, value)) return;
+            CancelReviewNavigation();
             if (_selectedPage is not null) _selectedPage.IsCurrent = false;
             if (!Set(ref _selectedPage, value)) return;
             if (_selectedPage is not null) _selectedPage.IsCurrent = true;
@@ -1193,51 +1356,82 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         var dialog = new OpenFileDialog { Filter = "PDFファイル (*.pdf)|*.pdf", CheckFileExists = true };
         if (dialog.ShowDialog() != true) return;
-        try
-        {
-            BeginBackgroundOperation("PDFを開いています...");
-            await LoadPdfForDiagnosticsAsync(dialog.FileName);
-            StatusMessage = "PDFを開きました。編集内容はプロジェクトへ保存してください。";
-            await _log.WriteAsync(LogLevel.Information, "document.open", $"Opened {Path.GetFileName(dialog.FileName)} with {PageItems.Count} pages");
-        }
-        catch (Exception ex) { await ShowErrorAsync("PDFを開けませんでした。", ex); }
-        finally { EndBackgroundOperation(); }
+        await OpenDocumentPathAsync(dialog.FileName);
     }
 
-    internal async Task LoadPdfForDiagnosticsAsync(string pdfPath)
+    /// <summary>メニューとファイル関連付けから共用する読込処理。初期ページの表示まで成功した場合だけtrueを返します。</summary>
+    public async Task<bool> OpenDocumentPathAsync(string filePath)
+    {
+        if (IsOpeningDocument || IsPdfExporting || _autoSaveInProgress) return false;
+        IsOpeningDocument = true;
+        try
+        {
+            CommitPendingInputs?.Invoke();
+            if (HasUnsavedChanges)
+            {
+                var choice = DocumentSwitchPromptOverride?.Invoke() ?? MessageBox.Show(
+                    LocalizationService.IsEnglish
+                        ? "Save your project changes before opening another document?"
+                        : "別の文書を開く前に、プロジェクトへ変更を保存しますか？",
+                    "PDF Correctorium", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning, MessageBoxResult.Yes);
+                if (choice == MessageBoxResult.Cancel || choice == MessageBoxResult.None) return false;
+                if (choice == MessageBoxResult.Yes &&
+                    !await (SaveBeforeSwitchOverride?.Invoke() ?? SaveBeforeCloseAsync())) return false;
+            }
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            var fullPath = Path.GetFullPath(filePath);
+            var extension = Path.GetExtension(fullPath);
+            var isProject = extension.Equals(ProjectPackageService.ProjectExtension, StringComparison.OrdinalIgnoreCase);
+            if (!isProject && !extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                throw new NotSupportedException("PDFファイル（.pdf）またはPDF Correctoriumプロジェクト（.pdfocrproj）を指定してください。");
+            BeginBackgroundOperation(isProject ? "プロジェクトを検証して開いています..." : "PDFを開いています...");
+            if (isProject) await LoadProjectAsync(fullPath);
+            else await LoadPdfAsync(fullPath);
+            // RenderPageAsync reports rendering errors itself; never overwrite those with a success message.
+            if (!HasDocument) return false;
+            StatusMessage = isProject ? "プロジェクトを検証して開きました。" : "PDFを開きました。編集内容はプロジェクトへ保存してください。";
+            await _log.WriteAsync(LogLevel.Information, isProject ? "project.open" : "document.open",
+                $"Opened {Path.GetFileName(fullPath)} with {PageItems.Count} pages");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("指定したファイルを開けませんでした。", ex);
+            return false;
+        }
+        finally
+        {
+            EndBackgroundOperation();
+            IsOpeningDocument = false;
+        }
+    }
+
+    internal Task LoadPdfForDiagnosticsAsync(string pdfPath) => LoadPdfAsync(pdfPath);
+    internal Task LoadProjectForDiagnosticsAsync(string projectPath) => LoadProjectAsync(projectPath);
+
+    private async Task LoadPdfAsync(string pdfPath)
     {
         StatusMessage = "元PDFを確認しています...";
         var source = await _packages.CreateSourceReferenceAsync(pdfPath);
-        _project = new PdfCorrectoriumProject { Name = Path.GetFileNameWithoutExtension(pdfPath), SourcePdf = source };
-        _projectFilePath = null;
-        _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
-        _thumbnailCache.Clear();
-        ProjectPath = "未保存";
-        await ApplyProjectAsync(pdfPath);
-        ResetEditState();
-        SaveProjectCommand.RaiseCanExecuteChanged();
+        var project = new PdfCorrectoriumProject { Name = Path.GetFileNameWithoutExtension(pdfPath), SourcePdf = source };
+        await ApplyProjectAsync(pdfPath, project, null, new Dictionary<int, byte[]>());
     }
 
-    internal async Task LoadProjectForDiagnosticsAsync(string projectPath)
+    private async Task LoadProjectAsync(string projectPath)
     {
         var fullPath = Path.GetFullPath(projectPath);
         var validation = await _packages.ValidateAsync(fullPath);
         if (!validation.IsValid)
             throw new InvalidDataException(string.Join(Environment.NewLine, validation.Issues.Select(issue => issue.Message)));
-        _project = await _packages.OpenAsync(fullPath);
-        ReplaceThumbnailCache(await _packages.ReadThumbnailCacheAsync(fullPath));
-        _projectFilePath = fullPath;
-        _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
-        ProjectPath = fullPath;
+        var project = await _packages.OpenAsync(fullPath);
+        var thumbnails = await _packages.ReadThumbnailCacheAsync(fullPath);
         var projectDirectory = Path.GetDirectoryName(fullPath)!;
-        if (!await _packages.VerifySourceAsync(_project.SourcePdf, projectDirectory))
+        if (!await _packages.VerifySourceAsync(project.SourcePdf, projectDirectory))
             throw new InvalidDataException("The source PDF is missing or its SHA-256 fingerprint does not match this project.");
-        var sourcePath = _project.SourcePdf.IsEmbedded
-            ? await _packages.MaterializeEmbeddedSourceAsync(fullPath, _project.SourcePdf, _paths.CacheDirectory)
-            : _packages.ResolveSourcePath(_project.SourcePdf, projectDirectory);
-        await ApplyProjectAsync(sourcePath);
-        ResetEditState();
-        SaveProjectCommand.RaiseCanExecuteChanged();
+        var sourcePath = project.SourcePdf.IsEmbedded
+            ? await _packages.MaterializeEmbeddedSourceAsync(fullPath, project.SourcePdf, _paths.CacheDirectory)
+            : _packages.ResolveSourcePath(project.SourcePdf, projectDirectory);
+        await ApplyProjectAsync(sourcePath, project, fullPath, thumbnails);
     }
 
     internal Task RenderPageForDiagnosticsAsync(int pageNumber) =>
@@ -1415,7 +1609,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <remarks>行または文字が固定された領域は常に除外します。</remarks>
     public int ApplyKeywordWidthCorrections(IReadOnlyList<OcrKeywordWidthCandidate> candidates)
     {
-        if (candidates.Count == 0) return 0;
+        if (!CanEditGeometry || candidates.Count == 0) return 0;
         var targets = candidates
             .Where(candidate => !candidate.IsLocked)
             .Select(candidate => new
@@ -1548,7 +1742,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                     updatedText = updatedText.Remove(operation.StartIndex, operation.Length)
                         .Insert(operation.StartIndex, operation.ReplacementText);
                 region.Text = updatedText;
-                region.ReviewStatus = ReviewStatus.Modified;
+                region.ReviewStatus = ReviewStatus.NeedsReview;
             }
         });
         return replacementCount;
@@ -1558,7 +1752,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_project is null) throw new InvalidOperationException("No project is loaded.");
         SynchronizeProjectPages();
-        await _packages.SaveAsync(projectPath, _project, false, _thumbnailCache);
+        await _packages.SaveAsync(projectPath, _project, _hasPageStructureEdits || _project.SourcePdf.IsEmbedded, _thumbnailCache);
         _projectFilePath = Path.GetFullPath(projectPath);
         ProjectPath = _projectFilePath;
         MarkSavedState();
@@ -1582,31 +1776,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         var dialog = new OpenFileDialog { Filter = "PDF Correctorium プロジェクト (*.pdfocrproj)|*.pdfocrproj", CheckFileExists = true };
         if (dialog.ShowDialog() != true) return;
-        try
-        {
-            BeginBackgroundOperation("プロジェクトを検証して開いています...");
-            StatusMessage = "プロジェクトを検証しています...";
-            var validation = await _packages.ValidateAsync(dialog.FileName);
-            if (!validation.IsValid) throw new InvalidDataException(string.Join(Environment.NewLine, validation.Issues.Select(x => x.Message)));
-            _project = await _packages.OpenAsync(dialog.FileName);
-            ReplaceThumbnailCache(await _packages.ReadThumbnailCacheAsync(dialog.FileName));
-            _projectFilePath = Path.GetFullPath(dialog.FileName);
-            ProjectPath = dialog.FileName;
-            _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
-            if (!await _packages.VerifySourceAsync(_project.SourcePdf, Path.GetDirectoryName(dialog.FileName)!))
-                throw new InvalidDataException("The source PDF is missing or its SHA-256 fingerprint does not match this project.");
-
-            var sourcePath = _project.SourcePdf.IsEmbedded
-                ? await _packages.MaterializeEmbeddedSourceAsync(dialog.FileName, _project.SourcePdf, _paths.CacheDirectory)
-                : _packages.ResolveSourcePath(_project.SourcePdf, Path.GetDirectoryName(dialog.FileName)!);
-            await ApplyProjectAsync(sourcePath);
-            ResetEditState();
-            StatusMessage = "プロジェクトを検証して開きました。";
-            SaveProjectCommand.RaiseCanExecuteChanged();
-            await _log.WriteAsync(LogLevel.Information, "project.open", $"Opened project {_project.ProjectId}");
-        }
-        catch (Exception ex) { await ShowErrorAsync("プロジェクトを開けませんでした。", ex); }
-        finally { EndBackgroundOperation(); }
+        await OpenDocumentPathAsync(dialog.FileName);
     }
 
     private async Task SaveProjectAsync()
@@ -1683,7 +1853,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             SynchronizeProjectPages();
             // ページ追加・削除・並べ替え・回転後の作業用PDFは、一時作業領域の消去後も
             // プロジェクトを開けるよう、.pdfocrproj 内へ自動的に内包します。
-            await _packages.SaveAsync(path, _project, _hasPageStructureEdits, _thumbnailCache);
+            await _packages.SaveAsync(path, _project, _hasPageStructureEdits || _project.SourcePdf.IsEmbedded, _thumbnailCache);
             _projectFilePath = Path.GetFullPath(path);
             ProjectPath = _projectFilePath;
             MarkSavedState();
@@ -2042,11 +2212,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         finally { EndBackgroundOperation(); }
     }
 
-    private async Task ApplyProjectAsync(string sourcePath)
+    private async Task ApplyProjectAsync(string sourcePath, PdfCorrectoriumProject project,
+        string? projectPath, IReadOnlyDictionary<int, byte[]> thumbnails)
     {
-        if (_project is null) return;
+        // Prepare and validate the first page before replacing any live document state.
+        // A bad PDF, missing source or invalid overlay must leave edits and Undo intact.
+        var resolvedPath = Path.GetFullPath(sourcePath);
+        var preview = await _previewService.RenderPageAsync(resolvedPath, 1);
+        var companion = await _ndlOcrCompanionService.TryImportAsync(resolvedPath);
+        var metrics = new PageMetrics(preview.Image.PixelWidth, preview.Image.PixelHeight,
+            preview.PageWidthPoints, preview.PageHeightPoints);
+        var companionRegions = companion?.GetScaledRegions(1, metrics.PixelWidth, metrics.PixelHeight) ?? [];
+        var overlays = CreatePageOverlayModels(1,
+            companionRegions.Count > 0 ? companionRegions : preview.TextRegions, metrics, project);
+        if (!project.BookmarksInitialized)
+        {
+            try { project = project with { Bookmarks = await _bookmarkService.ReadFromPdfAsync(resolvedPath), BookmarksInitialized = true }; }
+            catch (Exception ex)
+            {
+                await _log.WriteAsync(LogLevel.Warning, "bookmarks.read.failed", ex.Message, ex);
+                project = project with { BookmarksInitialized = true };
+            }
+        }
+
+        HasDocument = false;
         CancelThumbnailLoading(clearImages: true);
-        _resolvedPdfPath = Path.GetFullPath(sourcePath);
+        _renderCancellation?.Cancel();
+        _project = project.SourcePdf.IsEmbedded
+            ? project with { SourcePdf = project.SourcePdf with { AbsolutePathHint = resolvedPath } }
+            : project;
+        _hasPageStructureEdits = false;
+        _projectFilePath = projectPath;
+        ProjectPath = projectPath ?? "未保存";
+        ReplaceThumbnailCache(thumbnails);
+        _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
+        _resolvedPdfPath = resolvedPath;
         DocumentTitle = _project.Name;
         DocumentDescription = "PDFプレビューを読み込みました。左側のページ一覧からページを切り替えられます。";
         SourcePdfPath = _resolvedPdfPath;
@@ -2055,28 +2255,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         ClearOverlaySession();
         OverlaySummary = "文字領域: 0件";
         OcrDataSourceText = "OCR付随ファイルを検索しています...";
-        _ndlOcrDocument = await _ndlOcrCompanionService.TryImportAsync(_resolvedPdfPath);
+        _ndlOcrDocument = companion;
         OcrDataSourceText = _ndlOcrDocument is null
             ? "PDFテキストレイヤー"
             : $"{_ndlOcrDocument.SourceKind}（付随ファイル: {_ndlOcrDocument.CompanionFiles.Count}件）";
-        if (!_project.BookmarksInitialized)
-        {
-            try
-            {
-                var bookmarks = await _bookmarkService.ReadFromPdfAsync(_resolvedPdfPath);
-                _project = _project with { Bookmarks = bookmarks, BookmarksInitialized = true };
-            }
-            catch (Exception ex)
-            {
-                await _log.WriteAsync(LogLevel.Warning, "bookmarks.read.failed", ex.Message, ex);
-                _project = _project with { BookmarksInitialized = true };
-            }
-        }
         LoadBookmarkItems(_project.Bookmarks);
         PageItems.Clear();
         _selectedPage = null;
         OnPropertyChanged(nameof(SelectedPage));
-        await RenderPageAsync(1, populatePageList: true);
+        _pageMetrics[1] = metrics;
+        _pageOverlays[1] = overlays;
+        foreach (var overlay in overlays) AttachOverlay(overlay);
+        await RenderPageAsync(1, populatePageList: true, preparedPreview: preview);
+        HasDocument = HasPreview && PageItems.Count > 0;
+        ResetEditState();
+        SaveProjectCommand.RaiseCanExecuteChanged();
         ImportOcrDataCommand.RaiseCanExecuteChanged();
         ExportPdfCommand.RaiseCanExecuteChanged();
         OptimizeDocumentImagesCommand.RaiseCanExecuteChanged();
@@ -2335,7 +2528,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         await RenderPageAsync(SelectedPage.PageNumber, populatePageList: false);
     }
 
-    private async Task RenderPageAsync(int pageNumber, bool populatePageList)
+    private async Task RenderPageAsync(int pageNumber, bool populatePageList, PdfPreviewResult? preparedPreview = null)
     {
         if (_resolvedPdfPath is null) return;
         _renderCancellation?.Cancel();
@@ -2346,7 +2539,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             IsPreviewLoading = true;
             StatusMessage = $"{pageNumber}ページを描画しています...";
-            var result = await _previewService.RenderPageAsync(_resolvedPdfPath, pageNumber, cancellationToken: token);
+            var result = preparedPreview ?? await _previewService.RenderPageAsync(_resolvedPdfPath, pageNumber, cancellationToken: token);
             if (token.IsCancellationRequested) return;
 
             if (populatePageList)
@@ -2531,7 +2724,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     }
 
     private bool CanModifySelectedPages() =>
-        _project is not null && _resolvedPdfPath is not null && _selectedPageNumbers.Count > 0;
+        HasDocument && _selectedPageNumbers.Count > 0;
 
     private bool CanDeleteSelectedPages() =>
         CanModifySelectedPages() && _selectedPageNumbers.Count < PageItems.Count;
@@ -2757,6 +2950,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(CanGoPrevious));
         OnPropertyChanged(nameof(CanGoNext));
+        PreviousPageCommand.RaiseCanExecuteChanged();
+        NextPageCommand.RaiseCanExecuteChanged();
     }
 
     /// <summary>
@@ -2817,6 +3012,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         RaiseMultiSelectionCommands();
         RaiseCharacterAdvanceCommands();
         DeleteOcrRegionsCommand.RaiseCanExecuteChanged();
+        NotifyReviewState();
     }
 
     /// <summary>
@@ -2826,6 +3022,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <returns>追加した領域。ページが未選択の場合は<see langword="null"/>。</returns>
     public OverlayRegionViewModel? AddManualOcrRegion(Rect bounds)
     {
+        if (!CanEditGeometry) return null;
         if (SelectedPage is null ||
             !_pageOverlays.TryGetValue(SelectedPage.PageNumber, out var pageOverlays) ||
             !_pageMetrics.ContainsKey(SelectedPage.PageNumber))
@@ -3182,6 +3379,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(SelectedCharacterText));
         OnPropertyChanged(nameof(SelectedCharacterAdvance));
+        OnPropertyChanged(nameof(CanEditSelectedCharacterAdvance));
         OnPropertyChanged(nameof(HasSelectedCharacter));
         OnPropertyChanged(nameof(HasSingleSelectedCharacter));
         OnPropertyChanged(nameof(HasMultipleSelectedCharacters));
@@ -3673,6 +3871,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <param name="verticalChange">垂直方向の移動ピクセル数。</param>
     public void NudgeSelection(double horizontalChange, double verticalChange)
     {
+        if (!CanEditGeometry) return;
         var movable = _selectedOverlays.Where(region => !region.IsGeometryLocked).ToArray();
         if (movable.Length == 0 || !double.IsFinite(horizontalChange) || !double.IsFinite(verticalChange)) return;
         var minimumLeft = movable.Min(region => region.Left);
@@ -3828,9 +4027,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private List<OverlayRegionViewModel> CreatePageOverlayModels(
         int pageNumber,
         IReadOnlyList<PdfTextOverlayRegion> extracted,
-        PageMetrics metrics)
+        PageMetrics metrics, PdfCorrectoriumProject? sourceProject = null)
     {
-        var savedPage = _project?.Pages.FirstOrDefault(page => page.PageNumber == pageNumber);
+        var savedPage = (sourceProject ?? _project)?.Pages.FirstOrDefault(page => page.PageNumber == pageNumber);
         if (savedPage is null || savedPage.TextRegions.Count == 0)
             return extracted.Select((region, index) => new OverlayRegionViewModel(region, index + 1)).ToList();
 
@@ -3872,12 +4071,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>
     /// 検索対象ページのOCR領域を作業キャッシュへ読み込みます。プレビュー画像と現在ページは変更しません。
     /// </summary>
-    private async Task<List<OverlayRegionViewModel>> EnsurePageOverlaysLoadedForSearchAsync(int pageNumber)
+    private async Task<List<OverlayRegionViewModel>> EnsurePageOverlaysLoadedForSearchAsync(int pageNumber, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_pageOverlays.TryGetValue(pageNumber, out var cached)) return cached;
         if (_resolvedPdfPath is null) return [];
 
-        var result = await _previewService.RenderPageAsync(_resolvedPdfPath, pageNumber);
+        var overlaySession = _overlaySessionVersion;
+        var pdfPath = _resolvedPdfPath;
+        var result = await _previewService.RenderPageAsync(_resolvedPdfPath, pageNumber, cancellationToken: cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (overlaySession != _overlaySessionVersion || pdfPath != _resolvedPdfPath)
+            throw new OperationCanceledException("Document changed while loading OCR regions.");
+        if (_pageOverlays.TryGetValue(pageNumber, out cached)) return cached;
         var metrics = new PageMetrics(
             result.Image.PixelWidth,
             result.Image.PixelHeight,
@@ -4694,6 +4900,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             if (!_pageMetrics.TryGetValue(pageNumber, out var metrics)) continue;
             var existing = pages.GetValueOrDefault(pageNumber);
+            var existingRegions = existing?.TextRegions.ToDictionary(region => region.Id);
             var pageId = existing?.Id ?? Guid.NewGuid();
             pages[pageNumber] = new OcrPage
             {
@@ -4704,18 +4911,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 RotationDegrees = existing?.RotationDegrees ?? 0,
                 TextRegions = overlays
                     .Where(overlay => !(overlay.IsAdded && overlay.IsDeleted))
-                    .Select(overlay => new OcrTextRegion
+                    .Select(overlay => (existingRegions?.GetValueOrDefault(overlay.Id) ?? new OcrTextRegion
+                    {
+                        OriginalGeometry = ToPdfGeometry(overlay.Original, metrics, overlay.Original.IsVertical ?? overlay.IsVertical),
+                        EditedGeometry = ToPdfGeometry(overlay.Capture(), metrics, overlay.IsVertical),
+                    }) with
                 {
                     Id = overlay.Id,
                     PageId = pageId,
                     OriginalText = overlay.OriginalText,
                     EditedText = overlay.Text == overlay.OriginalText ? string.Empty : overlay.Text,
+                    HasEditedText = overlay.Text != overlay.OriginalText,
                     OriginalGeometry = ToPdfGeometry(overlay.Original, metrics, overlay.Original.IsVertical ?? overlay.IsVertical),
                     EditedGeometry = ToPdfGeometry(overlay.Capture(), metrics, overlay.IsVertical),
-                    OriginalWritingMode = overlay.Original.IsVertical == true ? WritingMode.Vertical : WritingMode.Horizontal,
+                    OriginalWritingMode = existingRegions?.GetValueOrDefault(overlay.Id) is { } originalRegion
+                        ? originalRegion.OriginalWritingMode
+                        : overlay.Original.IsVertical == true ? WritingMode.Vertical : WritingMode.Horizontal,
                     WritingMode = overlay.IsVertical ? WritingMode.Vertical : WritingMode.Horizontal,
-                    HasExplicitWritingMode = true,
-                    FlowDirection = overlay.IsVertical ? TextFlowDirection.TopToBottom : TextFlowDirection.LeftToRight,
+                    HasExplicitWritingMode = existingRegions?.GetValueOrDefault(overlay.Id) is not { } savedRegion ||
+                        savedRegion.HasExplicitWritingMode ||
+                        overlay.IsVertical != overlay.LoadedIsVertical,
+                    FlowDirection = existingRegions?.GetValueOrDefault(overlay.Id) is { } directionRegion &&
+                        overlay.IsVertical == overlay.LoadedIsVertical
+                            ? directionRegion.FlowDirection
+                            : overlay.IsVertical ? TextFlowDirection.TopToBottom : TextFlowDirection.LeftToRight,
                     ReviewStatus = overlay.ReviewStatus,
                     OcrProviderId = overlay.ProviderId,
                     Confidence = overlay.Confidence,
@@ -4768,11 +4987,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private void OnOverlayPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_applyingHistory || sender is not OverlayRegionViewModel region || e.PropertyName == nameof(OverlayRegionViewModel.IsModified)) return;
-        if (e.PropertyName is nameof(OverlayRegionViewModel.Text) or nameof(OverlayRegionViewModel.Left) or nameof(OverlayRegionViewModel.Top) or
+        if ((e.PropertyName is nameof(OverlayRegionViewModel.Text) or nameof(OverlayRegionViewModel.Left) or nameof(OverlayRegionViewModel.Top) or
             nameof(OverlayRegionViewModel.Width) or nameof(OverlayRegionViewModel.Height) or nameof(OverlayRegionViewModel.RotationDegrees) or
             nameof(OverlayRegionViewModel.ReadingOrder) or nameof(OverlayRegionViewModel.WordReadingsText) or
             nameof(OverlayRegionViewModel.SelectedCharacterAdvance) or nameof(OverlayRegionViewModel.IsVertical) or
-            nameof(OverlayRegionViewModel.IsGeometryLocked) or nameof(OverlayRegionViewModel.HasLockedCharacters))
+            nameof(OverlayRegionViewModel.IsGeometryLocked) or nameof(OverlayRegionViewModel.HasLockedCharacters)) &&
+            (!_lastOverlaySnapshots.TryGetValue(region.Id, out var previousSnapshot) || previousSnapshot != region.Capture()))
         {
             _applyingHistory = true;
             try { region.ReviewStatus = ReviewStatus.Modified; }
@@ -4856,7 +5076,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             // 背景ページを含む一括編集のUndoでは、表示していないページの領域を
             // 現在ページの選択対象にしないようにします。
             if (OverlayItems.Contains(region))
-                SelectedOverlay = snapshot.IsDeleted ? null : region;
+            {
+                if (IsReviewMode) SetOverlaySelection(snapshot.IsDeleted ? [] : [region], snapshot.IsDeleted ? null : region);
+                else SelectedOverlay = snapshot.IsDeleted ? null : region;
+            }
             OnPropertyChanged(nameof(SelectedReviewStatus));
             OnPropertyChanged(nameof(SelectedWritingMode));
         }
@@ -4871,6 +5094,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void UpdateOverlaySummary()
     {
+        RefreshReviewItems();
         var active = OverlayItems.Count(region => !region.IsDeleted);
         var deleted = OverlayItems.Count - active;
         OverlaySummary = deleted == 0
@@ -4882,6 +5106,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         UndoCommand.RaiseCanExecuteChanged();
         RedoCommand.RaiseCanExecuteChanged();
+        RefreshReviewItems();
     }
 
     private void TrimUndoHistory()
@@ -4898,6 +5123,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_currentEditStateId == stateId) return;
         _currentEditStateId = stateId;
+        NotifyUserActivity();
         OnPropertyChanged(nameof(HasUnsavedChanges));
     }
 
@@ -4911,6 +5137,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void ResetEditState()
     {
+        _lastAutoSavedEditStateId = -1;
+        NotifyUserActivity();
         _currentEditStateId = 0;
         _savedEditStateId = 0;
         _nextEditStateId = 0;
@@ -4919,6 +5147,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void ClearOverlaySession()
     {
+        _overlaySessionVersion++;
+        CancelReviewNavigation();
         foreach (var overlay in _pageOverlays.Values.SelectMany(page => page))
             overlay.PropertyChanged -= OnOverlayPropertyChanged;
         _pageOverlays.Clear();
@@ -5000,8 +5230,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusMessage = message;
         IsPreviewLoading = false;
         await _log.WriteAsync(LogLevel.Error, "ui.error", message, exception);
-        MessageBox.Show($"{message}\n\n{exception.Message}", "PDF Correctorium", MessageBoxButton.OK, MessageBoxImage.Error);
+        if (ErrorDialogOverride is { } showError) showError(message, exception);
+        else MessageBox.Show($"{message}\n\n{exception.Message}", "PDF Correctorium", MessageBoxButton.OK, MessageBoxImage.Error);
     }
+
+    internal Task ReportStartupFileErrorAsync(Exception exception) => ShowErrorAsync("指定したファイルを開けませんでした。", exception);
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

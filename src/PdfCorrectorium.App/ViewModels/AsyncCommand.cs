@@ -38,7 +38,10 @@ public sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) 
 {
     public event EventHandler? CanExecuteChanged;
     public bool CanExecute(object? parameter) => canExecute?.Invoke() ?? true;
-    public void Execute(object? parameter) => execute();
+    public void Execute(object? parameter)
+    {
+        if (CanExecute(parameter)) execute();
+    }
     /// <summary>
     /// コマンドの実行可否をWPFへ再評価させます。
     /// </summary>

@@ -5,8 +5,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:DesignWidth="1100"
-             d:DesignHeight="800"
-             Background="#F3F5F7">
+             d:DesignHeight="2800"
+             Background="#F3F5F7" Height="801">
     <!--
         Blend for Visual Studio でベクターアイコンを確認・編集するための開発用ギャラリー。
         アプリケーションの通常画面からは表示しない。
@@ -128,6 +128,7 @@
                 <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ZoomOut}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="縮小" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ZoomOut" /></StackPanel></Border>
                 <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ZoomIn}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="拡大" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ZoomIn" /></StackPanel></Border>
                 <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitWidth}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="幅に合わせる" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitWidth" /></StackPanel></Border>
+                <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.ActualSize}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="100%表示" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.ActualSize" /></StackPanel></Border>
                 <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitHeight}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="高さに合わせる" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitHeight" /></StackPanel></Border>
                 <Border Style="{StaticResource GalleryTileStyle}"><StackPanel><Viewbox Style="{StaticResource GalleryIconViewboxStyle}"><Path Style="{StaticResource GalleryIconPathStyle}" Data="{StaticResource IconGeometry.FitPage}" /></Viewbox><TextBlock Style="{StaticResource GalleryTitleStyle}" Text="ページ全体" /><TextBlock Style="{StaticResource GalleryKeyStyle}" Text="IconGeometry.FitPage" /></StackPanel></Border>
 

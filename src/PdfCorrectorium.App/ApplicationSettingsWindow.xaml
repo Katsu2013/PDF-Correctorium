@@ -264,6 +264,8 @@
                     </Grid>
                     <TextBlock Text="自動保存は元PDFや通常のプロジェクトを直接上書きせず、復旧専用ファイルへ保存します。"
                                Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <TextBlock Text="設定した間隔に加え、操作停止から約30秒後にも保存します。通常保存前の文書は元PDFを含む復旧用プロジェクトとして作業フォルダーのrecoveryへ保存します。"
+                               Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
 
                     <Separator Margin="0,20,0,16" />
                     <TextBlock Text="世代バックアップ" FontSize="15" FontWeight="SemiBold" />

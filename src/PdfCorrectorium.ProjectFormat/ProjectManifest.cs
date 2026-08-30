@@ -10,15 +10,17 @@ public sealed record ProjectManifest
     /// <summary>旧名称のアプリで保存されたプロジェクト形式識別子です。</summary>
     public const string LegacyFormat = "PdfOcrEditorProject";
     /// <summary>このアプリが新規保存するプロジェクト形式のバージョンです。</summary>
-    public const string CurrentVersion = "1.0";
+    public const string CurrentVersion = "1.1";
+    /// <summary>空文字編集フラグを導入する前の形式も読み込めます。</summary>
+    public static bool IsSupportedVersion(string version) => version is "1.0" or CurrentVersion;
     /// <summary>読み込んだコンテナの形式識別子です。</summary>
     public string Format { get; init; } = CurrentFormat;
     /// <summary>読み込んだコンテナのデータ構造バージョンです。</summary>
     public string FormatVersion { get; init; } = CurrentVersion;
     /// <summary>このプロジェクトを安全に開ける最小アプリバージョンです。</summary>
-    public string MinimumApplicationVersion { get; init; } = "0.1.0";
+    public string MinimumApplicationVersion { get; init; } = "1.0.0-dev.123";
     /// <summary>最後に保存したアプリのバージョンです。</summary>
-    public string ApplicationVersion { get; init; } = "0.1.0";
+    public string ApplicationVersion { get; init; } = PdfCorrectorium.Core.ApplicationBuildInfo.Version;
     /// <summary>project.jsonとmanifest.jsonの対応を確認するプロジェクトIDです。</summary>
     public Guid ProjectId { get; init; }
     /// <summary>プロジェクト作成時刻です。</summary>

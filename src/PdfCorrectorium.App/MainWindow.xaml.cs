@@ -12,6 +12,7 @@ using System.Diagnostics;
 using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.Core;
 using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
 
@@ -103,6 +104,7 @@ public partial class MainWindow : Window
         LocalizationService.SetLanguage(startupSettings.UiLanguage);
 
         InitializeComponent();
+        Title = ApplicationBuildInfo.WindowTitle;
         _applicationPaths = paths;
         var projectPackages = new ProjectPackageService
         {
@@ -117,11 +119,15 @@ public partial class MainWindow : Window
             paths,
             Close);
         _lastZoomFactor = ViewModel.ZoomFactor;
+        ViewModel.CommitPendingInputs = CommitPendingEditorBindings;
+        PreviewKeyDown += (_, _) => ViewModel.NotifyUserActivity();
+        PreviewMouseDown += (_, _) => ViewModel.NotifyUserActivity();
+        PreviewMouseMove += (_, _) => ViewModel.NotifyUserActivity();
         ViewModel.PropertyChanged += ViewModel_OnPropertyChanged;
         ViewModel.OcrSearchSelectionRequested += ViewModel_OnOcrSearchSelectionRequested;
         _autoSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromSeconds(30),
+            Interval = TimeSpan.FromSeconds(5),
         };
         _autoSaveTimer.Tick += async (_, _) => await ViewModel.AutoSaveIfDueAsync();
         _autoSaveTimer.Start();
@@ -137,8 +143,20 @@ public partial class MainWindow : Window
     {
         OverlayCanvas.SelectedItems.Clear();
         OverlayCanvas.SelectedItems.Add(region);
-        OverlayCanvas.Focus();
+        if (!ViewModel.IsReviewMode) OverlayCanvas.Focus();
+        if (ViewModel.IsReviewMode)
+        {
+            // Selecting a target should reveal it even at high zoom.
+            var x = (region.Left + region.Width / 2) * ViewModel.ZoomFactor;
+            var y = (region.Top + region.Height / 2) * ViewModel.ZoomFactor;
+            PreviewScrollViewer.ScrollToHorizontalOffset(Math.Max(0, x - PreviewScrollViewer.ViewportWidth / 2));
+            PreviewScrollViewer.ScrollToVerticalOffset(Math.Max(0, y - PreviewScrollViewer.ViewportHeight / 2));
+        }
     }
+
+    private void ReviewNavigationButton_OnClick(object sender, RoutedEventArgs e) => CommitPendingEditorBindings();
+
+    private void ReviewTargetList_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => CommitPendingEditorBindings();
 
     /// <summary>ページ一覧の複数選択をページ操作コマンドへ通知します。</summary>
     private void PageList_OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
@@ -626,6 +644,7 @@ public partial class MainWindow : Window
 
     private void RegionBody_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (ViewModel.IsReviewNavigating) ViewModel.CancelReviewNavigation();
         CommitPendingEditorBindings();
         if (sender is not Border { DataContext: OverlayRegionViewModel region } border) return;
         var horizontalOffset = PreviewScrollViewer.HorizontalOffset;
@@ -678,7 +697,7 @@ public partial class MainWindow : Window
         var localPoint = e.GetPosition(border);
         ViewModel.SelectCharacterAt(region, localPoint.X, localPoint.Y);
         RestorePreviewScrollPosition(horizontalOffset, verticalOffset);
-        if (ViewModel.EditUnit != OcrEditUnit.Line || region.IsGeometryLocked)
+        if (!ViewModel.CanEditGeometry || ViewModel.EditUnit != OcrEditUnit.Line || region.IsGeometryLocked)
         {
             e.Handled = true;
             return;
@@ -694,7 +713,7 @@ public partial class MainWindow : Window
 
     private void RegionBody_OnMouseMove(object sender, MouseEventArgs e)
     {
-        if (_draggedRegion is null || _draggedRegion.IsGeometryLocked || e.LeftButton != MouseButtonState.Pressed || sender is not Border border || !border.IsMouseCaptured) return;
+        if (!ViewModel.CanEditGeometry || _draggedRegion is null || _draggedRegion.IsGeometryLocked || e.LeftButton != MouseButtonState.Pressed || sender is not Border border || !border.IsMouseCaptured) return;
         var point = e.GetPosition(OverlayCanvas);
         _draggedRegion.Left = Math.Clamp(_dragStartLeft + point.X - _dragStart.X, 0, Math.Max(0, ViewModel.PreviewPixelWidth - _draggedRegion.Width));
         _draggedRegion.Top = Math.Clamp(_dragStartTop + point.Y - _dragStart.Y, 0, Math.Max(0, ViewModel.PreviewPixelHeight - _draggedRegion.Height));
@@ -711,6 +730,7 @@ public partial class MainWindow : Window
 
     private void ResizeThumb_OnDragStarted(object sender, DragStartedEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } || region.IsGeometryLocked) return;
         ViewModel.SelectedOverlay = region;
         ViewModel.BeginOverlayEdit(region);
@@ -718,6 +738,7 @@ public partial class MainWindow : Window
 
     private void ResizeThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } thumb || region.IsGeometryLocked || thumb.Tag is not string direction) return;
         var zoom = Math.Max(0.25, ViewModel.ZoomFactor);
         var horizontal = e.HorizontalChange / zoom;
@@ -730,6 +751,7 @@ public partial class MainWindow : Window
 
     private void CharacterAdvanceThumb_OnDragStarted(object sender, DragStartedEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } || !region.HasUnlockedSelectedCharacters) return;
         ViewModel.SelectedOverlay = region;
         ViewModel.BeginOverlayEdit(region);
@@ -737,6 +759,7 @@ public partial class MainWindow : Window
 
     private void CharacterAdvanceThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } || !region.HasUnlockedSelectedCharacters) return;
         var zoom = Math.Max(0.25, ViewModel.ZoomFactor);
         var change = (region.IsVertical ? e.VerticalChange : e.HorizontalChange) / zoom;
@@ -748,6 +771,7 @@ public partial class MainWindow : Window
 
     private void RotationThumb_OnDragStarted(object sender, DragStartedEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } || region.IsGeometryLocked) return;
         ViewModel.SelectedOverlay = region;
         ViewModel.BeginOverlayEdit(region);
@@ -755,6 +779,7 @@ public partial class MainWindow : Window
 
     private void RotationThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (sender is not Thumb { DataContext: OverlayRegionViewModel region } || region.IsGeometryLocked) return;
         var sensitivity = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 0.1 : 0.5;
         var angle = region.RotationDegrees + e.HorizontalChange * sensitivity / Math.Max(0.25, ViewModel.ZoomFactor);
@@ -768,6 +793,7 @@ public partial class MainWindow : Window
 
     private void RotatePresetButton_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanEditGeometry) return;
         if (ViewModel.SelectedOverlay is not { } region ||
             region.IsGeometryLocked ||
             sender is not Button { Tag: string value } ||
@@ -834,14 +860,24 @@ public partial class MainWindow : Window
 
     private void DocumentPropertiesMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.HasDocument) return;
         var dialog = new DocumentPropertiesWindow(ViewModel) { Owner = this };
-        if (dialog.ShowDialog() == true && dialog.ResultViewerSettings is not null)
-            ViewModel.UpdateViewerSettings(dialog.ResultViewerSettings);
+        if (dialog.ShowDialog() == true &&
+            dialog.ResultViewerSettings is not null &&
+            dialog.ResultDocumentMetadata is not null &&
+            dialog.ResultOutputPdfVersion is not null &&
+            dialog.ResultDocumentLanguage is not null)
+            ViewModel.UpdateDocumentProperties(
+                dialog.ResultViewerSettings,
+                dialog.ResultDocumentMetadata,
+                dialog.ResultOutputPdfVersion.Value,
+                dialog.ResultDocumentLanguage);
     }
 
     /// <summary>現在のプロジェクトコンテナを検証し、診断結果を表示します。</summary>
     private async void ValidateProjectMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.HasDocument) return;
         var result = await ViewModel.ValidateCurrentProjectAsync();
         if (result is null) return;
         var details = result.Issues.Count == 0
@@ -854,6 +890,7 @@ public partial class MainWindow : Window
     /// <summary>自動保存または直近の世代バックアップからプロジェクトを復旧します。</summary>
     private async void RestoreProjectMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanRestoreProjectBackup) return;
         if (MessageBox.Show("現在のプロジェクトを直近の正常なバックアップへ戻しますか？\n現在のファイルは復旧前コピーとして保全されます。",
                 "バックアップから復旧", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
@@ -870,8 +907,7 @@ public partial class MainWindow : Window
     /// <summary>アプリケーション名と実行バージョンを表示します。</summary>
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        var version = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "不明";
-        MessageBox.Show($"PDF Correctorium\nVersion {version}\n\nApache License 2.0", "バージョン情報",
+        MessageBox.Show(ApplicationBuildInfo.AboutText, LocalizationService.IsEnglish ? "About" : "バージョン情報",
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -886,6 +922,7 @@ public partial class MainWindow : Window
     /// <summary>検索・置換画面を1つだけ表示し、既に開いている場合は手前へ戻します。</summary>
     private void ShowOcrSearchReplaceWindow(bool focusReplacement)
     {
+        if (!ViewModel.HasDocument) return;
         if (_ocrSearchReplaceWindow is { IsLoaded: true })
         {
             _ocrSearchReplaceWindow.ActivateSearch(focusReplacement);
@@ -899,6 +936,7 @@ public partial class MainWindow : Window
     /// <summary>OCR品質分析画面を1つだけ表示し、既に開いている場合は手前へ戻します。</summary>
     private void OcrQualityAnalysisMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.HasDocument) return;
         if (_ocrQualityAnalysisWindow is { IsLoaded: true })
         {
             _ocrQualityAnalysisWindow.Activate();
@@ -1144,7 +1182,7 @@ public partial class MainWindow : Window
         foreach (var item in menu.Items.OfType<MenuItem>())
         {
             if (Equals(item.Tag, "SetAlignmentReference"))
-                item.IsEnabled = ViewModel.HasMultipleSelection;
+                item.IsEnabled = ViewModel.SetAlignmentReferenceCommand.CanExecute(null);
             else if (Equals(item.Tag, "SplitSelectedCharacter"))
                 item.IsEnabled = region.HasSingleCharacterSelection;
             else if (Equals(item.Tag, "SplitOcrRegion"))
@@ -1244,6 +1282,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void BatchCharacterAdjustmentMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.HasDocument || !ViewModel.CanEditGeometry) return;
         var pageCount = ViewModel.BatchCharacterAdjustmentPageCount;
         if (pageCount <= 0)
         {
@@ -1323,6 +1362,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void RepeatedRegionPropagationMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.HasDocument || !ViewModel.CanEditGeometry) return;
         if (ViewModel.SelectedPage is null || ViewModel.SelectedOverlays.Count == 0)
         {
             MessageBox.Show(
@@ -1473,7 +1513,7 @@ public partial class MainWindow : Window
             if (Equals(item.Tag, "AddOcrRegion"))
             {
                 item.IsChecked = ViewModel.IsAddOcrRegionMode;
-                item.IsEnabled = ViewModel.HasPreview;
+                item.IsEnabled = ViewModel.CanAddOcrRegion;
             }
             else if (Equals(item.Tag, "ToggleOverlay"))
             {
@@ -1548,6 +1588,27 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>左右のスケールによらず、矢印キーは1%、PageUp/Downは10%ずつ倍率を変更します。</summary>
+    private void StatusZoomSlider_OnChangeZoom(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (ViewModel.CanUsePreview)
+        {
+            var change = e.Command == Slider.IncreaseSmall ? 1 :
+                e.Command == Slider.DecreaseSmall ? -1 :
+                e.Command == Slider.IncreaseLarge ? 10 : -10;
+            _previewFitMode = PreviewFitMode.None;
+            ViewModel.ZoomPercent += change;
+        }
+        e.Handled = true;
+    }
+
+    private void StatusZoomSlider_OnCanChangeZoom(object sender, CanExecuteRoutedEventArgs e)
+    {
+        var increase = e.Command == Slider.IncreaseSmall || e.Command == Slider.IncreaseLarge;
+        e.CanExecute = ViewModel.CanUsePreview && (increase ? ViewModel.ZoomPercent < 400 : ViewModel.ZoomPercent > 25);
+        e.Handled = true;
+    }
+
     /// <summary>倍率一覧から数値またはページのフィット方法を適用します。</summary>
     private void StatusZoomComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -1577,7 +1638,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
             comboBox.SelectedIndex = -1;
-            comboBox.Text = ViewModel.ZoomDisplay;
+            RefreshZoomComboBoxText(comboBox);
         });
     }
 
@@ -1593,7 +1654,7 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            comboBox.Text = ViewModel.ZoomDisplay;
+            RefreshZoomComboBoxText(comboBox);
             comboBox.IsDropDownOpen = false;
             OverlayCanvas.Focus();
             e.Handled = true;
@@ -1617,8 +1678,12 @@ public partial class MainWindow : Window
             ViewModel.ZoomPercent = Math.Clamp(percent, 25, 400);
         }
         comboBox.SelectedIndex = -1;
-        comboBox.Text = ViewModel.ZoomDisplay;
+        RefreshZoomComboBoxText(comboBox);
     }
+
+    /// <summary>Textへの通常代入でZoomDisplayのバインドを解除せず、現在倍率へ表示を戻します。</summary>
+    private void RefreshZoomComboBoxText(ComboBox comboBox) =>
+        comboBox.SetCurrentValue(ComboBox.TextProperty, ViewModel.ZoomDisplay);
 
     private void ApplySelectionFit()
     {

@@ -285,7 +285,7 @@ public sealed class ProjectPackageService
         var manifest = await ReadJsonAsync<ProjectManifest>(archive, "manifest.json", cancellationToken);
         if (!ProjectManifest.IsSupportedFormat(manifest.Format))
             throw new InvalidDataException($"Unsupported project format: {manifest.Format}");
-        if (manifest.FormatVersion != ProjectManifest.CurrentVersion)
+        if (!ProjectManifest.IsSupportedVersion(manifest.FormatVersion))
             throw new InvalidDataException($"Unsupported project version: {manifest.FormatVersion}");
         return await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
     }
@@ -381,6 +381,7 @@ public sealed class ProjectPackageService
                 if (source.IsEmbedded && archive.GetEntry("source/document.pdf") is null)
                     issues.Add(new("sourcePdf.missing", "The project declares an embedded PDF, but source/document.pdf is missing.", true));
                 if (!ProjectManifest.IsSupportedFormat(manifest.Format)) issues.Add(new("format.unsupported", manifest.Format, true));
+                if (!ProjectManifest.IsSupportedVersion(manifest.FormatVersion)) issues.Add(new("version.unsupported", manifest.FormatVersion, true));
                 if (project.Pages.Select(x => x.PageNumber).Distinct().Count() != project.Pages.Count)
                     issues.Add(new("pages.duplicate", "Duplicate page numbers were found.", true));
             }

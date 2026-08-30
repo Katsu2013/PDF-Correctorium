@@ -353,7 +353,8 @@ public sealed class PdfExportService
                 ValidateOutput(
                     temporaryPath,
                     project.SourcePdf.PageCount,
-                    project.Pages.Where(PageHasChanges).Select(page => page.PageNumber).ToHashSet());
+                    project.Pages.Where(PageHasChanges).Select(page => page.PageNumber).ToHashSet(),
+                    project.OutputPdfVersion);
             progress?.Report(new PdfExportProgress("committing", 0, 0, "検証済みPDFを保存先へ確定しています..."));
             PdfOutputFileCommitter.Commit(
                 temporaryPath,
@@ -395,6 +396,14 @@ public sealed class PdfExportService
         {
             document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
             if (document == IntPtr.Zero) throw CreatePdfException("元PDFを開けませんでした");
+
+            var requestedOutputVersion = PdfOutputVersionMapping.GetPdfiumVersion(project.OutputPdfVersion);
+            if (requestedOutputVersion is not null &&
+                NativeMethods.FPDF_GetFileVersion(document, out var sourceFileVersion) != 0 &&
+                requestedOutputVersion.Value < sourceFileVersion)
+                throw new InvalidOperationException(
+                    $"元PDFはPDF {FormatPdfiumVersion(sourceFileVersion)}です。" +
+                    $"それより低いPDF {FormatPdfiumVersion(requestedOutputVersion.Value)}では出力できません。");
 
             var pageCount = NativeMethods.FPDF_GetPageCount(document);
             var warnings = new List<string>();
@@ -561,12 +570,15 @@ public sealed class PdfExportService
                 progress?.Report(new PdfExportProgress("compacting", 0, 0, "画像最適化後のPDFを圧縮しています..."));
                 CompactDocumentWithQpdf(temporaryPath, cancellationToken);
             }
-            progress?.Report(new PdfExportProgress("bookmarks", 0, 0, "しおりと初期表示設定を反映しています..."));
+            progress?.Report(new PdfExportProgress("bookmarks", 0, 0, "しおり、文書情報、初期表示設定を反映しています..."));
             new PdfBookmarkService()
                 .ApplyToPdfAsync(
                     temporaryPath,
                     project.Bookmarks,
                     project.ViewerSettings,
+                    project.DocumentMetadata,
+                    project.OutputPdfVersion,
+                    project.DocumentLanguage,
                     project.BookmarksModified,
                     cancellationToken)
                 .GetAwaiter()
@@ -2941,6 +2953,15 @@ public sealed class PdfExportService
         int pageNumber,
         ICollection<TextSpacingRequest> textSpacingRequests)
     {
+        // PDFium cannot measure or transform a text object after SetText("").
+        // Remove the existing object before the whole-line/per-character paths diverge.
+        if (string.IsNullOrWhiteSpace(region.EffectiveText))
+        {
+            if (NativeMethods.FPDFPage_RemoveObject(page, candidate.Object) == 0)
+                throw new InvalidDataException("空欄にしたPDFテキスト領域を除去できませんでした。");
+            NativeMethods.FPDFPageObj_Destroy(candidate.Object);
+            return;
+        }
         if (RequiresPerCharacterObjects(region))
         {
             ApplyPerCharacterRegion(document, page, candidate, region);
@@ -3620,7 +3641,11 @@ public sealed class PdfExportService
         GC.KeepAlive(callback);
     }
 
-    private static void ValidateOutput(string path, int? expectedPageCount, IReadOnlySet<int> changedPages)
+    private static void ValidateOutput(
+        string path,
+        int? expectedPageCount,
+        IReadOnlySet<int> changedPages,
+        PdfOutputVersion expectedVersion)
     {
         var utf8Path = Marshal.StringToCoTaskMemUTF8(path);
         IntPtr document = IntPtr.Zero;
@@ -3628,6 +3653,12 @@ public sealed class PdfExportService
         {
             document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
             if (document == IntPtr.Zero) throw CreatePdfException("出力PDFの再検証に失敗しました");
+            var requestedVersion = PdfOutputVersionMapping.GetPdfiumVersion(expectedVersion);
+            if (requestedVersion is not null &&
+                (NativeMethods.FPDF_GetFileVersion(document, out var actualVersion) == 0 ||
+                 actualVersion != requestedVersion.Value))
+                throw new InvalidDataException(
+                    $"出力PDFのバージョンが指定値 PDF {FormatPdfiumVersion(requestedVersion.Value)} と一致しません。");
             var count = NativeMethods.FPDF_GetPageCount(document);
             if (count <= 0 || expectedPageCount is > 0 && count != expectedPageCount)
                 throw new InvalidDataException("出力PDFのページ数が元PDFと一致しません。");
@@ -3659,6 +3690,14 @@ public sealed class PdfExportService
 
     private static void EnsureInitialized()
         => PdfiumSynchronization.EnsureInitialized(NativeMethods.FPDF_InitLibrary);
+
+    /// <summary>PDFiumの14、17、20等のバージョン番号をPDF表記へ変換します。</summary>
+    private static string FormatPdfiumVersion(int version) => version switch
+    {
+        >= 10 and <= 19 => $"1.{version - 10}",
+        20 => "2.0",
+        _ => version.ToString(CultureInfo.InvariantCulture),
+    };
 
     private static Exception CreatePdfException(string message) =>
         new InvalidDataException($"{message} (PDFium error {NativeMethods.FPDF_GetLastError()})。");
@@ -4214,6 +4253,7 @@ public sealed class PdfExportService
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDF_LoadDocument(IntPtr path, IntPtr password);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern uint FPDF_GetLastError();
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDF_GetPageCount(IntPtr document);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDF_GetFileVersion(IntPtr document, out int fileVersion);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDF_LoadPage(IntPtr document, int pageIndex);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDF_ClosePage(IntPtr page);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDF_CloseDocument(IntPtr document);

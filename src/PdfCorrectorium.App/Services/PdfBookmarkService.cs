@@ -100,6 +100,65 @@ public sealed class PdfBookmarkService
         }
     }
 
+    /// <summary>PDFカタログのLangから文書全体の読み上げ言語タグを読み取ります。</summary>
+    /// <param name="pdfPath">読み取り対象PDF。</param>
+    /// <param name="cancellationToken">処理の取り消しを通知するトークン。</param>
+    /// <returns>BCP 47言語タグ。指定がない場合は空文字列。</returns>
+    public async Task<string> ReadDocumentLanguageAsync(
+        string pdfPath,
+        CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(pdfPath);
+        string? stagedPath = null;
+        try
+        {
+            var qpdfInputPath = fullPath;
+            if (fullPath.Length >= 220)
+            {
+                var operationDirectory = Path.Combine(
+                    Path.GetTempPath(),
+                    "PDF-Correctorium",
+                    "properties",
+                    Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(operationDirectory);
+                stagedPath = Path.Combine(operationDirectory, "input.pdf");
+                File.Copy(fullPath, stagedPath, overwrite: true);
+                qpdfInputPath = stagedPath;
+            }
+
+            var trailerJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                ["--json-output=2", "--json-object=trailer", qpdfInputPath, "-"],
+                cancellationToken))!;
+            var trailerObjects = trailerJson["qpdf"]![1]!.AsObject();
+            var rootReference = trailerObjects["trailer"]!["value"]!["/Root"]!.GetValue<string>();
+            var (rootObjectNumber, rootGeneration) = ParseReference(rootReference);
+            var catalogJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                ["--json-output=2", $"--json-object={rootObjectNumber},{rootGeneration}", qpdfInputPath, "-"],
+                cancellationToken))!;
+            var catalogValue = catalogJson["qpdf"]![1]![$"obj:{rootReference}"]!["value"]!.AsObject();
+            return catalogValue["/Lang"] is JsonValue languageNode &&
+                   languageNode.TryGetValue<string>(out var encodedLanguage)
+                ? DecodeQpdfString(encodedLanguage)
+                : string.Empty;
+        }
+        finally
+        {
+            if (stagedPath is not null)
+            {
+                var operationDirectory = Path.GetDirectoryName(stagedPath)!;
+                TryDeleteFile(stagedPath);
+                try
+                {
+                    if (Directory.Exists(operationDirectory)) Directory.Delete(operationDirectory);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup; a scanner may transiently retain the temporary file.
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// しおりをPDF CorrectoriumのJSON交換形式へ書き出します。
     /// </summary>
@@ -306,21 +365,35 @@ public sealed class PdfBookmarkService
         IReadOnlyList<PdfBookmark> bookmarks,
         CancellationToken cancellationToken = default)
     {
-        await ApplyToPdfAsync(pdfPath, bookmarks, null, true, cancellationToken);
+        await ApplyToPdfAsync(
+            pdfPath,
+            bookmarks,
+            null,
+            null,
+            PdfOutputVersion.Automatic,
+            null,
+            true,
+            cancellationToken);
     }
 
     /// <summary>
-    /// PDFのアウトラインと、文書を開いたときのページレイアウトを一度のqpdf更新で適用します。
+    /// PDFのアウトライン、文書情報、および開いたときのページレイアウトを一度のqpdf更新で適用します。
     /// </summary>
     /// <param name="pdfPath">更新するPDFファイル。</param>
     /// <param name="bookmarks">適用するしおり。</param>
     /// <param name="viewerSettings">PDFカタログへ反映する初期表示設定。変更しない場合は<see langword="null"/>。</param>
+    /// <param name="documentMetadata">PDF文書情報辞書へ反映する編集値。変更しない場合は<see langword="null"/>。</param>
+    /// <param name="outputPdfVersion">出力PDFへ明示する仕様バージョン。</param>
+    /// <param name="documentLanguage">PDFカタログのLangへ反映する言語タグ。変更しない場合はnull。</param>
     /// <param name="replaceBookmarks">既存アウトラインを引数のしおりで置き換えるかどうか。</param>
     /// <param name="cancellationToken">処理の取り消しを通知するトークン。</param>
     public async Task ApplyToPdfAsync(
         string pdfPath,
         IReadOnlyList<PdfBookmark> bookmarks,
         ViewerSettings? viewerSettings,
+        PdfDocumentMetadata? documentMetadata,
+        PdfOutputVersion outputPdfVersion,
+        string? documentLanguage,
         bool replaceBookmarks,
         CancellationToken cancellationToken = default)
     {
@@ -353,7 +426,8 @@ public sealed class PdfBookmarkService
             var header = qpdf[0]!.AsObject();
             var maxObjectId = header["maxobjectid"]!.GetValue<int>();
             var trailerObjects = qpdf[1]!.AsObject();
-            var rootReference = trailerObjects["trailer"]!["value"]!["/Root"]!.GetValue<string>();
+            var trailerValue = trailerObjects["trailer"]!["value"]!.DeepClone().AsObject();
+            var rootReference = trailerValue["/Root"]!.GetValue<string>();
             var (rootObjectNumber, rootGeneration) = ParseReference(rootReference);
 
             var catalogJson = JsonNode.Parse(await RunQpdfForTextAsync(
@@ -399,6 +473,45 @@ public sealed class PdfBookmarkService
             if (viewerSettings is not null)
                 ApplyViewerSettings(catalogValue, viewerSettings);
 
+            if (documentLanguage is not null)
+            {
+                if (string.IsNullOrWhiteSpace(documentLanguage))
+                    catalogValue.Remove("/Lang");
+                else
+                    catalogValue["/Lang"] = "u:" + documentLanguage.Trim();
+            }
+
+            if (documentMetadata is not null)
+            {
+                JsonObject infoValue;
+                string infoReference;
+                if (trailerValue["/Info"] is JsonValue infoReferenceNode &&
+                    infoReferenceNode.TryGetValue<string>(out var existingInfoReference))
+                {
+                    infoReference = existingInfoReference;
+                    var (infoObjectNumber, infoGeneration) = ParseReference(infoReference);
+                    var infoJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                        ["--json-output=2", $"--json-object={infoObjectNumber},{infoGeneration}", qpdfInputPath, "-"],
+                        cancellationToken))!;
+                    infoValue = infoJson["qpdf"]![1]![$"obj:{infoReference}"]!["value"]!.DeepClone().AsObject();
+                }
+                else
+                {
+                    infoReference = $"{nextObjectId++} 0 R";
+                    infoValue = new JsonObject();
+                    trailerValue["/Info"] = infoReference;
+                    updateObjects["trailer"] = new JsonObject { ["value"] = trailerValue };
+                }
+
+                SetDocumentMetadataValue(infoValue, "/Title", documentMetadata.Title);
+                SetDocumentMetadataValue(infoValue, "/Author", documentMetadata.Author);
+                SetDocumentMetadataValue(infoValue, "/Subject", documentMetadata.Subject);
+                SetDocumentMetadataValue(infoValue, "/Keywords", documentMetadata.Keywords);
+                SetDocumentMetadataValue(infoValue, "/Creator", documentMetadata.Creator);
+                SetDocumentMetadataValue(infoValue, "/Producer", documentMetadata.Producer);
+                updateObjects[$"obj:{infoReference}"] = new JsonObject { ["value"] = infoValue };
+            }
+
             updateObjects[$"obj:{rootReference}"] = new JsonObject { ["value"] = catalogValue };
             var update = new JsonObject
             {
@@ -408,9 +521,20 @@ public sealed class PdfBookmarkService
             };
 
             await File.WriteAllTextAsync(updatePath, update.ToJsonString(JsonOptions), new UTF8Encoding(false), cancellationToken);
-            await RunQpdfAsync(
-                [qpdfInputPath, $"--update-from-json={updatePath}", outputPath],
-                cancellationToken);
+            var outputArguments = new List<string>
+            {
+                qpdfInputPath,
+                $"--update-from-json={updatePath}",
+            };
+            var requestedVersion = PdfOutputVersionMapping.GetVersionString(outputPdfVersion);
+            if (requestedVersion is not null)
+            {
+                outputArguments.Add($"--force-version={requestedVersion}");
+                if (outputPdfVersion == PdfOutputVersion.Pdf14)
+                    outputArguments.Add("--object-streams=disable");
+            }
+            outputArguments.Add(outputPath);
+            await RunQpdfAsync(outputArguments, cancellationToken);
             if (!File.Exists(outputPath))
                 throw new InvalidDataException("qpdfがしおり更新後のPDFを生成しませんでした。");
             File.Copy(outputPath, fullPath, true);
@@ -447,6 +571,31 @@ public sealed class PdfBookmarkService
         {
             ["/Direction"] = PdfViewerSettingsMapping.GetDirectionName(settings),
         };
+    }
+
+    /// <summary>PDF文書情報辞書の文字列を更新し、空欄の場合は既存項目を削除します。</summary>
+    private static void SetDocumentMetadataValue(JsonObject info, string key, string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            info.Remove(key);
+        else
+            info[key] = "u:" + value;
+    }
+
+    /// <summary>qpdf JSONの文字列表現を画面で使用する通常の文字列へ戻します。</summary>
+    private static string DecodeQpdfString(string value)
+    {
+        if (value.StartsWith("u:", StringComparison.Ordinal)) return value[2..];
+        if (!value.StartsWith("b:", StringComparison.Ordinal)) return value;
+        var hex = value[2..];
+        try
+        {
+            return Encoding.ASCII.GetString(Convert.FromHexString(hex));
+        }
+        catch (FormatException)
+        {
+            return string.Empty;
+        }
     }
 
     /// <summary>一時ファイルの後始末失敗によって、本来の処理結果を上書きしないよう削除を試みます。</summary>

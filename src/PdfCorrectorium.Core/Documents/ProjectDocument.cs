@@ -22,6 +22,29 @@ public sealed record ViewerSettings
 }
 
 /// <summary>
+/// PDFの文書情報辞書へ反映する、利用者が編集可能なメタデータです。
+/// </summary>
+/// <remarks>
+/// このモデル自体が存在しない場合は元PDFの文書情報を変更しません。
+/// 各項目の空文字列は、PDF出力時に対応する既存項目を削除する指定として扱います。
+/// </remarks>
+public sealed record PdfDocumentMetadata
+{
+    /// <summary>PDFビューア等で文書名として表示されるタイトルです。</summary>
+    public string Title { get; init; } = string.Empty;
+    /// <summary>文書の作者名です。</summary>
+    public string Author { get; init; } = string.Empty;
+    /// <summary>文書の主題です。</summary>
+    public string Subject { get; init; } = string.Empty;
+    /// <summary>検索や分類に使用するキーワードです。</summary>
+    public string Keywords { get; init; } = string.Empty;
+    /// <summary>文書を作成したアプリケーション名です。</summary>
+    public string Creator { get; init; } = string.Empty;
+    /// <summary>PDFへ変換したソフトウェア名です。</summary>
+    public string Producer { get; init; } = string.Empty;
+}
+
+/// <summary>
 /// プロジェクトと元PDFを安全に対応付けるための参照情報です。
 /// </summary>
 /// <remarks>
@@ -66,7 +89,7 @@ public sealed record PdfBookmark
 /// </summary>
 /// <remarks>
 /// 元PDFそのものは不変の入力として扱い、このモデルに編集差分、しおり、
-/// 読み順および文書表示設定を保持します。
+/// 読み順、文書表示設定および編集後の文書情報を保持します。
 /// </remarks>
 public sealed record PdfCorrectoriumProject
 {
@@ -78,6 +101,17 @@ public sealed record PdfCorrectoriumProject
     public required SourcePdfReference SourcePdf { get; init; }
     /// <summary>PDFを開いた直後のページ表示設定です。</summary>
     public ViewerSettings ViewerSettings { get; init; } = new();
+    /// <summary>PDF出力時に使用する仕様バージョンです。既定では編集内容に応じて自動決定します。</summary>
+    public PdfOutputVersion OutputPdfVersion { get; init; } = PdfOutputVersion.Automatic;
+    /// <summary>
+    /// 利用者が編集したPDF文書情報です。未編集の場合は<see langword="null"/>です。
+    /// </summary>
+    public PdfDocumentMetadata? DocumentMetadata { get; init; }
+    /// <summary>
+    /// PDFカタログのLangへ反映するBCP 47言語タグです。未編集の場合は<see langword="null"/>、
+    /// 空文字列の場合は既存の言語指定を削除します。
+    /// </summary>
+    public string? DocumentLanguage { get; init; }
     /// <summary>ページごとのOCR、ルビ、読み順、画像最適化設定です。</summary>
     public IReadOnlyList<OcrPage> Pages { get; init; } = [];
     /// <summary>編集可能なPDFしおりの階層です。</summary>

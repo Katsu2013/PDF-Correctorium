@@ -2,6 +2,8 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using PdfCorrectorium.Core.Analysis;
+using PdfCorrectorium.Core;
+using System.Reflection;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Core.Geometry;
 using PdfCorrectorium.Infrastructure;
@@ -11,6 +13,9 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Geometry validation accepts vertical rotated text", GeometryValidationAsync),
     ("OCR text edit preserves the original value", TextEditAsync),
+    ("FR-400 empty edits and legacy text sentinels round-trip", EmptyTextCompatibilityAsync),
+    ("FR-1000 package version gates reject unsupported formats", PackageVersionGateAsync),
+    ("Build revision matches every application assembly and manifest", BuildVersionAsync),
     ("Project package round-trips and validates", ProjectRoundTripAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
     ("Project package preserves compressed page thumbnails", ProjectThumbnailCacheAsync),
@@ -21,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("OCR quality analyzer finds character-count outliers", CharacterCountAnomalyAsync),
     ("OCR quality analyzer finds keyword-width outliers", KeywordWidthAnomalyAsync),
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
+    ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
 };
 
 var failures = new List<string>();
@@ -48,6 +54,25 @@ static Task GeometryValidationAsync()
     return Task.CompletedTask;
 }
 
+static Task BuildVersionAsync()
+{
+    var parts = ApplicationBuildInfo.Version.Split("-dev.");
+    Equal(2, parts.Length, "Development version must include its revision.");
+    var expectedNumeric = parts[0] + "." + parts[1];
+    Equal(expectedNumeric, ApplicationBuildInfo.NumericVersion, "Numeric revision must match the product revision.");
+    foreach (var assembly in new[] { typeof(ApplicationBuildInfo).Assembly, typeof(ProjectManifest).Assembly,
+        typeof(ApplicationPaths).Assembly, Assembly.GetExecutingAssembly() })
+    {
+        Equal(expectedNumeric, assembly.GetName().Version!.ToString(4), $"Assembly version: {assembly.GetName().Name}");
+        Equal(expectedNumeric, assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()!.Version, "File revision must match.");
+        Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
+    }
+    Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
+    Equal("1.1", ProjectManifest.CurrentVersion, "Application revisions do not automatically change the data format.");
+    Equal("1.0.0-dev.123", new ProjectManifest().MinimumApplicationVersion, "The minimum reader stays at the first compatible build.");
+    return Task.CompletedTask;
+}
+
 static Task TextEditAsync()
 {
     var pageId = Guid.NewGuid();
@@ -66,6 +91,49 @@ static Task TextEditAsync()
     Equal("第17章", edited.EffectiveText, "The edited text must be effective.");
     Equal(ReviewStatus.Modified, edited.ReviewStatus, "Editing must update review state.");
     return Task.CompletedTask;
+}
+
+static Task EmptyTextCompatibilityAsync()
+{
+    var geometry = CreateGeometry(0);
+    var region = new OcrTextRegion { OriginalText = "ABC", OriginalGeometry = geometry, EditedGeometry = geometry };
+    Equal("ABC", region.EffectiveText, "Legacy empty edit means unchanged.");
+    Equal("XYZ", (region with { EditedText = "XYZ" }).EffectiveText, "Legacy nonempty edits remain readable.");
+    var edited = region.EditText("");
+    True(edited.HasEditedText && edited.IsModified, "An explicit empty edit is a modification.");
+    var restored = JsonSerializer.Deserialize<OcrTextRegion>(JsonSerializer.Serialize(edited))!;
+    Equal("", restored.EffectiveText, "An empty edit must survive JSON round-trip.");
+    Equal("ABC", restored.OriginalText, "Original text remains intact.");
+    return Task.CompletedTask;
+}
+
+static async Task PackageVersionGateAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var packages = new ProjectPackageService();
+        var path = Path.Combine(directory, "future.pdfocrproj");
+        await packages.SaveAsync(path, new PdfCorrectoriumProject { SourcePdf = await packages.CreateSourceReferenceAsync(pdf) });
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("manifest.json")!;
+            JsonObject manifest;
+            using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
+            Equal("1.1", manifest["formatVersion"]!.GetValue<string>(), "New containers require an empty-edit aware reader.");
+            Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
+            manifest["formatVersion"] = "99.0";
+            entry.Delete();
+            using var output = zip.CreateEntry("manifest.json").Open();
+            await JsonSerializer.SerializeAsync(output, manifest);
+        }
+        True(!(await packages.ValidateAsync(path)).IsValid, "Unsupported future formats fail validation.");
+        try { await packages.OpenAsync(path); throw new Exception("Future project was accepted."); }
+        catch (InvalidDataException) { }
+    }
+    finally { Directory.Delete(directory, recursive: true); }
 }
 
 static Task ViewerSettingsMappingAsync()
@@ -98,6 +166,21 @@ static Task ViewerSettingsMappingAsync()
     Equal("/TwoPageLeft", PdfViewerSettingsMapping.GetPageLayoutName(leftToRightWithoutCover),
         "Disabling the separate cover must invert the first facing-page slot for left-to-right documents.");
 
+    return Task.CompletedTask;
+}
+
+static Task OutputVersionMappingAsync()
+{
+    Equal(null, PdfOutputVersionMapping.GetVersionString(PdfOutputVersion.Automatic),
+        "Automatic output must not force a PDF version.");
+    Equal("1.4", PdfOutputVersionMapping.GetVersionString(PdfOutputVersion.Pdf14),
+        "PDF 1.4 must map to the qpdf version string.");
+    Equal("2.0", PdfOutputVersionMapping.GetVersionString(PdfOutputVersion.Pdf20),
+        "PDF 2.0 must map to the qpdf version string.");
+    True(PdfOutputVersionMapping.IsLowerThanSource(PdfOutputVersion.Pdf14, "1.5"),
+        "PDF 1.4 must be rejected for a PDF 1.5 source.");
+    True(!PdfOutputVersionMapping.IsLowerThanSource(PdfOutputVersion.Pdf15, "1.5"),
+        "The same PDF version must remain selectable.");
     return Task.CompletedTask;
 }
 
@@ -182,6 +265,17 @@ static async Task ProjectRoundTripAsync()
         {
             Name = "book",
             SourcePdf = source,
+            OutputPdfVersion = PdfOutputVersion.Pdf15,
+            DocumentLanguage = "ja-JP",
+            DocumentMetadata = new PdfDocumentMetadata
+            {
+                Title = "校正対象文書",
+                Author = "校正 太郎",
+                Subject = "文書情報の保存テスト",
+                Keywords = "PDF, 校正",
+                Creator = "PDF Correctorium",
+                Producer = "PDF Correctorium Exporter",
+            },
             Pages =
             [
                 new OcrPage
@@ -226,6 +320,14 @@ static async Task ProjectRoundTripAsync()
         var reopened = await package.OpenAsync(path);
         Equal(project.ProjectId, reopened.ProjectId, "Project ID must round-trip.");
         Equal(source.Sha256, reopened.SourcePdf.Sha256, "Source hash must round-trip.");
+        Equal(PdfOutputVersion.Pdf15, reopened.OutputPdfVersion, "Output PDF version must round-trip.");
+        Equal("ja-JP", reopened.DocumentLanguage, "Document language must round-trip.");
+        Equal("校正対象文書", reopened.DocumentMetadata?.Title, "Document title must round-trip.");
+        Equal("校正 太郎", reopened.DocumentMetadata?.Author, "Document author must round-trip.");
+        Equal("文書情報の保存テスト", reopened.DocumentMetadata?.Subject, "Document subject must round-trip.");
+        Equal("PDF, 校正", reopened.DocumentMetadata?.Keywords, "Document keywords must round-trip.");
+        Equal("PDF Correctorium", reopened.DocumentMetadata?.Creator, "Document creator must round-trip.");
+        Equal("PDF Correctorium Exporter", reopened.DocumentMetadata?.Producer, "Document producer must round-trip.");
         True(reopened.BookmarksInitialized, "Bookmark initialization state must round-trip.");
         True(reopened.BookmarksModified, "Bookmark modification state must round-trip.");
         Equal("第1章", reopened.Bookmarks.Single().Title, "Bookmark title must round-trip.");
@@ -343,6 +445,7 @@ static async Task LegacyProjectFormatAsync()
 
             entry.Delete();
             manifest["format"] = ProjectManifest.LegacyFormat;
+            manifest["formatVersion"] = "1.0";
             var legacyEntry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
             await using var output = legacyEntry.Open();
             await JsonSerializer.SerializeAsync(output, manifest);

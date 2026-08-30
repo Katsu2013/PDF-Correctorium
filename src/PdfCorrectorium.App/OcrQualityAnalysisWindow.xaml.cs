@@ -29,6 +29,7 @@ public partial class OcrQualityAnalysisWindow : Window
     {
         InitializeComponent();
         _viewModel = viewModel;
+        DataContext = viewModel;
         CountResultsGrid.ItemsSource = _countRows;
         KeywordResultsGrid.ItemsSource = _keywordRows;
         Closed += (_, _) =>
@@ -174,6 +175,7 @@ public partial class OcrQualityAnalysisWindow : Window
 
     private async Task CorrectCandidatesAsync(IReadOnlyList<OcrKeywordWidthCandidate> candidates)
     {
+        if (!_viewModel.CanEditGeometry) return;
         if (_isBusy || candidates.Count == 0)
         {
             KeywordStatusTextBlock.Text = LocalizationService.Translate("補正できる候補が選択されていません。");

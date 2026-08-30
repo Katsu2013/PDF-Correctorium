@@ -20,7 +20,7 @@ public sealed record ApplicationSettings
     public string UiLanguage { get; init; } = LocalizationService.JapaneseLanguage;
     /// <summary>ツールバーにアイコンだけでなく説明文字も表示するかを指定します。</summary>
     public bool ShowToolbarText { get; init; }
-    /// <summary>ツールバーボタンの一辺の長さをDIP単位で指定します。</summary>
+    /// <summary>ツールバーボタンとアイコンのサイズ基準（DIP）。コンパクト表示ではボタン外周の余白を4DIP詰めます。</summary>
     public double ToolbarButtonSize { get; init; } = 36;
     /// <summary>プロパティ欄に長い操作説明を表示するかを指定します。</summary>
     public bool ShowPropertyHelpText { get; init; }

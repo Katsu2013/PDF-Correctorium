@@ -147,6 +147,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         Id = id;
         OriginalText = originalText;
         _isVertical = current.IsVertical ?? isVertical;
+        LoadedIsVertical = _isVertical;
         _text = current.Text;
         _left = current.Left;
         _top = current.Top;
@@ -174,6 +175,8 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     public Guid Id { get; }
     public string OriginalText { get; }
     public bool IsInvisible { get; }
+    /// <summary>読込時の自動判定を、利用者による方向変更と区別する基準です。</summary>
+    internal bool LoadedIsVertical { get; }
     public bool IsVertical
     {
         get => _isVertical;

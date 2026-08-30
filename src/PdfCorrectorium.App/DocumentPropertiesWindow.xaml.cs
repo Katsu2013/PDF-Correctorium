@@ -23,6 +23,12 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
     /// <summary>Loadedイベントが複数回発生してもPDFを一度だけ解析するためのフラグです。</summary>
     private bool _loadStarted;
 
+    /// <summary>プロジェクトに保存済みの編集値をPDFの読込結果で上書きしないためのフラグです。</summary>
+    private readonly bool _hasSavedDocumentMetadata;
+
+    /// <summary>プロジェクトに保存済みの言語設定をPDFの読込結果で上書きしないためのフラグです。</summary>
+    private readonly bool _hasSavedDocumentLanguage;
+
     /// <summary>PDFから読み取ったメタデータ、セキュリティ、フォント等の情報です。</summary>
     private PdfDocumentPropertiesInfo _pdfProperties;
 
@@ -37,8 +43,19 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
         DataContext = this;
         LocalizationService.Apply(this);
 
+        _hasSavedDocumentMetadata = viewModel.CurrentDocumentMetadata is not null;
+        if (viewModel.CurrentDocumentMetadata is { } metadata)
+            PopulateMetadataEditors(metadata);
+        SetMetadataEditorsEnabled(_hasSavedDocumentMetadata);
+
+        _hasSavedDocumentLanguage = viewModel.CurrentDocumentLanguage is not null;
+        if (viewModel.CurrentDocumentLanguage is { } language)
+            DocumentLanguageComboBox.Text = language;
+        DocumentLanguageComboBox.IsEnabled = _hasSavedDocumentLanguage;
+
         SelectByTag(PageModeComboBox, viewModel.CurrentViewerSettings.PageMode.ToString());
         SelectByTag(BindingDirectionComboBox, viewModel.CurrentViewerSettings.BindingDirection.ToString());
+        SelectByTag(OutputPdfVersionComboBox, viewModel.CurrentOutputPdfVersion.ToString());
         ShowCoverSeparatelyCheckBox.IsChecked = viewModel.CurrentViewerSettings.ShowCoverSeparately;
 
         Loaded += Window_OnLoaded;
@@ -82,6 +99,15 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
     /// <summary>利用者が確定したPDF初期表示設定です。</summary>
     public ViewerSettings? ResultViewerSettings { get; private set; }
 
+    /// <summary>利用者が確定した、PDFへ出力する文書情報です。</summary>
+    public PdfDocumentMetadata? ResultDocumentMetadata { get; private set; }
+
+    /// <summary>利用者が確定したPDF出力バージョンです。</summary>
+    public PdfOutputVersion? ResultOutputPdfVersion { get; private set; }
+
+    /// <summary>利用者が確定したPDF文書全体のBCP 47言語タグです。</summary>
+    public string? ResultDocumentLanguage { get; private set; }
+
     /// <summary>初回表示後に、画面を固めないようバックグラウンドでPDF情報を読み取ります。</summary>
     private async void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -96,6 +122,23 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
             PdfProperties = await PdfDocumentPropertiesService.ReadAsync(
                 _viewModel.SourcePdfPath,
                 _loadCancellationTokenSource.Token);
+            if (!_hasSavedDocumentMetadata)
+                PopulateMetadataEditors(new PdfDocumentMetadata
+                {
+                    Title = PdfProperties.Title,
+                    Author = PdfProperties.Author,
+                    Subject = PdfProperties.Subject,
+                    Keywords = PdfProperties.Keywords,
+                    Creator = PdfProperties.Creator,
+                    Producer = PdfProperties.Producer,
+                });
+            if (!_hasSavedDocumentLanguage)
+                DocumentLanguageComboBox.Text = string.Equals(
+                    PdfProperties.LanguageText,
+                    "不明",
+                    StringComparison.Ordinal)
+                    ? string.Empty
+                    : PdfProperties.LanguageText;
             LoadingStatusText.Text = "PDF情報を読み込みました。";
         }
         catch (OperationCanceledException) when (_loadCancellationTokenSource.IsCancellationRequested)
@@ -111,6 +154,8 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
         }
         finally
         {
+            SetMetadataEditorsEnabled(true);
+            DocumentLanguageComboBox.IsEnabled = true;
             LoadingPanel.Visibility = Visibility.Collapsed;
         }
     }
@@ -127,13 +172,57 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
     {
         var pageMode = Enum.Parse<InitialPageMode>(((ComboBoxItem)PageModeComboBox.SelectedItem).Tag!.ToString()!);
         var direction = Enum.Parse<PdfBindingDirection>(((ComboBoxItem)BindingDirectionComboBox.SelectedItem).Tag!.ToString()!);
+        var outputVersion = Enum.Parse<PdfOutputVersion>(((ComboBoxItem)OutputPdfVersionComboBox.SelectedItem).Tag!.ToString()!);
+        if (PdfOutputVersionMapping.IsLowerThanSource(outputVersion, PdfProperties.PdfVersionText))
+        {
+            MessageBox.Show(
+                this,
+                LocalizationService.Translate("元PDFより低いPDFバージョンは指定できません。元PDFと同じか、より新しいバージョンを選択してください。"),
+                LocalizationService.Translate("PDFバージョン"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
         ResultViewerSettings = new ViewerSettings
         {
             PageMode = pageMode,
             BindingDirection = direction,
             ShowCoverSeparately = ShowCoverSeparatelyCheckBox.IsChecked == true,
         };
+        ResultDocumentMetadata = new PdfDocumentMetadata
+        {
+            Title = TitleTextBox.Text,
+            Author = AuthorTextBox.Text,
+            Subject = SubjectTextBox.Text,
+            Keywords = KeywordsTextBox.Text,
+            Creator = CreatorTextBox.Text,
+            Producer = ProducerTextBox.Text,
+        };
+        ResultOutputPdfVersion = outputVersion;
+        ResultDocumentLanguage = DocumentLanguageComboBox.Text.Trim();
         DialogResult = true;
+    }
+
+    /// <summary>文書情報モデルの値を編集欄へ表示します。</summary>
+    private void PopulateMetadataEditors(PdfDocumentMetadata metadata)
+    {
+        TitleTextBox.Text = metadata.Title;
+        AuthorTextBox.Text = metadata.Author;
+        SubjectTextBox.Text = metadata.Subject;
+        KeywordsTextBox.Text = metadata.Keywords;
+        CreatorTextBox.Text = metadata.Creator;
+        ProducerTextBox.Text = metadata.Producer;
+    }
+
+    /// <summary>元PDFの読込中に、空の編集値を確定しないよう入力可否をまとめて切り替えます。</summary>
+    private void SetMetadataEditorsEnabled(bool isEnabled)
+    {
+        TitleTextBox.IsEnabled = isEnabled;
+        AuthorTextBox.IsEnabled = isEnabled;
+        SubjectTextBox.IsEnabled = isEnabled;
+        KeywordsTextBox.IsEnabled = isEnabled;
+        CreatorTextBox.IsEnabled = isEnabled;
+        ProducerTextBox.IsEnabled = isEnabled;
     }
 
     /// <summary>列挙値をTagへ保持している項目をコンボボックスから選択します。</summary>

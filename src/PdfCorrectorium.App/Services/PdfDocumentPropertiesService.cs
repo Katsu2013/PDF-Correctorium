@@ -58,6 +58,23 @@ internal static class PdfDocumentPropertiesService
 
         cancellationToken.ThrowIfCancellationRequested();
         var fileInfo = new FileInfo(pdfPath);
+        string documentLanguage;
+        try
+        {
+            documentLanguage = new PdfBookmarkService()
+                .ReadDocumentLanguageAsync(pdfPath, cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Langは補助情報です。qpdfが利用できない場合も、その他の文書情報は表示します。
+            documentLanguage = string.Empty;
+        }
 
         lock (PdfiumSynchronization.Gate)
         {
@@ -124,6 +141,7 @@ internal static class PdfDocumentPropertiesService
                     FormFillPermissionText = PermissionText(securityRevision < 0 || (permissions & 0x0100) != 0),
                     SignPermissionText = PermissionText(securityRevision < 0 || (permissions & 0x0020) != 0),
                     TemplatePermissionText = PermissionText(securityRevision < 0 || (permissions & 0x0008) != 0),
+                    LanguageText = documentLanguage,
                     Fonts = fonts,
                 };
             }

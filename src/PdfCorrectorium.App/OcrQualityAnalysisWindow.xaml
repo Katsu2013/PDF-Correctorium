@@ -105,9 +105,11 @@
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
                             <Button Content="選択箇所へ移動" MinWidth="120" Padding="10,4" Margin="0,0,7,0"
                                     Click="NavigateKeywordButton_OnClick" />
-                            <Button Content="選択候補を補正" MinWidth="120" Padding="10,4" Margin="0,0,7,0"
+                            <Button x:Name="CorrectSelectedKeywordButton" Content="選択候補を補正" MinWidth="120" Padding="10,4" Margin="0,0,7,0"
+                                    IsEnabled="{Binding CanEditGeometry}"
                                     Click="CorrectSelectedKeywordButton_OnClick" />
-                            <Button Content="全候補を補正" MinWidth="112" Padding="10,4"
+                            <Button x:Name="CorrectAllKeywordButton" Content="全候補を補正" MinWidth="112" Padding="10,4"
+                                    IsEnabled="{Binding CanEditGeometry}"
                                     Click="CorrectAllKeywordButton_OnClick" />
                         </StackPanel>
                         <StackPanel VerticalAlignment="Center">

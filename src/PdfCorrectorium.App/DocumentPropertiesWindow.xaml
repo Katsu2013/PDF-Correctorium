@@ -3,22 +3,32 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="文書のプロパティ"
         Width="900" Height="700" MinWidth="760" MinHeight="560"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize">
     <Window.Resources>
         <Style x:Key="PropertyLabelStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,3,12,3" />
         </Style>
-        <Style x:Key="PropertyValueStyle" TargetType="TextBox">
+        <Style x:Key="PropertyValueStyle" TargetType="TextBox" BasedOn="{StaticResource ModernTextBoxStyle}">
             <Setter Property="IsReadOnly" Value="True" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Padding" Value="2" />
             <Setter Property="Margin" Value="0,3,0,3" />
         </Style>
-        <Style x:Key="SectionGroupStyle" TargetType="GroupBox">
+        <Style x:Key="EditablePropertyValueStyle" TargetType="TextBox" BasedOn="{StaticResource ModernTextBoxStyle}">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#FFABADB3" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Margin" Value="0,3,0,3" />
+        </Style>
+        <Style x:Key="SectionGroupStyle" TargetType="GroupBox" BasedOn="{StaticResource ModernGroupBoxStyle}">
             <Setter Property="Margin" Value="8" />
             <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style TargetType="ComboBox" BasedOn="{StaticResource ModernComboBoxStyle}">
+            <Setter Property="Margin" Value="0,3" />
         </Style>
     </Window.Resources>
 
@@ -63,21 +73,21 @@
                                 <TextBlock Text="ファイル:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding PdfProperties.FileName, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
                                 <TextBlock Grid.Row="1" Text="タイトル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.Title, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox x:Name="TitleTextBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
                                 <TextBlock Grid.Row="2" Text="作成者:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.Author, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
-                                <TextBlock Grid.Row="3" Text="サブタイトル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PdfProperties.Subject, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox x:Name="AuthorTextBox" Grid.Row="2" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
+                                <TextBlock Grid.Row="3" Text="件名:" Style="{StaticResource PropertyLabelStyle}" />
+                                <TextBox x:Name="SubjectTextBox" Grid.Row="3" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
                                 <TextBlock Grid.Row="4" Text="キーワード:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding PdfProperties.Keywords, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox x:Name="KeywordsTextBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
                                 <TextBlock Grid.Row="5" Text="作成日:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding PdfProperties.CreationDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
                                 <TextBlock Grid.Row="6" Text="更新日:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PdfProperties.ModifiedDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
                                 <TextBlock Grid.Row="7" Text="アプリケーション:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding PdfProperties.Creator, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox x:Name="CreatorTextBox" Grid.Row="7" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
                                 <TextBlock Grid.Row="8" Text="PDF変換:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding PdfProperties.Producer, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox x:Name="ProducerTextBox" Grid.Row="8" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
                                 <TextBlock Grid.Row="9" Text="読み込み状態:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="9" Grid.Column="1"
                                          Text="{Binding PdfProperties.ErrorMessage, Mode=OneWay}"
@@ -100,7 +110,7 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
+                                <TextBlock Text="元PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding PdfProperties.PdfVersionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
                                 <TextBlock Grid.Column="2" Text="ページ数:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Column="3" Text="{Binding PdfProperties.PageCountText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
@@ -277,6 +287,35 @@
                             </Grid>
                         </GroupBox>
 
+                        <GroupBox Header="PDFバージョン" Style="{StaticResource SectionGroupStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="190" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="元PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.PdfVersionText, Mode=OneWay}"
+                                         Style="{StaticResource PropertyValueStyle}" />
+                                <TextBlock Grid.Row="1" Text="出力PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
+                                <ComboBox x:Name="OutputPdfVersionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="260">
+                                    <ComboBoxItem Content="自動（推奨）" Tag="Automatic" />
+                                    <ComboBoxItem Content="PDF 1.4（Acrobat 5.x）" Tag="Pdf14" />
+                                    <ComboBoxItem Content="PDF 1.5（Acrobat 6.x）" Tag="Pdf15" />
+                                    <ComboBoxItem Content="PDF 1.6（Acrobat 7.x）" Tag="Pdf16" />
+                                    <ComboBoxItem Content="PDF 1.7（Acrobat 8.x以降）" Tag="Pdf17" />
+                                    <ComboBoxItem Content="PDF 2.0" Tag="Pdf20" />
+                                </ComboBox>
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                                           Foreground="#667085" TextWrapping="Wrap"
+                                           Text="元PDFより低いバージョンは選択できません。PDF 1.4では、1.5以降専用のオブジェクトストリームを使用せずに出力します。" />
+                            </Grid>
+                        </GroupBox>
+
                         <GroupBox Header="PDFを開いたときの表示" Style="{StaticResource SectionGroupStyle}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -330,8 +369,25 @@
                                     <ColumnDefinition Width="190" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="言語:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.LanguageText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="文書の言語:" Style="{StaticResource PropertyLabelStyle}" />
+                                <ComboBox x:Name="DocumentLanguageComboBox" Grid.Column="1" MinWidth="260"
+                                          IsEditable="True" IsTextSearchEnabled="False">
+                                    <ComboBoxItem Content="ja-JP" />
+                                    <ComboBoxItem Content="en-US" />
+                                    <ComboBoxItem Content="zh-CN" />
+                                    <ComboBoxItem Content="zh-TW" />
+                                    <ComboBoxItem Content="ko-KR" />
+                                    <ComboBoxItem Content="de-DE" />
+                                    <ComboBoxItem Content="fr-FR" />
+                                    <ComboBoxItem Content="es-ES" />
+                                </ComboBox>
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                                           Foreground="#667085" TextWrapping="Wrap"
+                                           Text="PDFカタログの言語タグ（/Lang）へ反映します。候補から選ぶか、BCP 47形式（例: ja-JP、en-US）で入力してください。空欄にすると既存の指定を削除します。" />
                             </Grid>
                         </GroupBox>
                     </StackPanel>

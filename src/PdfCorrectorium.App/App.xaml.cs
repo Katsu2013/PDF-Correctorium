@@ -43,13 +43,19 @@ public partial class App : Application
         AppContext.SetSwitch(EnablePointerSupportSwitch, true);
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _isSmokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
+        _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--review-mode-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--persistence-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--startup-file-test", StringComparer.OrdinalIgnoreCase) ||
+            e.Args.Contains("--file-launch-tests", StringComparer.OrdinalIgnoreCase);
         _diagnostics.Write("startup.begin", $"Args: {string.Join(' ', e.Args)}");
+        _diagnostics.Write("startup.version", $"Version: {PdfCorrectorium.Core.ApplicationBuildInfo.InformationalVersion}; build: {PdfCorrectorium.Core.ApplicationBuildInfo.NumericVersion}");
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -132,15 +138,50 @@ public partial class App : Application
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
 
+            var fileLaunchTestsIndex = Array.FindIndex(e.Args, value => value.Equals("--file-launch-tests", StringComparison.OrdinalIgnoreCase));
+            if (fileLaunchTestsIndex >= 0)
+            {
+                RunFileLaunchTests(e.Args, fileLaunchTestsIndex);
+                return;
+            }
+            var startupFileTestIndex = Array.FindIndex(e.Args, value => value.Equals("--startup-file-test", StringComparison.OrdinalIgnoreCase));
+            if (startupFileTestIndex >= 0)
+            {
+                await RunStartupFileTestAsync(window, e.Args, startupFileTestIndex);
+                return;
+            }
+
+            var documentUiTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--document-ui-test", StringComparison.OrdinalIgnoreCase));
+            if (documentUiTestIndex >= 0)
+            {
+                RunDocumentUiTest(window, e.Args, documentUiTestIndex);
+                return;
+            }
+
+            var reviewTestIndex = Array.FindIndex(e.Args, value => value.Equals("--review-mode-test", StringComparison.OrdinalIgnoreCase));
+            if (reviewTestIndex >= 0)
+            {
+                await RunReviewModeTestAsync(window, e.Args, reviewTestIndex);
+                return;
+            }
+
             if (_isSmokeTest)
             {
                 RunSmokeTest(window);
                 return;
             }
 
+            var persistenceIndex = Array.FindIndex(e.Args, value => value.Equals("--persistence-test", StringComparison.OrdinalIgnoreCase));
+            if (persistenceIndex >= 0)
+            {
+                await RunPersistenceTestAsync(window, e.Args, persistenceIndex);
+                return;
+            }
+
             window.Show();
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             _diagnostics.Write("startup.window-shown");
+            await OpenStartupFileAsync(window, e.Args);
         }
         catch (Exception exception)
         {
@@ -265,7 +306,7 @@ public partial class App : Application
             normalizedSettings.ToolbarButtonSize != 64 || normalizedSettings.PageListWidth != 160 ||
             normalizedSettings.PropertiesPanelWidth != 600 || normalizedSettings.PageThumbnailSize != 220 ||
             normalizedSettings.CharacterCellBorderThickness != 2.0 ||
-            normalizedSettings.FormatVersion != 10)
+            normalizedSettings.FormatVersion != 11)
             throw new InvalidOperationException("Application settings limits were not normalized.");
         if (!EditorShortcutService.Matches(Key.Right, ModifierKeys.Alt, normalizedSettings.NextCharacterShortcut) ||
             !EditorShortcutService.Matches(Key.A, ModifierKeys.Control | ModifierKeys.Shift, normalizedSettings.EstimateCharacterAdvancesShortcut) ||
@@ -1449,9 +1490,18 @@ public partial class App : Application
             },
             new PdfBookmark { Title = "付録", PageNumber = 1, IsExpanded = false },
         };
+        var expectedMetadata = new PdfDocumentMetadata
+        {
+            Title = "PDF校正文書",
+            Author = "校正 太郎",
+            Subject = "文書情報出力テスト",
+            Keywords = "PDF, 校正, テスト",
+            Creator = "PDF Correctorium",
+            Producer = "PDF Correctorium Exporter",
+        };
         var service = new PdfBookmarkService();
         var exchangePath = Path.ChangeExtension(outputPath, ".pdfbookmarks.json");
-        var actual = Task.Run(async () =>
+        var (actual, actualMetadata) = Task.Run(async () =>
         {
             await service.ExportAsync(exchangePath, expected);
             var imported = await service.ImportAsync(exchangePath);
@@ -1485,9 +1535,40 @@ public partial class App : Application
                 Bookmarks = imported,
                 BookmarksInitialized = true,
                 BookmarksModified = true,
+                DocumentMetadata = expectedMetadata,
+                OutputPdfVersion = PdfOutputVersion.Pdf15,
+                DocumentLanguage = "ja-JP",
             };
             await new PdfExportService().ExportAsync(inputPath, outputPath, project);
-            return await service.ReadFromPdfAsync(outputPath);
+            var pdf14OutputPath = Path.Combine(
+                Path.GetDirectoryName(outputPath)!,
+                Path.GetFileNameWithoutExtension(outputPath) + ".pdf14.pdf");
+            await new PdfExportService().ExportAsync(
+                inputPath,
+                pdf14OutputPath,
+                project with { OutputPdfVersion = PdfOutputVersion.Pdf14 });
+            var pdf14Properties = await PdfDocumentPropertiesService.ReadAsync(
+                pdf14OutputPath,
+                CancellationToken.None);
+            if (pdf14Properties.PdfVersionText != "1.4")
+                throw new InvalidDataException(
+                    $"Selected PDF output version 1.4 was not preserved. Actual: {pdf14Properties.PdfVersionText}");
+            var languageRemovedOutputPath = Path.Combine(
+                Path.GetDirectoryName(outputPath)!,
+                Path.GetFileNameWithoutExtension(outputPath) + ".language-removed.pdf");
+            await new PdfExportService().ExportAsync(
+                outputPath,
+                languageRemovedOutputPath,
+                project with { DocumentLanguage = string.Empty });
+            var languageRemovedProperties = await PdfDocumentPropertiesService.ReadAsync(
+                languageRemovedOutputPath,
+                CancellationToken.None);
+            if (!string.IsNullOrEmpty(languageRemovedProperties.LanguageText))
+                throw new InvalidDataException(
+                    $"Clearing the document language did not remove /Lang. Actual: {languageRemovedProperties.LanguageText}");
+            return (
+                await service.ReadFromPdfAsync(outputPath),
+                await PdfDocumentPropertiesService.ReadAsync(outputPath, CancellationToken.None));
         }).GetAwaiter().GetResult();
         if (actual.Count != 2 ||
             actual[0].Title != "第1章" ||
@@ -1496,9 +1577,22 @@ public partial class App : Application
             actual[0].Children[0].Title != "第1節" ||
             actual[1].Title != "付録")
             throw new InvalidDataException("PDF bookmark round-trip did not preserve hierarchy, title, and destination page.");
+        if (actualMetadata.Title != expectedMetadata.Title ||
+            actualMetadata.Author != expectedMetadata.Author ||
+            actualMetadata.Subject != expectedMetadata.Subject ||
+            actualMetadata.Keywords != expectedMetadata.Keywords ||
+            actualMetadata.Creator != expectedMetadata.Creator ||
+            actualMetadata.Producer != expectedMetadata.Producer)
+            throw new InvalidDataException("PDF document metadata round-trip did not preserve the edited values.");
+        if (actualMetadata.PdfVersionText != "1.5")
+            throw new InvalidDataException(
+                $"Selected PDF output version 1.5 was not preserved. Actual: {actualMetadata.PdfVersionText}");
+        if (actualMetadata.LanguageText != "ja-JP")
+            throw new InvalidDataException(
+                $"Selected document language ja-JP was not preserved. Actual: {actualMetadata.LanguageText}");
         _diagnostics?.Write(
             "bookmark-test.pass",
-            $"Top-level: {actual.Count}; total: {actual.Sum(item => 1 + item.Children.Count)}; output: {outputPath}");
+            $"Top-level: {actual.Count}; total: {actual.Sum(item => 1 + item.Children.Count)}; title: {actualMetadata.Title}; output: {outputPath}");
         Shutdown(0);
     }
 

@@ -60,4 +60,17 @@
           Condition="Exists('..\..\tools\qpdf\licenses')" />
   </ItemGroup>
 
+  <Target Name="PrepareVersionedApplicationManifest"
+          BeforeTargets="_SetEmbeddedWin32ManifestProperties;_SetExternalWin32ManifestProperties"
+          DependsOnTargets="ValidateRepositoryVersion">
+    <PropertyGroup>
+      <ApplicationManifest>$(IntermediateOutputPath)versioned.app.manifest</ApplicationManifest>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/app.manifest" DestinationFiles="$(ApplicationManifest)" />
+    <XmlPoke XmlInputPath="$(ApplicationManifest)"
+             Query="/*[local-name()='assembly']/*[local-name()='assemblyIdentity']/@version"
+             Value="$(FileVersion)" />
+    <ItemGroup><FileWrites Include="$(ApplicationManifest)" /></ItemGroup>
+  </Target>
 </Project>
