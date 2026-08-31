@@ -14,8 +14,13 @@ namespace PdfCorrectorium.App.Services;
 /// </remarks>
 public sealed record ApplicationSettings
 {
+    public const int CurrentFormatVersion = 13;
+    /// <summary>最近開いたファイルの表示件数。0は表示と新規記録を停止します。</summary>
+    public int RecentFileLimit { get; init; } = 10;
     /// <summary>設定ファイルの移行判定に使用する形式バージョンです。</summary>
-    public int FormatVersion { get; init; } = 11;
+    public int FormatVersion { get; init; } = CurrentFormatVersion;
+    /// <summary>文書や編集状態を含まない、名前付きパネル配置です。</summary>
+    public IReadOnlyList<WorkspacePreset> WorkspacePresets { get; init; } = [];
     /// <summary>画面表示に使用する言語コードです。</summary>
     public string UiLanguage { get; init; } = LocalizationService.JapaneseLanguage;
     /// <summary>ツールバーにアイコンだけでなく説明文字も表示するかを指定します。</summary>
@@ -100,7 +105,9 @@ public sealed record ApplicationSettings
     /// </summary>
     public ApplicationSettings Normalize() => this with
     {
-        FormatVersion = 11,
+        FormatVersion = CurrentFormatVersion,
+        RecentFileLimit = Math.Clamp(RecentFileLimit, 0, RecentFilesService.MaximumCount),
+        WorkspacePresets = WorkspacePreset.NormalizeList(WorkspacePresets),
         UiLanguage = string.Equals(UiLanguage, LocalizationService.EnglishLanguage, StringComparison.OrdinalIgnoreCase)
             ? LocalizationService.EnglishLanguage
             : LocalizationService.JapaneseLanguage,
@@ -195,11 +202,7 @@ public sealed class ApplicationSettingsService
     {
         var normalized = settings.Normalize();
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        var temporaryPath = SettingsPath + ".tmp";
-        await File.WriteAllTextAsync(
-            temporaryPath,
-            JsonSerializer.Serialize(normalized, JsonOptions),
-            cancellationToken).ConfigureAwait(false);
-        File.Move(temporaryPath, SettingsPath, overwrite: true);
+        await SettingsTransferService.WriteAtomicallyAsync(SettingsPath,
+            JsonSerializer.Serialize(normalized, JsonOptions), cancellationToken).ConfigureAwait(false);
     }
 }

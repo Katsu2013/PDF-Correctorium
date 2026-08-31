@@ -349,6 +349,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _isolatedExportService = new IsolatedPdfExportService(packages, paths);
         _settingsService = new ApplicationSettingsService(paths);
         _applicationSettings = _settingsService.Load();
+        _recentFilesService = new RecentFilesService(paths);
+        RefreshRecentFiles();
         _packages.BackupGenerationCount = _applicationSettings.BackupGenerationCount;
         _close = close;
         RefreshLocalizedOptions();
@@ -434,6 +436,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(OcrDataSourceText));
         OnPropertyChanged(nameof(OverlaySummary));
         OnPropertyChanged(nameof(EqualizeCharacterAdvancesToolTip));
+        OnPropertyChanged(nameof(PreviousCharacterToolTip));
+        OnPropertyChanged(nameof(NextCharacterToolTip));
+        OnPropertyChanged(nameof(DecreaseCharacterAdvanceToolTip));
+        OnPropertyChanged(nameof(IncreaseCharacterAdvanceToolTip));
         OnPropertyChanged(nameof(RestoreOriginalCharacterAdvancesToolTip));
         OnPropertyChanged(nameof(EstimateCharacterAdvancesToolTip));
         OnPropertyChanged(nameof(EstimateCharacterSuffixAdvancesToolTip));
@@ -557,6 +563,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public PdfOutputVersion CurrentOutputPdfVersion => _project?.OutputPdfVersion ?? PdfOutputVersion.Automatic;
     /// <summary>現在のプロジェクトで編集されたPDF文書全体の言語タグです。</summary>
     public string? CurrentDocumentLanguage => _project?.DocumentLanguage;
+    public string PreviousCharacterToolTip => CharacterShortcutHint("前の文字へ移動", "Previous character", _applicationSettings.PreviousCharacterShortcut);
+    public string NextCharacterToolTip => CharacterShortcutHint("次の文字へ移動", "Next character", _applicationSettings.NextCharacterShortcut);
+    public string DecreaseCharacterAdvanceToolTip => CharacterShortcutHint("選択文字の送り幅を小さくする", "Decrease selected character advance", _applicationSettings.DecreaseCharacterAdvanceShortcut);
+    public string IncreaseCharacterAdvanceToolTip => CharacterShortcutHint("選択文字の送り幅を大きくする", "Increase selected character advance", _applicationSettings.IncreaseCharacterAdvanceShortcut);
+    private static string CharacterShortcutHint(string japanese, string english, string shortcut) =>
+        $"{(LocalizationService.IsEnglish ? english : japanese)} ({DisplayShortcut(shortcut)})";
     public string EqualizeCharacterAdvancesToolTip => LocalizationService.IsEnglish
         ? $"Make all selected lines equal width ({DisplayShortcut(_applicationSettings.EqualizeCharacterAdvancesShortcut)})"
         : $"選択中のすべての行を等幅にする（{DisplayShortcut(_applicationSettings.EqualizeCharacterAdvancesShortcut)}）";
@@ -737,6 +749,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             if (!Set(ref _isOpeningDocument, value)) return;
             OpenPdfCommand.RaiseCanExecuteChanged();
             OpenProjectCommand.RaiseCanExecuteChanged();
+            NotifyRecentFileCommands();
             NotifyReviewState();
         }
     }
@@ -762,7 +775,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public string OcrDataSourceText { get => LocalizationService.Translate(_ocrDataSourceText); private set => Set(ref _ocrDataSourceText, value); }
     public string OverlaySummary { get => LocalizationService.Translate(_overlaySummary); private set => Set(ref _overlaySummary, value); }
     /// <summary>ステータスバーに長時間処理の進捗を表示する場合は<c>true</c>です。</summary>
-    public bool IsBackgroundOperationVisible { get => _isBackgroundOperationVisible; private set => Set(ref _isBackgroundOperationVisible, value); }
+    public bool IsBackgroundOperationVisible { get => _isBackgroundOperationVisible; private set { if (Set(ref _isBackgroundOperationVisible, value)) NotifyRecentFileCommands(); } }
     /// <summary>進捗バーを不確定表示にする場合は<c>true</c>です。</summary>
     public bool IsBackgroundOperationIndeterminate { get => _isBackgroundOperationIndeterminate; private set => Set(ref _isBackgroundOperationIndeterminate, value); }
     /// <summary>長時間処理の進捗率です。処理量を算出できる場合に0～100で更新します。</summary>
@@ -801,7 +814,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         private set { if (Set(ref _isPreviewLoading, value)) NotifyReviewState(); }
     }
     /// <summary>PDFの生成と保存後検証が進行中の場合は<c>true</c>です。</summary>
-    public bool IsPdfExporting { get => _isPdfExporting; private set => Set(ref _isPdfExporting, value); }
+    public bool IsPdfExporting { get => _isPdfExporting; private set { if (Set(ref _isPdfExporting, value)) NotifyRecentFileCommands(); } }
     public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set => Set(ref _isOcrOverlayVisible, value); }
     public int EditorModeIndex
     {
@@ -1057,6 +1070,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             await _settingsService.SaveAsync(normalized);
             var thumbnailVisibilityChanged = _applicationSettings.ShowPageThumbnails != normalized.ShowPageThumbnails;
             _applicationSettings = normalized;
+            RefreshRecentFiles();
             _packages.BackupGenerationCount = normalized.BackupGenerationCount;
             OnPropertyChanged(nameof(CurrentApplicationSettings));
             OnPropertyChanged(nameof(ShowToolbarText));
@@ -1090,6 +1104,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(OcrOverlayBorderBrush));
             OnPropertyChanged(nameof(OcrOverlayTextBrush));
             OnPropertyChanged(nameof(EqualizeCharacterAdvancesToolTip));
+            OnPropertyChanged(nameof(PreviousCharacterToolTip));
+            OnPropertyChanged(nameof(NextCharacterToolTip));
+            OnPropertyChanged(nameof(DecreaseCharacterAdvanceToolTip));
+            OnPropertyChanged(nameof(IncreaseCharacterAdvanceToolTip));
             OnPropertyChanged(nameof(RestoreOriginalCharacterAdvancesToolTip));
             OnPropertyChanged(nameof(EstimateCharacterAdvancesToolTip));
             OnPropertyChanged(nameof(EstimateCharacterSuffixAdvancesToolTip));
@@ -1166,6 +1184,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             return;
 
         _autoSaveInProgress = true;
+        NotifyRecentFileCommands();
         var stateId = _currentEditStateId;
         try
         {
@@ -1187,7 +1206,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = "自動保存に失敗しました。通常保存ファイルは変更されていません。";
             await _log.WriteAsync(LogLevel.Error, "project.autosave.failed", ex.Message, ex);
         }
-        finally { _autoSaveInProgress = false; }
+        finally { _autoSaveInProgress = false; NotifyRecentFileCommands(); }
     }
 
     /// <summary>現在の編集状態を一時パッケージへ保存して、ZIPとJSONの整合性を検証します。</summary>
@@ -1392,6 +1411,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = isProject ? "プロジェクトを検証して開きました。" : "PDFを開きました。編集内容はプロジェクトへ保存してください。";
             await _log.WriteAsync(LogLevel.Information, isProject ? "project.open" : "document.open",
                 $"Opened {Path.GetFileName(fullPath)} with {PageItems.Count} pages");
+            await RecordRecentFileAsync(fullPath);
             return true;
         }
         catch (Exception ex)
@@ -5207,7 +5227,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private static string Abbreviate(string value) => value.Length <= 18 ? value : value[..18] + "…";
 
     private static string DisplayShortcut(string value) =>
-        string.IsNullOrWhiteSpace(value) ? "割り当てなし" : value;
+        string.IsNullOrWhiteSpace(value) ? (LocalizationService.IsEnglish ? "Unassigned" : "割り当てなし") :
+        EditorShortcutService.IsReserved(value) ? (LocalizationService.IsEnglish ? $"Reserved: {value}" : $"予約キーと競合: {value}") : value;
 
     private static Brush CreateBrush(string value, double opacity = 1)
     {

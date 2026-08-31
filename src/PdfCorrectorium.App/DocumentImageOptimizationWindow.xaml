@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PDF全体の画像最適化"
         Width="980" Height="680" MinWidth="760" MinHeight="480"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -19,8 +19,8 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,8">
-            <Button Padding="10,4" Margin="0,0,6,0" Click="SelectAllButton_OnClick" Content="すべて選択" />
-            <Button Padding="10,4" Click="ClearAllButton_OnClick" Content="選択解除" />
+            <Button Padding="10,4" Margin="0,0,6,0" Click="SelectAllButton_OnClick" Content="すべて選択(_A)" AutomationProperties.AccessKey="Alt+A"/>
+            <Button Padding="10,4" Click="ClearAllButton_OnClick" Content="選択解除(_D)" AutomationProperties.AccessKey="Alt+D"/>
             <TextBlock Margin="14,5,0,0" Foreground="#52606D"
                        Text="空白だけの全面画像はページを残し、画像オブジェクトだけを削除します。" />
         </StackPanel>
@@ -28,7 +28,7 @@
         <DataGrid x:Name="CandidateGrid" Grid.Row="2" ItemsSource="{Binding Items}"
                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
                   IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                  SelectionMode="Extended" SelectionUnit="FullRow">
+                  SelectionMode="Extended" SelectionUnit="FullRow" kb:KeyboardAccess.Key="L" AutomationProperties.Name="CandidateGrid" AutomationProperties.AccessKey="Alt+L">
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="対象" Width="54"
                     Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -50,8 +50,8 @@
                        Text="一括適用は選択したページをまとめて登録します。順に確認ではページ画像と削減範囲を1ページずつ確認できます。" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0">
                 <Button Width="90" Margin="0,3,8,3" Padding="8,5" IsCancel="True" Content="キャンセル" />
-                <Button Width="150" Margin="0,3,8,3" Padding="8,5" Click="ReviewButton_OnClick" Content="選択ページを順に確認" />
-                <Button Width="150" Padding="8,5" IsDefault="True" Click="BatchButton_OnClick" Content="選択ページを一括適用" />
+                <Button Margin="0,3,8,3" Padding="8,5" Click="ReviewButton_OnClick" Content="選択ページを順に確認(_R)"  MinWidth="150" AutomationProperties.AccessKey="Alt+R"/>
+                <Button Padding="8,5" IsDefault="True" Click="BatchButton_OnClick" Content="選択ページを一括適用(_P)"  MinWidth="150" AutomationProperties.AccessKey="Alt+P"/>
             </StackPanel>
         </Grid>
     </Grid>

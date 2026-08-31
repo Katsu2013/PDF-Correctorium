@@ -4,8 +4,10 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
 
 namespace PdfCorrectorium.App;
@@ -15,7 +17,7 @@ public partial class App
     private sealed record StartupFileTestResult(
         bool Success, bool HasDocument, bool HasPreview, int Pages, int? SelectedPage,
         string SourcePdfPath, string ProjectPath, int Bookmarks, string? MetadataTitle,
-        bool IsOpening, bool Busy, bool CanOpen, string[] Errors);
+        bool IsOpening, bool Busy, bool CanOpen, string[] Errors, string[] RecentFiles);
 
     /// <summary>通常と同じ起動引数処理を使用し、モーダル表示だけを診断結果への記録に置き換えます。</summary>
     private async Task RunStartupFileTestAsync(MainWindow window, string[] arguments, int optionIndex)
@@ -26,7 +28,14 @@ public partial class App
                 throw new ArgumentException("Use [file] --startup-file-test <new-report-path>.");
             var reportPath = Path.GetFullPath(arguments[optionIndex + 1]);
             if (File.Exists(reportPath)) throw new IOException("The report must not already exist.");
-            var viewModel = (MainWindowViewModel)window.DataContext;
+            // Startup tests must not leave generated fixture paths in the delivered app's history.
+            var state = Path.Combine(Path.GetDirectoryName(reportPath)!, Path.GetFileNameWithoutExtension(reportPath) + "-state");
+            var paths = new ApplicationPaths(StorageMode.Portable, Path.Combine(state, "config"), Path.Combine(state, "logs"),
+                Path.Combine(state, "cache"), Path.Combine(state, "work"));
+            ApplicationPathResolver.EnsureDirectories(paths);
+            var viewModel = new MainWindowViewModel(new ProjectPackageService(), new PdfPreviewService(), new PdfExportService(),
+                new NdlOcrCompanionService(), new DiagnosticLog(paths.LogDirectory), paths, () => { });
+            window.DataContext = viewModel;
             var errors = new List<string>();
             viewModel.ErrorDialogOverride = (message, error) => errors.Add(message + " " + error.Message);
             var success = await OpenStartupFileAsync(window, arguments[..optionIndex]);
@@ -34,7 +43,7 @@ public partial class App
                 viewModel.PageItems.Count, viewModel.SelectedPage?.PageNumber, viewModel.SourcePdfPath,
                 viewModel.ProjectPath, viewModel.BookmarkItems.Count, viewModel.CurrentDocumentMetadata?.Title,
                 viewModel.IsOpeningDocument, viewModel.IsBackgroundOperationVisible,
-                viewModel.OpenPdfCommand.CanExecute(null) && viewModel.OpenProjectCommand.CanExecute(null), errors.ToArray());
+                viewModel.OpenPdfCommand.CanExecute(null) && viewModel.OpenProjectCommand.CanExecute(null), errors.ToArray(), new RecentFilesService(paths).Files.ToArray());
             await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
             Shutdown(0);
         }
@@ -142,6 +151,10 @@ public partial class App
                 Check(!result.IsOpening && !result.Busy && result.CanOpen, item.Name + ": loading ended and Open commands remain usable.");
                 Check(item.Success ? result.Errors.Length == 0 : result.Errors.Length > 0,
                     item.Name + ": errors are reported instead of silently leaving an empty window.");
+                Check(item.Document
+                    ? result.RecentFiles.Length == 1 && result.RecentFiles[0].Equals(Path.GetFullPath(item.Files[0], inputDirectory), StringComparison.OrdinalIgnoreCase)
+                    : result.RecentFiles.Length == 0,
+                    item.Name + ": startup persists only a successfully opened file in recent history.");
                 if (item.Document)
                 {
                     Check(result.Pages == 2 && result.SelectedPage == 1 && File.Exists(result.SourcePdfPath), item.Name + ": two pages loaded and the first page selected.");

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PdfCorrectorium.App.ViewModels"
         Title="PDF Correctorium" Height="850" Width="1400" MinHeight="650" MinWidth="1050"
-        WindowStartupLocation="CenterScreen" PreviewKeyDown="MainWindow_OnPreviewKeyDown" Closing="MainWindow_OnClosing">
+        WindowStartupLocation="CenterScreen" PreviewKeyDown="MainWindow_OnPreviewKeyDown" Closing="MainWindow_OnClosing" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Window.InputBindings>
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}" />
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}" />
@@ -232,86 +232,106 @@
         </HierarchicalDataTemplate>
     </Window.Resources>
     <Grid Background="{StaticResource AppBackgroundBrush}">
-    <DockPanel>
-        <Menu DockPanel.Dock="Top" Background="White" Foreground="{StaticResource PrimaryTextBrush}">
-            <MenuItem Header="ファイル(_F)">
-                <MenuItem Header="PDFを開く..." Command="{Binding OpenPdfCommand}" InputGestureText="Ctrl+O" />
-                <MenuItem Header="プロジェクトを開く..." Command="{Binding OpenProjectCommand}" />
-                <MenuItem Header="NDLOCR-Liteデータを読み込む..." Command="{Binding ImportOcrDataCommand}" />
-                <MenuItem x:Name="DocumentPropertiesMenuItem" Header="文書のプロパティ..." IsEnabled="{Binding HasDocument}" Click="DocumentPropertiesMenuItem_OnClick" />
+    <DockPanel KeyboardNavigation.TabNavigation="Local">
+        <Menu DockPanel.Dock="Top" Background="White" Foreground="{StaticResource PrimaryTextBrush}" KeyboardNavigation.TabIndex="0">
+            <MenuItem Header="ファイル(_F)" SubmenuOpened="FileMenu_OnSubmenuOpened">
+                <MenuItem Header="PDFを開く...(_O)" Command="{Binding OpenPdfCommand}" InputGestureText="Ctrl+O"  AutomationProperties.AccessKey="Alt+O"/>
+                <MenuItem Header="プロジェクトを開く...(_P)" Command="{Binding OpenProjectCommand}"  AutomationProperties.AccessKey="Alt+P"/>
+                <MenuItem x:Name="RecentFilesMenuItem" Header="最近開いたファイル(_R)" AutomationProperties.AccessKey="Alt+R"
+                          ItemsSource="{Binding RecentFiles}" IsEnabled="{Binding CanOpenRecentFiles}"
+                          ToolTip="最近開いたPDF・プロジェクトを開きます。表示件数と履歴クリアは設定画面で変更できます。"
+                          ToolTipService.ShowOnDisabled="True">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="{x:Type MenuItem}">
+                            <Setter Property="Header" Value="{Binding DisplayName}" />
+                            <Setter Property="ToolTip" Value="{Binding FullPath}" />
+                            <Setter Property="Command" Value="{Binding OpenCommand}" />
+                            <Setter Property="AutomationProperties.Name" Value="{Binding FullPath}" />
+                            <Setter Property="HeaderTemplate">
+                                <Setter.Value>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" MaxWidth="600" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
+                <MenuItem Header="NDLOCR-Liteデータを読み込む...(_I)" Command="{Binding ImportOcrDataCommand}"  AutomationProperties.AccessKey="Alt+I"/>
+                <MenuItem x:Name="DocumentPropertiesMenuItem" Header="文書のプロパティ...(_D)" IsEnabled="{Binding HasDocument}" Click="DocumentPropertiesMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+D"/>
                 <Separator />
-                <MenuItem Header="プロジェクトを上書き保存" Command="{Binding SaveProjectCommand}" InputGestureText="Ctrl+S" />
-                <MenuItem Header="プロジェクトを別名で保存..." Command="{Binding SaveProjectAsCommand}" InputGestureText="Ctrl+Shift+S" />
-                <MenuItem Header="編集済みPDFを別名で出力..." Command="{Binding ExportPdfCommand}" />
+                <MenuItem Header="プロジェクトを上書き保存(_S)" Command="{Binding SaveProjectCommand}" InputGestureText="Ctrl+S"  AutomationProperties.AccessKey="Alt+S"/>
+                <MenuItem Header="プロジェクトを別名で保存...(_A)" Command="{Binding SaveProjectAsCommand}" InputGestureText="Ctrl+Shift+S"  AutomationProperties.AccessKey="Alt+A"/>
+                <MenuItem Header="編集済みPDFを別名で出力...(_E)" Command="{Binding ExportPdfCommand}"  AutomationProperties.AccessKey="Alt+E"/>
                 <Separator />
-                <MenuItem Header="終了" Command="{Binding ExitCommand}" />
+                <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}"  AutomationProperties.AccessKey="Alt+X"/>
             </MenuItem>
-            <MenuItem Header="編集(_E)">
-                <MenuItem Header="元に戻す" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}" />
-                <MenuItem Header="やり直す" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}" />
+            <MenuItem Header="編集(_E)" AutomationProperties.AccessKey="Alt+E">
+                <MenuItem Header="元に戻す(_U)" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}"  AutomationProperties.AccessKey="Alt+U"/>
+                <MenuItem Header="やり直す(_R)" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}"  AutomationProperties.AccessKey="Alt+R"/>
                 <Separator />
-                <MenuItem x:Name="FindOcrTextMenuItem" Header="透明テキストを検索..." IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+F" Click="FindOcrTextMenuItem_OnClick" />
-                <MenuItem x:Name="ReplaceOcrTextMenuItem" Header="透明テキストを置換..." IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick" />
+                <MenuItem x:Name="FindOcrTextMenuItem" Header="透明テキストを検索...(_F)" IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+F" Click="FindOcrTextMenuItem_OnClick" />
+                <MenuItem x:Name="ReplaceOcrTextMenuItem" Header="透明テキストを置換...(_H)" IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+H"/>
                 <Separator />
-                <MenuItem x:Name="ApplicationSettingsMenuItem" Header="設定..." Click="ApplicationSettingsMenuItem_OnClick" />
+                <MenuItem x:Name="ApplicationSettingsMenuItem" Header="設定...(_P)" Click="ApplicationSettingsMenuItem_OnClick" />
             </MenuItem>
             <MenuItem x:Name="ViewMenu" Header="表示(_V)">
-                <MenuItem Header="ページ一覧"
+                <MenuItem Header="ページ一覧(_P)"
                           IsCheckable="True"
-                          IsChecked="{Binding ShowPageListPanel, Mode=TwoWay}" />
-                <MenuItem Header="OCRプロパティ"
+                          IsChecked="{Binding ShowPageListPanel, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+P"/>
+                <MenuItem Header="OCRプロパティ(_O)"
                           IsCheckable="True"
-                          IsChecked="{Binding ShowPropertiesPanel, Mode=TwoWay}" />
-                <MenuItem Header="ステータスバー"
+                          IsChecked="{Binding ShowPropertiesPanel, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+O"/>
+                <MenuItem Header="ステータスバー(_S)"
                           IsCheckable="True"
-                          IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" />
+                          IsChecked="{Binding ShowStatusBar, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+S"/>
                 <Separator />
-                <MenuItem Header="プロパティの詳しい説明"
+                <MenuItem Header="プロパティの詳しい説明(_H)"
                           IsCheckable="True"
-                          IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}" />
+                          IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+H"/>
             </MenuItem>
             <MenuItem x:Name="BookmarkMenu" Header="しおり(_B)" IsEnabled="{Binding HasDocument}">
-                <MenuItem Header="現在のページにしおりを追加" Command="{Binding AddBookmarkCommand}" />
-                <MenuItem Header="選択中のしおりへ子しおりを追加" Command="{Binding AddChildBookmarkCommand}" />
-                <MenuItem Header="選択中のしおりを削除" Command="{Binding DeleteBookmarkCommand}" />
+                <MenuItem Header="現在のページにしおりを追加(_A)" Command="{Binding AddBookmarkCommand}"  AutomationProperties.AccessKey="Alt+A"/>
+                <MenuItem Header="選択中のしおりへ子しおりを追加(_C)" Command="{Binding AddChildBookmarkCommand}"  AutomationProperties.AccessKey="Alt+C"/>
+                <MenuItem Header="選択中のしおりを削除(_D)" Command="{Binding DeleteBookmarkCommand}"  AutomationProperties.AccessKey="Alt+D"/>
                 <Separator />
-                <MenuItem Header="しおりをインポート..." Command="{Binding ImportBookmarksCommand}" />
-                <MenuItem Header="しおりをエクスポート..." Command="{Binding ExportBookmarksCommand}" />
+                <MenuItem Header="しおりをインポート...(_I)" Command="{Binding ImportBookmarksCommand}"  AutomationProperties.AccessKey="Alt+I"/>
+                <MenuItem Header="しおりをエクスポート...(_E)" Command="{Binding ExportBookmarksCommand}"  AutomationProperties.AccessKey="Alt+E"/>
             </MenuItem>
             <MenuItem x:Name="OcrMenu" Header="OCR(_O)" IsEnabled="{Binding HasDocument}">
-                <MenuItem Header="透明テキスト領域を追加"
+                <MenuItem Header="透明テキスト領域を追加(_A)"
                           IsEnabled="{Binding CanAddOcrRegion}"
                           IsCheckable="True"
-                          IsChecked="{Binding IsAddOcrRegionMode, Mode=TwoWay}" />
-                <MenuItem Header="選択した透明テキスト領域を削除"
+                          IsChecked="{Binding IsAddOcrRegionMode, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+A"/>
+                <MenuItem Header="選択した透明テキスト領域を削除(_D)"
                           Command="{Binding DeleteOcrRegionsCommand}"
-                          InputGestureText="Delete" />
+                          InputGestureText="Delete"  AutomationProperties.AccessKey="Alt+D"/>
                 <Separator />
-                <MenuItem Header="前処理付き一括自動調整..."
+                <MenuItem Header="前処理付き一括自動調整...(_B)"
                           IsEnabled="{Binding CanEditGeometry}"
-                          Click="BatchCharacterAdjustmentMenuItem_OnClick" />
-                <MenuItem Header="選択領域の編集を他ページへ反映..."
+                          Click="BatchCharacterAdjustmentMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+B"/>
+                <MenuItem Header="選択領域の編集を他ページへ反映...(_R)"
                           IsEnabled="{Binding CanEditGeometry}"
-                          Click="RepeatedRegionPropagationMenuItem_OnClick" />
+                          Click="RepeatedRegionPropagationMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+R"/>
                 <Separator />
-                <MenuItem Header="OCR品質の異常候補..."
+                <MenuItem Header="OCR品質の異常候補...(_E)"
                           Click="OcrQualityAnalysisMenuItem_OnClick" />
             </MenuItem>
             <MenuItem x:Name="PageMenu" Header="ページ(_P)" IsEnabled="{Binding HasDocument}">
-                <MenuItem Header="ページを挿入..." Command="{Binding InsertPagesCommand}" />
-                <MenuItem Header="選択ページを削除" Command="{Binding DeletePagesCommand}" InputGestureText="Delete" />
+                <MenuItem Header="ページを挿入...(_I)" Command="{Binding InsertPagesCommand}"  AutomationProperties.AccessKey="Alt+I"/>
+                <MenuItem Header="選択ページを削除(_D)" Command="{Binding DeletePagesCommand}" InputGestureText="Delete"  AutomationProperties.AccessKey="Alt+D"/>
                 <Separator />
-                <MenuItem Header="選択ページを左へ90°回転" Command="{Binding RotatePagesLeftCommand}" />
-                <MenuItem Header="選択ページを右へ90°回転" Command="{Binding RotatePagesRightCommand}" />
+                <MenuItem Header="選択ページを左へ90°回転(_L)" Command="{Binding RotatePagesLeftCommand}"  AutomationProperties.AccessKey="Alt+L"/>
+                <MenuItem Header="選択ページを右へ90°回転(_R)" Command="{Binding RotatePagesRightCommand}"  AutomationProperties.AccessKey="Alt+R"/>
                 <Separator />
                 <MenuItem Header="{Binding CurrentPageImageOptimizationActionText}"
                           Command="{Binding OptimizeCurrentPageImageCommand}"
                           IsCheckable="True"
                           IsChecked="{Binding IsCurrentPageImageOptimizationEnabled, Mode=OneWay}"
                           ToolTip="ページサイズと内容位置を保ったまま、全面画像の四辺余白、中央空白帯、単一色背景を削減します" />
-                <MenuItem Header="PDF全体の画像を分析・最適化..."
+                <MenuItem Header="PDF全体の画像を分析・最適化...(_O)"
                           Command="{Binding OptimizeDocumentImagesCommand}"
-                          ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します" />
+                          ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します"  AutomationProperties.AccessKey="Alt+O"/>
             </MenuItem>
             <MenuItem x:Name="ValidationMenu" Header="検証(_A)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="現在のプロジェクトを検証(_V)" Click="ValidateProjectMenuItem_OnClick" />
@@ -324,7 +344,7 @@
             </MenuItem>
         </Menu>
 
-        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1">
+        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" KeyboardNavigation.TabIndex="1">
             <ToolBarTray IsLocked="False" Background="{StaticResource ToolbarBrush}">
                 <ToolBar x:Name="MainToolbarPanel" Band="0" BandIndex="0" Padding="4,2" Background="Transparent">
                     <Button Command="{Binding OpenPdfCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="PDFを開く">
@@ -476,7 +496,7 @@
                                  AutomationProperties.Name="現在のページ番号"
                                  GotKeyboardFocus="ToolbarPageNumberBox_OnGotKeyboardFocus"
                                  PreviewKeyDown="ToolbarPageNumberBox_OnPreviewKeyDown"
-                                 LostKeyboardFocus="ToolbarPageNumberBox_OnLostKeyboardFocus" />
+                                 LostKeyboardFocus="ToolbarPageNumberBox_OnLostKeyboardFocus" kb:KeyboardAccess.Key="J" AutomationProperties.AccessKey="Alt+J"/>
                         <TextBlock Text=" / " VerticalAlignment="Center" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding PageItems.Count}" MinWidth="24" VerticalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
@@ -538,12 +558,12 @@
                         </StackPanel>
                     </Button>
                     <Separator Margin="4,0" />
-                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUsePreview}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}">
+                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUsePreview}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
                         <ComboBoxItem Content="行編集" />
                         <ComboBoxItem Content="段落編集" />
                         <ComboBoxItem Content="文字編集" />
                     </ComboBox>
-                    <ComboBox IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}">
+                    <ComboBox IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
                         <ComboBoxItem Content="OCR編集" />
                         <ComboBoxItem Content="読み順編集" />
                         <ComboBoxItem Content="校正・確認" />
@@ -553,7 +573,7 @@
         </Border>
 
         <StatusBar DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                   Visibility="{Binding ShowStatusBar, Converter={StaticResource BooleanToVisibilityConverter}}">
+                   Visibility="{Binding ShowStatusBar, Converter={StaticResource BooleanToVisibilityConverter}}" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
             <StatusBar.ItemsPanel>
                 <ItemsPanelTemplate>
                     <DockPanel LastChildFill="True" />
@@ -598,7 +618,7 @@
                               SelectionChanged="StatusZoomComboBox_OnSelectionChanged"
                               PreviewKeyDown="StatusZoomComboBox_OnPreviewKeyDown"
                               LostKeyboardFocus="StatusZoomComboBox_OnLostKeyboardFocus"
-                              ToolTip="倍率を入力するか、一覧から倍率・表示方法を選択します">
+                              ToolTip="倍率を入力するか、一覧から倍率・表示方法を選択します" kb:KeyboardAccess.Key="Z" AutomationProperties.Name="表示倍率" AutomationProperties.AccessKey="Alt+Z">
                         <ComboBoxItem Content="25%" Tag="25" />
                         <ComboBoxItem Content="50%" Tag="50" />
                         <ComboBoxItem Content="75%" Tag="75" />
@@ -640,7 +660,7 @@
             <StatusBarItem Content="{Binding StatusMessage}" />
         </StatusBar>
 
-        <Grid>
+        <Grid x:Name="WorkspaceLayoutGrid" KeyboardNavigation.TabIndex="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding PageListColumnWidth}" />
                 <ColumnDefinition Width="{Binding PageListSplitterWidth}" />
@@ -650,10 +670,10 @@
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="8,6">
-                <TabControl>
-                    <TabItem Header="ページ" Padding="10,2,10,2" Margin="0,0,0,0">
-                        <DockPanel Margin="4">
-                            <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                <TabControl x:Name="KeyboardNavigationTabs">
+                    <TabItem Header="ページ(_L)" Padding="10,2,10,2" Margin="0,0,0,0" AutomationProperties.AccessKey="Alt+L">
+                        <DockPanel Margin="4" KeyboardNavigation.TabNavigation="Local">
+                            <Grid DockPanel.Dock="Top" Margin="0,0,0,10" KeyboardNavigation.TabIndex="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -665,9 +685,9 @@
                                       Padding="7,3"
                                       ToolTip="ページ画像の表示をオン／オフします" />
                             </Grid>
-                            <Border DockPanel.Dock="Top" Background="#F8F9FA" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="3" Margin="0,0,0,8">
-                                <DockPanel LastChildFill="True">
-                                    <ToolBarTray DockPanel.Dock="Top" IsLocked="True" HorizontalAlignment="Stretch">
+                            <Border DockPanel.Dock="Top" Background="#F8F9FA" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="3" Margin="0,0,0,8" KeyboardNavigation.TabIndex="1">
+                                <DockPanel LastChildFill="True" KeyboardNavigation.TabNavigation="Local">
+                                    <ToolBarTray DockPanel.Dock="Top" IsLocked="True" HorizontalAlignment="Stretch" KeyboardNavigation.TabIndex="0">
                                         <ToolBar x:Name="PageCommandToolBar" Band="0" BandIndex="0" HorizontalAlignment="Stretch">
                                         <Button Command="{Binding InsertPagesCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" ToolTip="選択ページの後へPDFページを追加">
                                             <Viewbox Style="{StaticResource LeftPaneIconViewboxStyle}">
@@ -708,21 +728,21 @@
                                         </Button>
                                         </ToolBar>
                                     </ToolBarTray>
-                                    <Grid Margin="4,3,4,0" Visibility="{Binding ShowPageThumbnails, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <Grid Margin="4,3,4,0" Visibility="{Binding ShowPageThumbnails, Converter={StaticResource BooleanToVisibilityConverter}}" KeyboardNavigation.TabIndex="1">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="小" VerticalAlignment="Center" Foreground="#667085" />
+                                        <Label Content="小" VerticalAlignment="Center" Foreground="#667085"  Padding="0" Target="{Binding ElementName=KeyboardField6}" />
                                         <Slider Grid.Column="1" Minimum="72" Maximum="220" TickFrequency="4"
                                         Value="{Binding PageThumbnailSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                        Margin="5,0" ToolTip="サムネイルの大きさ" />
+                                        Margin="5,0" ToolTip="サムネイルの大きさ"  x:Name="KeyboardField6"/>
                                         <TextBlock Grid.Column="2" Text="大" VerticalAlignment="Center" Foreground="#667085" />
                                     </Grid>
                                 </DockPanel>
                             </Border>
-                            <Grid>
+                            <Grid KeyboardNavigation.TabIndex="2">
                             <ListBox x:Name="PageList"
                              ItemsSource="{Binding PageItems}"
                              SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
@@ -739,17 +759,17 @@
                              HorizontalContentAlignment="Stretch"
                              BorderThickness="0"
                              Background="Transparent"
-                             ItemContainerStyle="{StaticResource PageListItemStyle}">
+                             ItemContainerStyle="{StaticResource PageListItemStyle}" AutomationProperties.Name="ページ一覧">
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="ページを挿入..." Command="{Binding PlacementTarget.DataContext.InsertPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="選択ページを削除" Command="{Binding PlacementTarget.DataContext.DeletePagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" InputGestureText="Delete" />
+                                        <MenuItem Header="ページを挿入...(_I)" Command="{Binding PlacementTarget.DataContext.InsertPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+I"/>
+                                        <MenuItem Header="選択ページを削除(_D)" Command="{Binding PlacementTarget.DataContext.DeletePagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" InputGestureText="Delete"  AutomationProperties.AccessKey="Alt+D"/>
                                         <Separator />
-                                        <MenuItem Header="左へ90°回転" Command="{Binding PlacementTarget.DataContext.RotatePagesLeftCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <MenuItem Header="右へ90°回転" Command="{Binding PlacementTarget.DataContext.RotatePagesRightCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <MenuItem Header="左へ90°回転(_L)" Command="{Binding PlacementTarget.DataContext.RotatePagesLeftCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+L"/>
+                                        <MenuItem Header="右へ90°回転(_R)" Command="{Binding PlacementTarget.DataContext.RotatePagesRightCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+R"/>
                                         <Separator />
-                                        <MenuItem Header="サムネイルを表示" IsCheckable="True"
-                                          IsChecked="{Binding PlacementTarget.DataContext.ShowPageThumbnails, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay}" />
+                                        <MenuItem Header="サムネイルを表示(_T)" IsCheckable="True"
+                                          IsChecked="{Binding PlacementTarget.DataContext.ShowPageThumbnails, RelativeSource={RelativeSource AncestorType=ContextMenu}, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+T"/>
                                     </ContextMenu>
                                 </ListBox.ContextMenu>
                                 <ListBox.ItemTemplate>
@@ -799,9 +819,9 @@
                             </Grid>
                         </DockPanel>
                     </TabItem>
-                    <TabItem Header="しおり" Margin="0,0,0,0" Padding="10,2,10,2">
-                        <DockPanel Margin="4">
-                            <ToolBarTray DockPanel.Dock="Top" IsLocked="True" Margin="0,0,0,8">
+                    <TabItem Header="しおり(_K)" Margin="0,0,0,0" Padding="10,2,10,2" AutomationProperties.AccessKey="Alt+K">
+                        <DockPanel Margin="4" KeyboardNavigation.TabNavigation="Local">
+                            <ToolBarTray DockPanel.Dock="Top" IsLocked="True" Margin="0,0,0,8" KeyboardNavigation.TabIndex="0">
                                 <ToolBar x:Name="BookmarkCommandToolBar" Band="0" BandIndex="0">
                                 <Button Command="{Binding AddBookmarkCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" ToolTip="現在のページにしおりを追加" Margin="2" AutomationProperties.Name="しおりを追加">
                                     <Viewbox Style="{StaticResource LeftPaneIconViewboxStyle}">
@@ -835,7 +855,7 @@
                                 </Button>
                                 </ToolBar>
                             </ToolBarTray>
-                            <ToolBarTray DockPanel.Dock="Bottom" IsLocked="True" Margin="0,8,0,0" Background="{x:Null}">
+                            <ToolBarTray DockPanel.Dock="Bottom" IsLocked="True" Margin="0,8,0,0" Background="{x:Null}" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
                                 <ToolBar x:Name="BookmarkTransferToolBar" Band="0" BandIndex="0" Background="{x:Null}">
                                     <Button Command="{Binding ImportBookmarksCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" Margin="2" ToolTip="しおりをインポート" AutomationProperties.Name="しおりをインポート">
                                         <Viewbox Style="{StaticResource LeftPaneIconViewboxStyle}">
@@ -860,14 +880,14 @@
                                   DragOver="BookmarkTree_OnDragOver"
                                   DragLeave="BookmarkTree_OnDragLeave"
                                   Drop="BookmarkTree_OnDrop"
-                                  ToolTip="選択後にF2、ダブルクリック、または右クリックの［編集］でタイトルを変更できます。">
+                                  ToolTip="選択後にF2、ダブルクリック、または右クリックの［編集］でタイトルを変更できます。" AutomationProperties.Name="しおり" KeyboardNavigation.TabIndex="1">
                                 <TreeView.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="編集" Click="EditBookmarkMenuItem_OnClick" InputGestureText="F2" />
-                                        <MenuItem Header="このしおりへ移動" Click="GoToBookmarkMenuItem_OnClick" />
+                                        <MenuItem Header="編集(_E)" Click="EditBookmarkMenuItem_OnClick" InputGestureText="F2"  AutomationProperties.AccessKey="Alt+E"/>
+                                        <MenuItem Header="このしおりへ移動(_G)" Click="GoToBookmarkMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+G"/>
                                         <Separator />
-                                        <MenuItem Header="子しおりを追加" Click="AddChildBookmarkMenuItem_OnClick" />
-                                        <MenuItem Header="削除" Click="DeleteBookmarkMenuItem_OnClick" />
+                                        <MenuItem Header="子しおりを追加(_C)" Click="AddChildBookmarkMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+C"/>
+                                        <MenuItem Header="削除(_D)" Click="DeleteBookmarkMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+D"/>
                                     </ContextMenu>
                                 </TreeView.ContextMenu>
                                 <TreeView.ItemContainerStyle>
@@ -889,8 +909,8 @@
 
             <Grid Grid.Column="2" Margin="4">
                 <Border Background="{StaticResource CanvasSurroundBrush}" CornerRadius="5">
-                    <DockPanel>
-                        <Grid>
+                    <DockPanel KeyboardNavigation.TabNavigation="Local">
+                        <Grid KeyboardNavigation.TabIndex="0">
                             <ScrollViewer x:Name="PreviewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="4"
                                           PreviewMouseWheel="PreviewScrollViewer_OnPreviewMouseWheel" SizeChanged="PreviewScrollViewer_OnSizeChanged">
                                 <Border x:Name="PreviewPageHost"
@@ -903,31 +923,31 @@
                                     <Border.ContextMenu>
                                         <ContextMenu Opened="PreviewContextMenu_OnOpened"
                                                      IsEnabled="{Binding PlacementTarget.DataContext.CanUsePreview, RelativeSource={RelativeSource Self}}">
-                                            <MenuItem Header="透明テキスト領域を追加"
+                                            <MenuItem Header="透明テキスト領域を追加(_A)"
                                                       Tag="AddOcrRegion"
                                                       IsCheckable="True"
-                                                      Click="PreviewAddOcrRegionMenuItem_OnClick" />
-                                            <MenuItem Header="OCRオーバーレイを表示"
+                                                      Click="PreviewAddOcrRegionMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+A"/>
+                                            <MenuItem Header="OCRオーバーレイを表示(_O)"
                                                       Tag="ToggleOverlay"
                                                       IsCheckable="True"
-                                                      Click="PreviewToggleOverlayMenuItem_OnClick" />
-                                            <MenuItem Header="選択を解除"
-                                                      Click="PreviewClearSelectionMenuItem_OnClick" />
+                                                      Click="PreviewToggleOverlayMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+O"/>
+                                            <MenuItem Header="選択を解除(_D)"
+                                                      Click="PreviewClearSelectionMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+D"/>
                                             <Separator />
-                                            <MenuItem Header="拡大"
+                                            <MenuItem Header="拡大(_I)"
                                                       InputGestureText="Ctrl++"
-                                                      Click="PreviewZoomInMenuItem_OnClick" />
-                                            <MenuItem Header="縮小"
+                                                      Click="PreviewZoomInMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+I"/>
+                                            <MenuItem Header="縮小(_U)"
                                                       InputGestureText="Ctrl+-"
-                                                      Click="PreviewZoomOutMenuItem_OnClick" />
-                                            <MenuItem Header="ページ幅に合わせる"
-                                                      Click="PreviewFitWidthMenuItem_OnClick" />
-                                            <MenuItem Header="100%で表示"
-                                                      Command="{Binding ActualSizeCommand}" />
-                                            <MenuItem Header="ページ高さに合わせる"
-                                                      Click="PreviewFitHeightMenuItem_OnClick" />
-                                            <MenuItem Header="ページ全体を表示"
-                                                      Click="PreviewFitPageMenuItem_OnClick" />
+                                                      Click="PreviewZoomOutMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+U"/>
+                                            <MenuItem Header="ページ幅に合わせる(_W)"
+                                                      Click="PreviewFitWidthMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+W"/>
+                                            <MenuItem Header="100%で表示(_1)"
+                                                      Command="{Binding ActualSizeCommand}"  AutomationProperties.AccessKey="Alt+1"/>
+                                            <MenuItem Header="ページ高さに合わせる(_H)"
+                                                      Click="PreviewFitHeightMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+H"/>
+                                            <MenuItem Header="ページ全体を表示(_F)"
+                                                      Click="PreviewFitPageMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+F"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <Grid Width="{Binding PreviewPixelWidth}" Height="{Binding PreviewPixelHeight}">
@@ -1073,7 +1093,7 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </Grid.Resources>
-                                                        <Border x:Name="RegionBody" ToolTip="{Binding Text}" ClipToBounds="True"
+                                                        <Border x:Name="RegionBody" ToolTip="{Binding Text}" ClipToBounds="True" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 PreviewMouseRightButtonDown="RegionBody_OnPreviewMouseRightButtonDown"
                                                                 MouseLeftButtonDown="RegionBody_OnMouseLeftButtonDown"
                                                                 MouseMove="RegionBody_OnMouseMove"
@@ -1081,53 +1101,53 @@
                                                             <Border.ContextMenu>
                                                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
                                                                              Opened="RegionContextMenu_OnOpened">
-                                                                    <MenuItem Header="文字列を編集"
-                                                                              Click="RegionEditTextMenuItem_OnClick" />
-                                                                    <MenuItem Header="選択セルへ複数文字を入力"
+                                                                    <MenuItem Header="文字列を編集(_E)"
+                                                                              Click="RegionEditTextMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+E"/>
+                                                                    <MenuItem Header="選択セルへ複数文字を入力(_M)"
                                                                               Tag="SplitSelectedCharacter"
-                                                                              Click="RegionSplitCharacterMenuItem_OnClick" />
-                                                                    <MenuItem Header="選択文字を起点にOCR領域を2分割"
+                                                                              Click="RegionSplitCharacterMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+M"/>
+                                                                    <MenuItem Header="選択文字を起点にOCR領域を2分割(_S)"
                                                                               Tag="SplitOcrRegion"
-                                                                              Click="RegionSplitOcrRegionMenuItem_OnClick" />
-                                                                    <MenuItem Header="選択した隣接OCR領域を結合"
+                                                                              Click="RegionSplitOcrRegionMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+S"/>
+                                                                    <MenuItem Header="選択した隣接OCR領域を結合(_J)"
                                                                               Tag="MergeOcrRegions"
-                                                                              Click="RegionMergeOcrRegionsMenuItem_OnClick" />
-                                                                    <MenuItem Header="文字方向">
-                                                                        <MenuItem Header="横書き"
+                                                                              Click="RegionMergeOcrRegionsMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+J"/>
+                                                                    <MenuItem Header="文字方向(_O)" AutomationProperties.AccessKey="Alt+O">
+                                                                        <MenuItem Header="横書き(_H)"
                                                                                   Tag="Horizontal"
-                                                                                  Click="RegionWritingModeMenuItem_OnClick" />
-                                                                        <MenuItem Header="縦書き"
+                                                                                  Click="RegionWritingModeMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+H"/>
+                                                                        <MenuItem Header="縦書き(_V)"
                                                                                   Tag="Vertical"
-                                                                                  Click="RegionWritingModeMenuItem_OnClick" />
+                                                                                  Click="RegionWritingModeMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+V"/>
                                                                     </MenuItem>
-                                                                    <MenuItem Header="確認ステータス">
-                                                                        <MenuItem Header="未確認" Tag="Unreviewed" Click="RegionReviewStatusMenuItem_OnClick" />
-                                                                        <MenuItem Header="確認済み" Tag="Verified" Click="RegionReviewStatusMenuItem_OnClick" />
-                                                                        <MenuItem Header="修正済み" Tag="Modified" Click="RegionReviewStatusMenuItem_OnClick" />
-                                                                        <MenuItem Header="要再確認" Tag="NeedsReview" Click="RegionReviewStatusMenuItem_OnClick" />
-                                                                        <MenuItem Header="OCR対象外" Tag="Excluded" Click="RegionReviewStatusMenuItem_OnClick" />
-                                                                        <MenuItem Header="保留" Tag="Deferred" Click="RegionReviewStatusMenuItem_OnClick" />
+                                                                    <MenuItem Header="確認ステータス(_V)" AutomationProperties.AccessKey="Alt+V">
+                                                                        <MenuItem Header="未確認(_U)" Tag="Unreviewed" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+U"/>
+                                                                        <MenuItem Header="確認済み(_V)" Tag="Verified" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+V"/>
+                                                                        <MenuItem Header="修正済み(_M)" Tag="Modified" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+M"/>
+                                                                        <MenuItem Header="要再確認(_R)" Tag="NeedsReview" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+R"/>
+                                                                        <MenuItem Header="OCR対象外(_E)" Tag="Excluded" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+E"/>
+                                                                        <MenuItem Header="保留(_D)" Tag="Deferred" Click="RegionReviewStatusMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+D"/>
                                                                     </MenuItem>
                                                                     <Separator />
-                                                                    <MenuItem Header="画像から各文字サイズを自動調整"
-                                                                              Click="RegionEstimateCharacterAdvancesMenuItem_OnClick" />
-                                                                    <MenuItem Header="文字サイズを等分"
-                                                                              Click="RegionEqualizeCharacterAdvancesMenuItem_OnClick" />
-                                                                    <MenuItem Header="OCR取込時の文字サイズへ戻す"
-                                                                              Click="RegionRestoreCharacterAdvancesMenuItem_OnClick" />
+                                                                    <MenuItem Header="画像から各文字サイズを自動調整(_A)"
+                                                                              Click="RegionEstimateCharacterAdvancesMenuItem_OnClick" ToolTip="{Binding PlacementTarget.Tag.EstimateCharacterAdvancesToolTip, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+A"/>
+                                                                    <MenuItem Header="文字サイズを等分(_Q)"
+                                                                              Click="RegionEqualizeCharacterAdvancesMenuItem_OnClick" ToolTip="{Binding PlacementTarget.Tag.EqualizeCharacterAdvancesToolTip, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+Q"/>
+                                                                    <MenuItem Header="OCR取込時の文字サイズへ戻す(_R)"
+                                                                              Click="RegionRestoreCharacterAdvancesMenuItem_OnClick" ToolTip="{Binding PlacementTarget.Tag.RestoreOriginalCharacterAdvancesToolTip, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+R"/>
                                                                     <Separator />
-                                                                    <MenuItem Header="領域の位置・サイズを固定／解除"
-                                                                              Click="RegionToggleGeometryLockMenuItem_OnClick" />
-                                                                    <MenuItem Header="選択文字の固定／解除"
-                                                                              Click="RegionToggleSelectedCharacterLockMenuItem_OnClick" />
+                                                                    <MenuItem Header="領域の位置・サイズを固定／解除(_L)"
+                                                                              Click="RegionToggleGeometryLockMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+L"/>
+                                                                    <MenuItem Header="選択文字の固定／解除(_F)"
+                                                                              Click="RegionToggleSelectedCharacterLockMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+F"/>
                                                                     <Separator />
-                                                                    <MenuItem Header="サイズ合わせの基準に設定"
+                                                                    <MenuItem Header="サイズ合わせの基準に設定(_B)"
                                                                               Tag="SetAlignmentReference"
-                                                                              Click="RegionSetAlignmentReferenceMenuItem_OnClick" />
+                                                                              Click="RegionSetAlignmentReferenceMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+B"/>
                                                                     <Separator />
-                                                                    <MenuItem Header="選択したOCR領域を削除"
+                                                                    <MenuItem Header="選択したOCR領域を削除(_D)"
                                                                               InputGestureText="Delete"
-                                                                              Click="RegionDeleteMenuItem_OnClick" />
+                                                                              Click="RegionDeleteMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+D"/>
                                                                 </ContextMenu>
                                                             </Border.ContextMenu>
                                                             <Border.Style>
@@ -1489,7 +1509,7 @@
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
 
             <Border Grid.Column="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,8">
+                <ScrollViewer x:Name="KeyboardPropertiesPane" VerticalScrollBarVisibility="Auto" Padding="12,8" Focusable="False">
                     <StackPanel>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
@@ -1509,14 +1529,16 @@
                             <TextBlock Text="校正・確認" Style="{StaticResource PaneTitleStyle}" />
                             <TextBlock Text="文字と確認ステータスを編集できます。枠の移動・変形操作は無効です。"
                                        TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,5,0,8" />
+                            <Label Content="確認対象の絞り込み(_Q)" Padding="0" Target="{Binding ElementName=ReviewFilterComboBox}" />
                             <ComboBox x:Name="ReviewFilterComboBox" ItemsSource="{Binding ReviewFilterOptions}"
                                       DisplayMemberPath="DisplayName"
-                                      SelectedIndex="{Binding ReviewFilterIndex, Mode=TwoWay}" ToolTip="確認対象の絞り込み" />
+                                      SelectedIndex="{Binding ReviewFilterIndex, Mode=TwoWay}" ToolTip="確認対象の絞り込み" AutomationProperties.AccessKey="Alt+Q"/>
                             <TextBlock Text="{Binding ReviewSummary}" Margin="0,8,0,4" Foreground="{StaticResource SecondaryTextBrush}" />
+                            <Label Content="確認対象(_R)" Padding="0" Target="{Binding ElementName=ReviewTargetList}" />
                             <ListBox x:Name="ReviewTargetList" ItemsSource="{Binding ReviewItems}" MaxHeight="132"
                                      SelectedItem="{Binding SelectedReviewItem, Mode=TwoWay}"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     PreviewMouseLeftButtonDown="ReviewTargetList_OnPreviewMouseLeftButtonDown">
+                                     PreviewMouseLeftButtonDown="ReviewTargetList_OnPreviewMouseLeftButtonDown" AutomationProperties.AccessKey="Alt+R">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <DockPanel Margin="3,4" ToolTip="{Binding Text}">
@@ -1618,21 +1640,21 @@
                                 HorizontalAlignment="Stretch"
                                 Margin="0,0,0,10"
                                 ToolTip="複数選択中は選択した領域をまとめて削除します。Undoで復元できます。" />
-                            <TextBlock Text="確認ステータス" />
+                            <Label Content="確認ステータス(_S)"  Padding="0" Target="{Binding ElementName=KeyboardField1}" />
                             <ComboBox ItemsSource="{Binding ReviewStatusOptions}"
                                   DisplayMemberPath="DisplayName"
                                   SelectedValuePath="Value"
                                   SelectedValue="{Binding SelectedReviewStatus, Mode=TwoWay}"
                                   ToolTip="複数選択中は、選択した全領域へ適用します。"
-                                  Margin="0,3,0,10" />
-                            <TextBlock Text="文字方向" />
+                                  Margin="0,3,0,10"  x:Name="KeyboardField1" AutomationProperties.AccessKey="Alt+S"/>
+                            <Label Content="文字方向(_D)"  Padding="0" Target="{Binding ElementName=KeyboardField2}" />
                             <ComboBox ItemsSource="{Binding WritingModeOptions}"
                                   IsEnabled="{Binding CanEditGeometry}"
                                   DisplayMemberPath="DisplayName"
                                   SelectedValuePath="Value"
                                   SelectedValue="{Binding SelectedWritingMode, Mode=TwoWay}"
                                   ToolTip="横書き／縦書きを切り替えます。複数選択中は選択した全領域へ適用します。"
-                                  Margin="0,3,0,2" />
+                                  Margin="0,3,0,2"  x:Name="KeyboardField2" AutomationProperties.AccessKey="Alt+D"/>
                             <TextBlock Text="方向を切り替えると、行の始点を保ったまま文字の送り方向を変更します。複数領域の方向が混在している場合は未選択表示になります。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="0,0,0,10"
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -1663,14 +1685,14 @@
                                 </Border>
                             </StackPanel>
                             <StackPanel Visibility="{Binding IsLineEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <TextBlock Text="行の文字列" />
+                                <Label Content="行の文字列(_T)"  Padding="0" Target="{Binding ElementName=SelectedLineTextBox}" />
                                 <TextBox x:Name="SelectedLineTextBox"
                                      Text="{Binding SelectedOverlay.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      GotKeyboardFocus="SelectedLineTextBox_OnGotKeyboardFocus"
                                      LostKeyboardFocus="SelectedLineTextBox_OnLostKeyboardFocus"
-                                     AcceptsReturn="True" MinHeight="56" TextWrapping="Wrap" />
+                                     AcceptsReturn="True" MinHeight="56" TextWrapping="Wrap" AutomationProperties.AccessKey="Alt+T"/>
                                 <TextBlock Text="変更前" Margin="0,8,0,0" />
-                                <TextBox Text="{Binding SelectedOverlay.OriginalText, Mode=OneWay}" IsReadOnly="True" Background="#F3F4F6" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding SelectedOverlay.OriginalText, Mode=OneWay}" IsReadOnly="True" Background="#F3F4F6" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Text="行内の全文字サイズ" Margin="0,10,0,0" />
                                 <ToolBarTray IsLocked="True" HorizontalAlignment="Left">
                                     <ToolBar x:Name="LineCharacterSizeToolBar" Band="0" BandIndex="0">
@@ -1715,9 +1737,9 @@
                                        Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </StackPanel>
                             <StackPanel Visibility="{Binding IsParagraphEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <TextBlock Text="段落の文字列（1行につき1つのOCR領域）" />
+                                <Label Content="段落の文字列（1行につき1つのOCR領域）(_T)"  Padding="0" Target="{Binding ElementName=KeyboardField3}" />
                                 <TextBox Text="{Binding SelectedParagraphText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                     AcceptsReturn="True" MinHeight="110" TextWrapping="Wrap" />
+                                     AcceptsReturn="True" MinHeight="110" TextWrapping="Wrap"  x:Name="KeyboardField3" AutomationProperties.AccessKey="Alt+T"/>
                                 <TextBlock Text="段落内の行数は維持したまま編集します。段落全体の移動には矢印キーを使用できます。"
                                        Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                        Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -1726,29 +1748,40 @@
                             </StackPanel>
                             <StackPanel Visibility="{Binding IsCharacterEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <TextBlock Text="行全体" />
-                                <TextBox Text="{Binding SelectedOverlay.Text, Mode=OneWay}" IsReadOnly="True" Background="#F3F4F6" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding SelectedOverlay.Text, Mode=OneWay}" IsReadOnly="True" Background="#F3F4F6" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Text="{Binding CharacterSelectionSummary}" Margin="0,8,0,0" />
+                                <Label Content="選択文字(_C)" Padding="0" Target="{Binding ElementName=SelectedCharacterTextBox}" />
                                 <TextBox x:Name="SelectedCharacterTextBox"
                                      Text="{Binding SelectedCharacterText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                      GotKeyboardFocus="SelectedCharacterTextBox_OnGotKeyboardFocus"
                                      LostKeyboardFocus="SelectedCharacterTextBox_OnLostKeyboardFocus"
-                                     IsEnabled="{Binding HasSingleSelectedCharacter}" FontSize="22" MinHeight="42" HorizontalContentAlignment="Center" />
+                                     IsEnabled="{Binding HasSingleSelectedCharacter}" FontSize="22" MinHeight="42" HorizontalContentAlignment="Center" AutomationProperties.AccessKey="Alt+C"/>
                                 <TextBlock Text="選択した1文字に2文字以上を入力すると、そのセルを入力文字数で分割します。前後の文字送りは維持されます。"
                                      Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                      Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <TextBlock Text="文字の送り幅" Margin="0,8,0,0" />
+                                <Label Content="文字の送り幅(_N)" Margin="0,8,0,0"  Padding="0" Target="{Binding ElementName=SelectedCharacterAdvanceTextBox}" />
                                 <TextBox x:Name="SelectedCharacterAdvanceTextBox"
                                      Text="{Binding SelectedCharacterAdvance, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}"
                                      IsEnabled="{Binding CanEditSelectedCharacterAdvance}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown"
                                      LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus"
                                      PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"
-                                     ToolTip="複数文字を選択している場合、固定されていないすべての選択文字を同じ送り幅へ変更します。" />
+                                     ToolTip="複数文字を選択している場合、固定されていないすべての選択文字を同じ送り幅へ変更します。" AutomationProperties.AccessKey="Alt+N"/>
                                 <TextBlock Text="横書きでは文字幅、縦書きでは文字高さです。複数選択時の数値入力は同じ幅に揃え、終端ハンドルは各文字を同じ量だけ増減します。"
                                         Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                         Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 <TextBlock Text="文字幅の調整" Margin="0,10,0,0" />
                                 <ToolBarTray IsLocked="True" HorizontalAlignment="Left">
-                                    <ToolBar x:Name="CharacterAdjustmentToolBar" Band="0" BandIndex="0">
+                                    <ToolBar x:Name="CharacterNavigationToolBar" Band="0" BandIndex="0">
+                                    <Button Command="{Binding PreviousCharacterCommand}" Style="{StaticResource PropertyIconButtonStyle}"
+                                            Content="←" ToolTip="{Binding PreviousCharacterToolTip}" AutomationProperties.Name="{Binding PreviousCharacterToolTip}" />
+                                    <Button Command="{Binding NextCharacterCommand}" Style="{StaticResource PropertyIconButtonStyle}"
+                                            Content="→" ToolTip="{Binding NextCharacterToolTip}" AutomationProperties.Name="{Binding NextCharacterToolTip}" />
+                                    <Button Command="{Binding DecreaseCharacterAdvanceCommand}" Style="{StaticResource PropertyIconButtonStyle}"
+                                            Content="−" ToolTip="{Binding DecreaseCharacterAdvanceToolTip}" AutomationProperties.Name="{Binding DecreaseCharacterAdvanceToolTip}" />
+                                    <Button Command="{Binding IncreaseCharacterAdvanceCommand}" Style="{StaticResource PropertyIconButtonStyle}"
+                                            Content="＋" ToolTip="{Binding IncreaseCharacterAdvanceToolTip}" AutomationProperties.Name="{Binding IncreaseCharacterAdvanceToolTip}" />
+                                    </ToolBar>
+                                    <ToolBar x:Name="CharacterAdjustmentToolBar" Band="1" BandIndex="0">
                                     <Button Command="{Binding EqualizeCharacterAdvancesCommand}" Style="{StaticResource PropertyIconButtonStyle}"
                                         ToolTip="{Binding EqualizeCharacterAdvancesToolTip}" AutomationProperties.Name="選択した全行の文字幅を等分する">
                                         <Viewbox>
@@ -1819,9 +1852,9 @@
                                        Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                        Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             </StackPanel>
-                            <TextBlock Text="単語ごとの読み方" Margin="0,10,0,0" />
+                            <Label Content="単語ごとの読み方(_I)" Margin="0,10,0,0"  Padding="0" Target="{Binding ElementName=KeyboardField4}" />
                             <TextBox Text="{Binding SelectedOverlay.WordReadingsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                 AcceptsReturn="True" MinHeight="54" TextWrapping="Wrap" />
+                                 AcceptsReturn="True" MinHeight="54" TextWrapping="Wrap"  x:Name="KeyboardField4" AutomationProperties.AccessKey="Alt+I"/>
                             <TextBlock Text="1行に1件、「表記=よみ」で入力します。例: 今日=きょう"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -1860,17 +1893,17 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="X" />
-                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Y" />
-                                <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding SelectedOverlay.Left, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel" />
-                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding SelectedOverlay.Top, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel" />
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="幅" Margin="0,8,0,0" />
-                                <TextBlock Grid.Row="2" Grid.Column="2" Text="高さ" Margin="0,8,0,0" />
-                                <TextBox Grid.Row="3" Grid.Column="0" Text="{Binding SelectedOverlay.Width, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel" />
-                                <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding SelectedOverlay.Height, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel" />
+                                <Label Grid.Row="0" Grid.Column="0" Content="X(_X)" Padding="0" Target="{Binding ElementName=KeyboardX}" />
+                                <Label Grid.Row="0" Grid.Column="2" Content="Y(_Y)" Padding="0" Target="{Binding ElementName=KeyboardY}" />
+                                <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding SelectedOverlay.Left, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"  x:Name="KeyboardX" AutomationProperties.AccessKey="Alt+X"/>
+                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding SelectedOverlay.Top, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"  x:Name="KeyboardY" AutomationProperties.AccessKey="Alt+Y"/>
+                                <Label Grid.Row="2" Grid.Column="0" Content="幅(_W)" Margin="0,8,0,0" Padding="0" Target="{Binding ElementName=KeyboardWidth}" />
+                                <Label Grid.Row="2" Grid.Column="2" Content="高さ(_G)" Margin="0,8,0,0" Padding="0" Target="{Binding ElementName=KeyboardHeight}" />
+                                <TextBox Grid.Row="3" Grid.Column="0" Text="{Binding SelectedOverlay.Width, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"  x:Name="KeyboardWidth" AutomationProperties.AccessKey="Alt+W"/>
+                                <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding SelectedOverlay.Height, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"  x:Name="KeyboardHeight" AutomationProperties.AccessKey="Alt+G"/>
                             </Grid>
-                            <TextBlock Text="回転角度（度）" Margin="0,10,0,0" />
-                            <TextBox IsEnabled="{Binding IsSelectedGeometryEditable}" Text="{Binding SelectedOverlay.RotationDegrees, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel" />
+                            <Label Content="回転角度（度）(_R)" Margin="0,10,0,0"  Padding="0" Target="{Binding ElementName=KeyboardField5}" />
+                            <TextBox IsEnabled="{Binding IsSelectedGeometryEditable}" Text="{Binding SelectedOverlay.RotationDegrees, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown" LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus" PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"  x:Name="KeyboardField5" AutomationProperties.AccessKey="Alt+R"/>
                             <TextBlock Text="数値欄は ↑/↓ またはマウスホイールで1、Ctrl併用で0.1、Shift併用で10ずつ変更できます。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />

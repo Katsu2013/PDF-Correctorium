@@ -1,6 +1,67 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.124
+## Current repository snapshot: v1.0.0-dev.128
+
+### Recent files (2026-09-01)
+
+- Added File > Recent Files for PDFs and projects, newest successful open first, including file-association/startup loading. Duplicate paths are promoted rather than repeated. Reopening uses the existing Save/Discard/Cancel and validated loading pipeline; missing/corrupt files do not replace current edits or change history order. Busy operations disable recent-file commands.
+- Settings > Manage offers a display count (default 10, range 0–30) and confirmed Clear History. Clear is staged until Settings Save succeeds; Cancel leaves history intact. Zero hides and stops recording history without erasing it. Up to 30 paths are retained independently of the display count; reducing/increasing the count hides/restores older entries.
+- History is local configuration (`recent-files.json`, history format 1), not project content or transferable settings. Settings format 13 adds `recentFileLimit`; older settings default to 10. Settings transfer includes the count but never file paths. Atomic history updates and a cross-process lock merge concurrent opens; a stale instance does not restore cleared entries. No PDF/project is deleted by Clear History.
+- Shared UI styles, Japanese/English captions, semantic access keys (Recent R, Count C, History H) and Tab order are included. Added `--recent-files-test`; startup diagnostics now isolate their saved history from the delivered application. See [usage guide](RECENT-FILES.md).
+- Product/numeric versions: 1.0.0-dev.128 / 1.0.0.128. Project format 1.1 and minimum reader dev.123 are unchanged. Git metadata is still unavailable; no Git initialization, commit, push, tag or release is performed.
+
+Final verification: Release solution build succeeded with 0 warnings/errors. 76 recent-file, 79 settings, 3479 keyboard, 139 document-UI, 38 persistence, 69 review, 80 file-launch, 16 contract and 18 version-management checks passed (3994 total). Packaged smoke test exited 0. Japanese/English management screens were visually checked; the screen specification includes a new dev.128 screenshot while preserving dev.127's image. See the [test strategy](outputs/PdfCorrectorium-Documentation/docs/11_Test/11-01_TestStrategy.md) for evidence and UI-test limitations.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.128-win-x64-20260901-020622`. Product version 1.0.0-dev.128, numeric version 1.0.0.128, title/About, saved-manifest application version and folder label agree. SDK 10.0.400; source fingerprint `1481C83A1AAAA5B2BA73D207DA743A8C6291599806650D61707D7A20660D84A5`. Source and binary hashes were checked against build-info.json; previous build folders are unchanged. This feature does not resolve previously identified project/PDF security concerns or other outstanding Version 1.0 scope.
+
+## Previous repository snapshot: v1.0.0-dev.127
+
+### Settings transfer and workspace presets (2026-09-01)
+
+- Added Settings > Manage: export/import validated settings JSON, including all eight custom shortcuts and named layout presets. Import replaces the dialog draft only after confirmation; Save applies it, Cancel leaves the running application unchanged. Export includes pending dialog changes but does not apply them. PDF/project data and local storage paths are not exported.
+- Named presets capture left/right panel widths and visibility, status-bar visibility and thumbnail visibility. Up to 20 presets with 1–64-character names; duplicate names use a confirmed update, deletion is confirmed, and Restore Defaults retains presets. Presets do not change unrelated draft settings, document edits, Undo or manual zoom. Auto-fit still responds to viewport changes. Splitter-adjusted widths are captured and width bindings restored when settings are applied.
+- Reused shared UI styles and Japanese/English labels. The former Storage tab is now a collapsible section in Manage. Semantic access keys and Tab order cover the new controls; existing input shortcuts remain unchanged.
+- Settings format is now 12 with an optional workspacePresets list; existing v11 local settings still load. Transfer envelope format is independently versioned at 1. Imports are bounded to 1 MiB, reject malformed/unsupported data, invalid/reserved/duplicate shortcuts and invalid/duplicate presets. Settings/export writes use unique temporary files and replacement after successful completion.
+- Added permanent --settings-test coverage and extended keyboard diagnostics. See [usage and format guide](SETTINGS-WORKSPACES.md). Freely docking/floating panes, command palettes and shortcut-specific preset libraries remain unimplemented. The previously identified project/PDF security concerns are not fixed by this feature increment.
+- Product/numeric versions: 1.0.0-dev.127 / 1.0.0.127. Project format 1.1 and minimum reader dev.123 are unchanged. Local Git metadata remains unusable; no reinitialization, commits, pushes, tags or releases were performed.
+
+Final verification: Release solution build succeeded with 0 warnings/errors. 79 settings, 3407 keyboard, 16 contract, 18 version-management, 139 document-UI, 38 persistence, 69 review and 67 file-launch checks passed (3833 total). Packaged smoke test exited 0. The Japanese/English settings screens were visually checked. Native file-pickers and confirmation dialogs were not exercised by physical user input; see the [test strategy](outputs/PdfCorrectorium-Documentation/docs/11_Test/11-01_TestStrategy.md) for coverage and limitations.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.127-win-x64-20260901-012101`. Actual binaries, title/About, project-manifest application version and distribution label agree. SDK 10.0.400; source fingerprint `E05EF31CFA030CB242EC7A3EDA45E3F5D4D7AA2BB86B978AEEB3AF80D2C77CBF` matches build-info.json. Previous build folders are unchanged.
+
+## Previous repository snapshot: v1.0.0-dev.126
+
+### Future feature requests recorded (2026-09-01; documentation only)
+
+Recorded [FUT-001–004](outputs/PdfCorrectorium-Documentation/docs/13_Roadmap/13-02_FutureFeatureRequests.md): selectable-color redaction including background image content, text/region-click page navigation, bidirectional visible/invisible text conversion, and selectable editing-preview layouts. These are unimplemented requests, not additions to the current feature list. Link-following versus link-authoring scope, UI details, priorities and release scheduling remain undecided. Proposed acceptance checks are identified separately from the user's requests. No application/build code, version inputs, project format or published binaries changed; no rebuild or GitHub update was performed.
+
+### Semantic access keys (2026-08-31)
+
+- Replaced alphabetical allocation with explicit operation-based mnemonics: Open O, Save S, Save As A, Exit X, Undo U, Redo R, Previous P and Next N. Menu keys are local to their popup, not global Alt shortcuts. Settings Save is Alt+S; OK/Cancel remain unchanged.
+- Reviewed main-window inputs, dialog actions/tabs and context menus in Japanese and English. Conflicts use letters from the operation name, such as aUthor, adVanced and eQualize. Related secondary controls remain reachable by Tab from their group; arbitrary numeric fallbacks were removed.
+- Preserved Tab/F6 navigation and all eight customizable editor-shortcut tooltips. Added semantic mapping assertions, menu-scope checks and loaded-view checks across editor modes to the keyboard diagnostic.
+- Product/numeric versions are `1.0.0-dev.126` / `1.0.0.126`; project format 1.1 and minimum reader dev.123 are unchanged. Local Git metadata remains unusable; no Git initialization, commits, pushes, tags or releases are performed.
+
+Final verification: Release build succeeded with 0 warnings/errors. 3307 keyboard, 16 contract, 18 version-management, 139 document-UI, 38 persistence, 69 review and 67 file-launch checks passed (3654 total). Packaged smoke test exited 0. Actual binaries and the source fingerprint match the publication record.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.126-win-x64-20260831-190003`. Verification details and limitations are recorded in the [test strategy](outputs/PdfCorrectorium-Documentation/docs/11_Test/11-01_TestStrategy.md).
+
+## Previous repository snapshot: v1.0.0-dev.125
+
+### Keyboard accessibility (2026-08-31)
+
+- Added access-key labels and targets to main-window inputs and auxiliary dialogs, mnemonic captions to dialog actions/tabs and menu commands, and lifecycle-managed keys/hints for controls without captions. Existing user document strings and bound text are not rewritten.
+- Added explicit local Tab ordering around bottom-docked action rows, excluded read-only display fields (not result grids), restored keyboard operation of custom expanders, and retained focus feedback in custom controls. F6/Shift+F6 navigates the main workspace regions. OK/Cancel retain their existing Enter/Esc behavior without new mnemonics.
+- All eight configurable editor commands now expose live shortcut tooltips, including unassigned/legacy-conflict states. Character navigation/advance buttons have a separate toolbar row; existing estimation/equalize/restore context-menu tooltips use the same settings.
+- Navigation/access keys and common editing shortcuts are reserved; shortcut recording does not trap Tab/Esc/Enter or Alt+alphanumeric. Focused dropdowns retain Alt+Up/Down. Existing conflicting assignments are reported, not rewritten, and do not override standard operations.
+- Added `--keyboard-test` and [keyboard operation notes](KEYBOARD-ACCESSIBILITY.md). Current product/numeric versions are `1.0.0-dev.125` / `1.0.0.125`; project format 1.1 and minimum reader dev.123 are unchanged. Larger Version 1.0 gaps listed below remain open.
+- Local Git metadata remains unusable. This development change does not create commits, tags, pushes or releases; previous GitHub history/releases are unchanged.
+
+Final verification: Release build succeeded with 0 warnings/errors. 1094 keyboard, 16 contract, 18 version-management, 139 document-UI, 38 persistence, 69 review and 67 file-launch checks passed (1441 total); the packaged smoke test also exited 0. Published binaries, source fingerprint, title/About display and saved-manifest versions were verified.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.125-win-x64-20260831-145843`. Its `build-info.json` records product version `1.0.0-dev.125`, numeric version `1.0.0.125`, SDK 10.0.400 and source/binary hashes. Verification details and keyboard-test limitations are recorded in the [test strategy](outputs/PdfCorrectorium-Documentation/docs/11_Test/11-01_TestStrategy.md).
+
+## Previous repository snapshot: v1.0.0-dev.124
 
 ### Version-management correction (2026-08-30)
 

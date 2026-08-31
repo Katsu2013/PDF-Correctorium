@@ -4,7 +4,7 @@
         Title="透明テキストの検索と置換"
         Width="900" Height="580" MinWidth="720" MinHeight="460"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -21,11 +21,11 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="検索する文字列" VerticalAlignment="Center" />
+            <Label Content="検索する文字列(_F)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=SearchTextBox}" />
             <TextBox x:Name="SearchTextBox" Grid.Column="1" Margin="8,2,8,2" MinHeight="22"
-                     VerticalContentAlignment="Center" KeyDown="SearchTextBox_OnKeyDown" />
-            <Button x:Name="SearchButton" Grid.Column="2" Content="検索" Width="86" MinHeight="22"
-                    IsDefault="True" Click="SearchButton_OnClick" Margin="2,2,2,2" />
+                     VerticalContentAlignment="Center" KeyDown="SearchTextBox_OnKeyDown"  AutomationProperties.AccessKey="Alt+F"/>
+            <Button x:Name="SearchButton" Grid.Column="2" Content="検索(_S)" MinHeight="22"
+                    IsDefault="True" Click="SearchButton_OnClick" Margin="2,2,2,2"  MinWidth="86" AutomationProperties.AccessKey="Alt+S"/>
         </Grid>
 
         <Grid Grid.Row="1" Margin="0,9,0,0">
@@ -34,21 +34,21 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="置換後の文字列" VerticalAlignment="Center" />
+            <Label Content="置換後の文字列(_R)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ReplacementTextBox}" />
             <TextBox x:Name="ReplacementTextBox" Grid.Column="1" Margin="8,2,8,2" MinHeight="22"
-                     VerticalContentAlignment="Center" />
-            <Button x:Name="ReplaceAllButton" Grid.Column="2" Content="すべて置換" Width="86" MinHeight="22"
-                    Click="ReplaceAllButton_OnClick" Margin="2,2,2,2" />
+                     VerticalContentAlignment="Center"  AutomationProperties.AccessKey="Alt+R"/>
+            <Button x:Name="ReplaceAllButton" Grid.Column="2" Content="すべて置換(_A)" MinHeight="22"
+                    Click="ReplaceAllButton_OnClick" Margin="2,2,2,2"  MinWidth="86" AutomationProperties.AccessKey="Alt+A"/>
         </Grid>
 
         <StackPanel Grid.Row="2" Margin="100,10,0,8">
             <WrapPanel>
-                <CheckBox x:Name="MatchCaseCheckBox" Content="大文字と小文字を区別" Margin="0,0,18,0" />
-                <CheckBox x:Name="CurrentPageOnlyCheckBox" Content="現在ページのみ" Margin="0,0,18,0" />
-                <CheckBox x:Name="InvisibleOnlyCheckBox" Content="不可視テキストのみ" IsChecked="True" Margin="0,0,18,0"
-                          ToolTip="オフにすると、PDF内の可視テキストも検索対象になります。" />
-                <CheckBox x:Name="WholeRegionMatchCheckBox" Content="行ブロック全体に一致" Margin="0,0,18,0" />
-                <CheckBox x:Name="UseRegularExpressionCheckBox" Content="正規表現を使用" />
+                <CheckBox x:Name="MatchCaseCheckBox" Content="大文字と小文字を区別(_M)" Margin="0,0,18,0"  AutomationProperties.AccessKey="Alt+M"/>
+                <CheckBox x:Name="CurrentPageOnlyCheckBox" Content="現在ページのみ(_C)" Margin="0,0,18,0"  AutomationProperties.AccessKey="Alt+C"/>
+                <CheckBox x:Name="InvisibleOnlyCheckBox" Content="不可視テキストのみ(_I)" IsChecked="True" Margin="0,0,18,0"
+                          ToolTip="オフにすると、PDF内の可視テキストも検索対象になります。"  AutomationProperties.AccessKey="Alt+I"/>
+                <CheckBox x:Name="WholeRegionMatchCheckBox" Content="行ブロック全体に一致(_W)" Margin="0,0,18,0"  AutomationProperties.AccessKey="Alt+W"/>
+                <CheckBox x:Name="UseRegularExpressionCheckBox" Content="正規表現を使用(_U)"  AutomationProperties.AccessKey="Alt+U"/>
             </WrapPanel>
             <TextBlock Margin="0,5,0,0" Foreground="#6B7280" FontSize="11"
                        Text="正規表現では、置換文字列に $1 などのグループ参照を使用できます。" />
@@ -71,7 +71,7 @@
         </Border>
 
         <Border Grid.Row="4" BorderBrush="#C8CDD3" BorderThickness="1" Background="White">
-            <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False" IsReadOnly="True"
+            <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False" IsReadOnly="True" kb:KeyboardAccess.Key="L" AutomationProperties.Name="検索結果"
                       SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
                       MouseDoubleClick="ResultsGrid_OnMouseDoubleClick"
                       SelectionChanged="ResultsGrid_OnSelectionChanged">
@@ -100,9 +100,9 @@
             <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" Foreground="#4B5563"
                        Text="検索する文字列を入力してください。" />
             <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button Content="前へ" Width="68" Margin="4,0" Click="PreviousButton_OnClick" />
-                <Button Content="次へ" Width="68" Margin="4,0" Click="NextButton_OnClick" />
-                <Button Content="1件置換" Width="78" Margin="12,0,4,0" Click="ReplaceButton_OnClick" />
+                <Button Content="前へ(_P)" Margin="4,0" Click="PreviousButton_OnClick"  MinWidth="68" AutomationProperties.AccessKey="Alt+P"/>
+                <Button Content="次へ(_N)" Margin="4,0" Click="NextButton_OnClick"  MinWidth="68" AutomationProperties.AccessKey="Alt+N"/>
+                <Button Content="1件置換(_E)" Margin="12,0,4,0" Click="ReplaceButton_OnClick"  MinWidth="78" AutomationProperties.AccessKey="Alt+E"/>
                 <Button Content="閉じる" Width="68" Margin="12,0,0,0" IsCancel="True" Click="CloseButton_OnClick" />
             </StackPanel>
         </Grid>

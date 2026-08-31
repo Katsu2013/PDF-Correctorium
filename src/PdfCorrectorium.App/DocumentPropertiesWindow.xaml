@@ -3,9 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="文書のプロパティ"
         Width="900" Height="700" MinWidth="760" MinHeight="560"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Window.Resources>
         <Style x:Key="PropertyLabelStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,3,12,3" />
+        </Style>
+        <Style x:Key="KeyboardPropertyLabelStyle" TargetType="Label">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,3,12,3" />
         </Style>
@@ -49,8 +53,8 @@
         </Border>
 
         <TabControl Grid.Row="1">
-            <TabItem Header="概要">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TabItem Header="概要(_D)" AutomationProperties.AccessKey="Alt+D">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel>
                         <GroupBox Header="概要" Style="{StaticResource SectionGroupStyle}">
                             <Grid>
@@ -71,28 +75,28 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="ファイル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.FileName, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
-                                <TextBlock Grid.Row="1" Text="タイトル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="TitleTextBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
-                                <TextBlock Grid.Row="2" Text="作成者:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="AuthorTextBox" Grid.Row="2" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
-                                <TextBlock Grid.Row="3" Text="件名:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="SubjectTextBox" Grid.Row="3" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
-                                <TextBlock Grid.Row="4" Text="キーワード:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="KeywordsTextBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.FileName, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
+                                <Label Grid.Row="1" Content="タイトル:(_T)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=TitleTextBox}" />
+                                <TextBox x:Name="TitleTextBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+T"/>
+                                <Label Grid.Row="2" Content="作成者:(_U)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=AuthorTextBox}" />
+                                <TextBox x:Name="AuthorTextBox" Grid.Row="2" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+U"/>
+                                <Label Grid.Row="3" Content="件名:(_B)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=SubjectTextBox}" />
+                                <TextBox x:Name="SubjectTextBox" Grid.Row="3" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+B"/>
+                                <Label Grid.Row="4" Content="キーワード:(_K)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=KeywordsTextBox}" />
+                                <TextBox x:Name="KeywordsTextBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+K"/>
                                 <TextBlock Grid.Row="5" Text="作成日:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding PdfProperties.CreationDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding PdfProperties.CreationDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="6" Text="更新日:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PdfProperties.ModifiedDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
-                                <TextBlock Grid.Row="7" Text="アプリケーション:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="CreatorTextBox" Grid.Row="7" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
-                                <TextBlock Grid.Row="8" Text="PDF変換:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox x:Name="ProducerTextBox" Grid.Row="8" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" />
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PdfProperties.ModifiedDateText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
+                                <Label Grid.Row="7" Content="アプリケーション:(_R)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=CreatorTextBox}" />
+                                <TextBox x:Name="CreatorTextBox" Grid.Row="7" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+R"/>
+                                <Label Grid.Row="8" Content="PDF変換:(_P)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=ProducerTextBox}" />
+                                <TextBox x:Name="ProducerTextBox" Grid.Row="8" Grid.Column="1" Style="{StaticResource EditablePropertyValueStyle}" AutomationProperties.AccessKey="Alt+P"/>
                                 <TextBlock Grid.Row="9" Text="読み込み状態:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="9" Grid.Column="1"
                                          Text="{Binding PdfProperties.ErrorMessage, Mode=OneWay}"
                                          Style="{StaticResource PropertyValueStyle}"
-                                         TextWrapping="Wrap" />
+                                         TextWrapping="Wrap"  IsTabStop="False"/>
                             </Grid>
                         </GroupBox>
 
@@ -111,25 +115,25 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="元PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.PdfVersionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.PdfVersionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Column="2" Text="ページ数:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="3" Text="{Binding PdfProperties.PageCountText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Column="3" Text="{Binding PdfProperties.PageCountText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="1" Text="場所:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
                                          Text="{Binding PdfProperties.FileLocation, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"
-                                         TextWrapping="Wrap" />
+                                         TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="2" Text="ファイルサイズ:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.FileSizeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.FileSizeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="2" Grid.Column="2" Text="ページサイズ:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding PdfProperties.PageSizeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding PdfProperties.PageSizeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="3" Text="タグ付きPDF:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PdfProperties.TaggedPdfText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PdfProperties.TaggedPdfText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="3" Grid.Column="2" Text="Web表示用に最適化:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding PdfProperties.FastWebViewText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding PdfProperties.FastWebViewText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </GroupBox>
 
-                        <Expander Header="PDF Correctorium プロジェクト情報" Margin="8" IsExpanded="False">
+                        <Expander Header="PDF Correctorium プロジェクト情報(_I)" Margin="8" IsExpanded="False" AutomationProperties.AccessKey="Alt+I">
                             <Grid Margin="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="145" />
@@ -143,23 +147,23 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="元PDF:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding SourcePdfPath, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap" />
+                                <TextBox Grid.Column="1" Text="{Binding SourcePdfPath, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="1" Text="プロジェクトファイル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProjectPath, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProjectPath, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="2" Text="元PDFのSHA-256:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SourceHash, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SourceHash, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="3" Text="OCRデータソース:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding OcrDataSourceText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding OcrDataSourceText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="4" Text="保存モード:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding StorageModeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding StorageModeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </Expander>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="セキュリティ">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TabItem Header="セキュリティ(_S)" AutomationProperties.AccessKey="Alt+S">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel>
                         <GroupBox Header="文書のセキュリティ" Style="{StaticResource SectionGroupStyle}">
                             <Grid>
@@ -172,9 +176,9 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="セキュリティ方法:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.SecurityMethodText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.SecurityMethodText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="1" Text="互換性のあるバージョン:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.CompatibleVersionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.CompatibleVersionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </GroupBox>
 
@@ -192,30 +196,30 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="印刷:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.PrintPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.PrintPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="1" Text="文書アセンブリ:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.AssemblyPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.AssemblyPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="2" Text="内容のコピー:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.CopyPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.CopyPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="3" Text="アクセシビリティのための内容の抽出:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PdfProperties.AccessibilityPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PdfProperties.AccessibilityPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="4" Text="ページの抽出:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding PdfProperties.ExtractPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding PdfProperties.ExtractPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="5" Text="注釈:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding PdfProperties.AnnotatePermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding PdfProperties.AnnotatePermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="6" Text="フォームフィールドの入力:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PdfProperties.FormFillPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding PdfProperties.FormFillPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="7" Text="署名:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding PdfProperties.SignPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding PdfProperties.SignPermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="8" Text="テンプレートページの作成:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding PdfProperties.TemplatePermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding PdfProperties.TemplatePermissionText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </GroupBox>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="フォント">
+            <TabItem Header="フォント(_F)" AutomationProperties.AccessKey="Alt+F">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -223,7 +227,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="この文書で使用しているフォント" FontWeight="SemiBold" Margin="0,0,0,8" />
-                    <ListBox Grid.Row="1" ItemsSource="{Binding PdfProperties.Fonts}">
+                    <ListBox Grid.Row="1" ItemsSource="{Binding PdfProperties.Fonts}" kb:KeyboardAccess.Key="L" AutomationProperties.Name="ListBox" AutomationProperties.AccessKey="Alt+L">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Expander Header="{Binding Name}" IsExpanded="True" Margin="2">
@@ -254,7 +258,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="カスタム">
+            <TabItem Header="カスタム(_C)" AutomationProperties.AccessKey="Alt+C">
                 <Grid Margin="20">
                     <Border BorderBrush="#D0D5DD" BorderThickness="1" Padding="20" VerticalAlignment="Top">
                         <StackPanel>
@@ -266,8 +270,8 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="詳細設定">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TabItem Header="詳細設定(_V)" AutomationProperties.AccessKey="Alt+V">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel>
                         <GroupBox Header="PDF設定" Style="{StaticResource SectionGroupStyle}">
                             <Grid>
@@ -279,11 +283,11 @@
                                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="ベースURL:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.BaseUrl, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Column="1" Text="{Binding PdfProperties.BaseUrl, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="1" Text="検索用インデックスファイル:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.SearchIndexFile, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PdfProperties.SearchIndexFile, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="2" Text="トラッピング:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.TrappingText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PdfProperties.TrappingText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </GroupBox>
 
@@ -300,9 +304,9 @@
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="元PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Column="1" Text="{Binding PdfProperties.PdfVersionText, Mode=OneWay}"
-                                         Style="{StaticResource PropertyValueStyle}" />
-                                <TextBlock Grid.Row="1" Text="出力PDFのバージョン:" Style="{StaticResource PropertyLabelStyle}" />
-                                <ComboBox x:Name="OutputPdfVersionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="260">
+                                         Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
+                                <Label Grid.Row="1" Content="出力PDFのバージョン:(_O)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=OutputPdfVersionComboBox}" />
+                                <ComboBox x:Name="OutputPdfVersionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="260" AutomationProperties.AccessKey="Alt+O">
                                     <ComboBoxItem Content="自動（推奨）" Tag="Automatic" />
                                     <ComboBoxItem Content="PDF 1.4（Acrobat 5.x）" Tag="Pdf14" />
                                     <ComboBoxItem Content="PDF 1.5（Acrobat 6.x）" Tag="Pdf15" />
@@ -326,19 +330,19 @@
                                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="ページレイアウト:" Style="{StaticResource PropertyLabelStyle}" />
-                                <ComboBox x:Name="PageModeComboBox" Grid.Column="1" MinWidth="230">
+                                <Label Content="ページレイアウト:(_P)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=PageModeComboBox}" />
+                                <ComboBox x:Name="PageModeComboBox" Grid.Column="1" MinWidth="230" AutomationProperties.AccessKey="Alt+P">
                                     <ComboBoxItem Content="1ページ" Tag="SinglePage" />
                                     <ComboBoxItem Content="連続ページ" Tag="Continuous" />
                                     <ComboBoxItem Content="見開き" Tag="FacingPages" />
                                 </ComboBox>
-                                <TextBlock Grid.Row="1" Text="綴じ方向:" Style="{StaticResource PropertyLabelStyle}" />
-                                <ComboBox x:Name="BindingDirectionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="300">
+                                <Label Grid.Row="1" Content="綴じ方向:(_B)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=BindingDirectionComboBox}" />
+                                <ComboBox x:Name="BindingDirectionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="300" AutomationProperties.AccessKey="Alt+B">
                                     <ComboBoxItem Content="左綴じ（右開き・左から右）" Tag="LeftToRight" />
                                     <ComboBoxItem Content="右綴じ（左開き・右から左）" Tag="RightToLeft" />
                                 </ComboBox>
                                 <CheckBox x:Name="ShowCoverSeparatelyCheckBox" Grid.Row="2" Grid.Column="1"
-                                          Content="見開き時に1ページ目を表紙として単独表示する" Margin="0,8,0,0" />
+ Content="見開き時に1ページ目を表紙として単独表示する(_H)" Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+H"/>
                                 <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Margin="0,12,0,0"
                                            Foreground="#667085" TextWrapping="Wrap"
                                            Text="右開きは左綴じ（/L2R）、左開きは右綴じ（/R2L）です。PDFの言語設定は綴じ方向を変更しません。この値はビューアへの初期表示指定であり、ビューア側の設定が優先される場合があります。" />
@@ -373,9 +377,9 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="文書の言語:" Style="{StaticResource PropertyLabelStyle}" />
+                                <Label Content="文書の言語:(_L)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=DocumentLanguageComboBox}" />
                                 <ComboBox x:Name="DocumentLanguageComboBox" Grid.Column="1" MinWidth="260"
-                                          IsEditable="True" IsTextSearchEnabled="False">
+                                          IsEditable="True" IsTextSearchEnabled="False" AutomationProperties.AccessKey="Alt+L">
                                     <ComboBoxItem Content="ja-JP" />
                                     <ComboBoxItem Content="en-US" />
                                     <ComboBoxItem Content="zh-CN" />
@@ -397,7 +401,7 @@
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="キャンセル" MinWidth="105" Padding="14,6" IsCancel="True" Margin="0,0,8,0" />
-            <Button Content="適用" MinWidth="105" Padding="14,6" IsDefault="True" Click="ApplyButton_OnClick" />
+            <Button Content="適用(_A)" MinWidth="105" Padding="14,6" IsDefault="True" Click="ApplyButton_OnClick" AutomationProperties.AccessKey="Alt+A"/>
         </StackPanel>
     </Grid>
 </Window>

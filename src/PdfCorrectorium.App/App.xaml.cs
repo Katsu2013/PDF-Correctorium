@@ -50,6 +50,9 @@ public partial class App : Application
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--settings-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--recent-files-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--review-mode-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--persistence-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--startup-file-test", StringComparer.OrdinalIgnoreCase) ||
@@ -152,6 +155,24 @@ public partial class App : Application
             }
 
             var documentUiTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--document-ui-test", StringComparison.OrdinalIgnoreCase));
+            var keyboardTestIndex = Array.FindIndex(e.Args, value => value.Equals("--keyboard-test", StringComparison.OrdinalIgnoreCase));
+            var settingsTestIndex = Array.FindIndex(e.Args, value => value.Equals("--settings-test", StringComparison.OrdinalIgnoreCase));
+            var recentFilesTestIndex = Array.FindIndex(e.Args, value => value.Equals("--recent-files-test", StringComparison.OrdinalIgnoreCase));
+            if (recentFilesTestIndex >= 0)
+            {
+                await RunRecentFilesTestAsync(window, e.Args, recentFilesTestIndex);
+                return;
+            }
+            if (settingsTestIndex >= 0)
+            {
+                await RunSettingsTestAsync(window, e.Args, settingsTestIndex);
+                return;
+            }
+            if (keyboardTestIndex >= 0)
+            {
+                await RunKeyboardTestAsync(window, e.Args, keyboardTestIndex);
+                return;
+            }
             if (documentUiTestIndex >= 0)
             {
                 RunDocumentUiTest(window, e.Args, documentUiTestIndex);
@@ -306,7 +327,7 @@ public partial class App : Application
             normalizedSettings.ToolbarButtonSize != 64 || normalizedSettings.PageListWidth != 160 ||
             normalizedSettings.PropertiesPanelWidth != 600 || normalizedSettings.PageThumbnailSize != 220 ||
             normalizedSettings.CharacterCellBorderThickness != 2.0 ||
-            normalizedSettings.FormatVersion != 11)
+            normalizedSettings.FormatVersion != ApplicationSettings.CurrentFormatVersion)
             throw new InvalidOperationException("Application settings limits were not normalized.");
         if (!EditorShortcutService.Matches(Key.Right, ModifierKeys.Alt, normalizedSettings.NextCharacterShortcut) ||
             !EditorShortcutService.Matches(Key.A, ModifierKeys.Control | ModifierKeys.Shift, normalizedSettings.EstimateCharacterAdvancesShortcut) ||

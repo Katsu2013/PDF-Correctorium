@@ -27,7 +27,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.124`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.128`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -40,6 +40,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - ポータブル版とインストール版それぞれのデータ保存先の解決
 - 構造化された診断ログの基盤
 - PDFとプロジェクトを開くWPFアプリケーション画面
+- 最近開いたPDF・プロジェクトの一覧から再読み込み、表示件数の設定、履歴クリア
 - PDFiumによるローカルでのページ描画と、スクロール可能なプレビュー
 - ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転
 - プロジェクト外部のPDFと、プロジェクトに埋め込まれたPDFのプレビュー
@@ -70,11 +71,25 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ページ構成変更の「元に戻す」、外部サービス連携／アプリ内でのOCR実行、ルビ・コメント・タグ・差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
 
+## 最近開いたファイル
+
+「ファイル → 最近開いたファイル」から、PDFやプロジェクトを新しい順の一覧から開けます。「編集 → 設定 → 管理」で表示件数（既定10件、0～30件）と履歴クリアを設定できます。0件では表示・記録を停止し、履歴クリアは「保存」で確定します。PDFやプロジェクト自体は削除しません。履歴は設定の書き出しに含めません。詳しくは[操作ガイド](RECENT-FILES.md)を参照してください。
+
+## 設定の持ち運び・配置プリセット
+
+「編集 → 設定 → 管理」から、設定とショートカットのJSON書き出し・取り込み、パネル幅・表示状態の名前付きプリセットを利用できます。最大20件のプリセットを登録・更新・削除できます。取り込みや配置の適用は「保存」で確定し、「キャンセル」で破棄します。PDFの編集内容や手動倍率は変更しません。詳しくは[操作ガイド](SETTINGS-WORKSPACES.md)を参照してください。
+
 ## 表示言語
 
 画面表示は日本語（`ja-JP`）と英語（`en-US`）に対応しています。設定画面の「表示」タブで変更できます。メイン画面、メニュー、ツールチップ、プロパティの項目名、ページ名、確認状態や文字方向の選択肢、主要なダイアログへ即座に反映され、次回起動時も選択した言語を使用します。
 
 言語の切り替え対象はアプリの画面表示だけです。元PDF、取り込んだOCRデータ、コメント、しおり、プロジェクト内容の文字列を翻訳・書き換えすることはありません。
+
+## キーボード操作
+
+アクセスキーは連番ではなく、Open=O、Save=S、Save As=Aなど操作名に基づいて割り当てます。ファイルメニューの操作例はAlt+F → O（PDFを開く）です。設定画面の保存はAlt+Sで実行できます。
+
+入力項目・ボタン・タブの末尾に表示する英数字はAltアクセスキーです。Tab／Shift+Tabで部品を移動し、メイン画面ではF6／Shift+F6で主要な領域を移動できます。OK・キャンセルにはアクセスキーを追加しません。設定で変更可能な8種類の編集ショートカットは、現在のキーまたは割り当てなしをツールチップへ表示します。詳しくは[キーボード操作ガイド](KEYBOARD-ACCESSIBILITY.md)を参照してください。
 
 ## 校正・確認モード
 
@@ -90,7 +105,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン124では、ソリューション全体の製品バージョンが`1.0.0-dev.124`、アセンブリ／ファイルバージョンが`1.0.0.124`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン128では、ソリューション全体の製品バージョンが`1.0.0-dev.128`、アセンブリ／ファイルバージョンが`1.0.0.128`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
 変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.1、読み込みに必要な最小版はdev.123のままです。この変更時点の作業フォルダーではGit管理情報を利用できませんでした。ローカルのビルド記録はGit履歴の代わりにはなりません。
 
@@ -191,7 +206,7 @@ This is a development version. Some features, including running new OCR on image
 
 ## Current milestone
 
-The current repository snapshot corresponds to the `v1.0.0-dev.124` development line. It includes:
+The current repository snapshot corresponds to the `v1.0.0-dev.128` development line. It includes:
 
 - C# / .NET 8 / WPF solution structure
 - Core OCR region model with vertical/horizontal writing and independent rotation
@@ -234,11 +249,25 @@ Autosave runs at the configured interval or after about 30 seconds without input
 
 Page-structure Undo, external/in-app OCR, ruby/comments/tags/diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
 
+## Recent files
+
+Use File > Recent Files to reopen PDFs and projects in most-recently-opened order. Edit > Settings > Manage provides the display count (default 10, range 0–30) and Clear History. Zero stops displaying and recording history; clearing takes effect only on Settings Save, and never deletes documents. File paths are excluded from settings export. See the [usage guide (Japanese)](RECENT-FILES.md).
+
+## Settings transfer and workspace presets
+
+Use Edit > Settings > Manage to export/import settings and custom shortcuts as JSON, and register up to 20 named panel-layout presets. Import/apply updates the dialog draft; Save commits changes and Cancel discards them. Document edits and manual zoom are preserved. Storage information is now a collapsible section in Manage. See the [usage and format guide (Japanese)](SETTINGS-WORKSPACES.md).
+
 ## Display language
 
 The application UI supports Japanese (`ja-JP`) and English (`en-US`). Change the language from the Display tab in the application settings window. The main window, menus, tooltips, property labels, page names, status choices, writing-direction choices, and principal dialogs update immediately; the selection is restored the next time the application starts.
 
 Localization affects application chrome only. It never translates or rewrites text contained in the source PDF, imported OCR data, comments, bookmarks, or project content.
+
+## Keyboard navigation
+
+Mnemonics follow operation names, such as Open=O, Save=S and Save As=A, rather than alphabetical allocation. Menu mnemonics are scoped to their popup: use Alt+F, then O to open a PDF. Settings uses Alt+S for Save.
+
+The letters or digits shown after input labels, actions, and tab captions are Alt access keys. Use Tab/Shift+Tab to move between controls and F6/Shift+F6 to move between main workspace panes. OK/Cancel do not receive new mnemonics. All eight customizable editing commands show their current shortcut or unassigned state in tooltips. See the [keyboard operation guide (Japanese)](KEYBOARD-ACCESSIBILITY.md) for details and limitations.
 
 ## Proofreading / review mode
 
@@ -254,7 +283,7 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 124 produces product version `1.0.0-dev.124` and assembly/file version `1.0.0.124` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 128 produces product version `1.0.0-dev.128` and assembly/file version `1.0.0.128` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
 Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format remains 1.1; its minimum reader remains dev.123. Git metadata was unavailable in this working folder at the time of this change; local build records are not a substitute for Git history.
 

@@ -2,23 +2,23 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="反映候補の確認" Width="1180" Height="720" MinWidth="900" MinHeight="560"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
-    <DockPanel Margin="16">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
+    <DockPanel Margin="16" KeyboardNavigation.TabNavigation="Local">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10" KeyboardNavigation.TabNavigation="Local" KeyboardNavigation.TabIndex="0">
             <TextBlock Text="反映するページを確認してください" FontSize="18" FontWeight="SemiBold" />
             <TextBlock Margin="0,5,0,0" Foreground="#52606D" TextWrapping="Wrap"
                        Text="一覧で候補を選ぶと、右側に実際のページ画像と反映対象の位置を表示します。チェックした候補だけを変更し、固定済みの領域は対象外にします。" />
         </StackPanel>
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="すべて選択" Margin="0,3,6,3" Click="SelectAll_OnClick" />
-            <Button Content="すべて解除" Margin="0,3,18,3" Click="ClearAll_OnClick" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
+            <Button Content="すべて選択(_A)" Margin="0,3,6,3" Click="SelectAll_OnClick"  AutomationProperties.AccessKey="Alt+A"/>
+            <Button Content="すべて解除(_D)" Margin="0,3,18,3" Click="ClearAll_OnClick" AutomationProperties.AccessKey="Alt+D"/>
             <Button Content="キャンセル" IsCancel="True" Width="100" Margin="0,3,8,3" />
-            <Button Content="選択した候補へ反映" IsDefault="True" MinWidth="160"
-                    Click="ApplyButton_OnClick" />
+            <Button Content="選択した候補へ反映(_R)" IsDefault="True" MinWidth="160"
+                    Click="ApplyButton_OnClick" AutomationProperties.AccessKey="Alt+R"/>
         </StackPanel>
 
-        <Grid>
+<Grid KeyboardNavigation.TabNavigation="Local" KeyboardNavigation.TabIndex="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1.15*" MinWidth="430" />
                 <ColumnDefinition Width="12" />
@@ -29,7 +29,7 @@
                       IsReadOnly="False" SelectionMode="Single" SelectionUnit="FullRow"
                       HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                       SelectionChanged="CandidateGrid_OnSelectionChanged"
-                      MouseDoubleClick="CandidateGrid_OnMouseDoubleClick">
+                      MouseDoubleClick="CandidateGrid_OnMouseDoubleClick" kb:KeyboardAccess.Key="L" AutomationProperties.Name="CandidateGrid" AutomationProperties.AccessKey="Alt+L">
                 <DataGrid.Columns>
                     <DataGridCheckBoxColumn Header="反映" Binding="{Binding IsSelected, Mode=TwoWay}" Width="58" />
                     <DataGridTextColumn Header="ページ" Binding="{Binding PageDisplay}" IsReadOnly="True" Width="86" />
@@ -59,8 +59,8 @@
                             <TextBlock x:Name="CandidateDetailsText" Margin="0,3,0,0" Foreground="#52606D" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Content="前の候補" ToolTip="前の候補" Click="PreviousCandidate_OnClick" />
-                            <Button Content="次の候補" ToolTip="次の候補" Click="NextCandidate_OnClick" />
+                            <Button Content="前の候補(_P)" ToolTip="前の候補" Click="PreviousCandidate_OnClick" AutomationProperties.AccessKey="Alt+P"/>
+                            <Button Content="次の候補(_N)" ToolTip="次の候補" Click="NextCandidate_OnClick" AutomationProperties.AccessKey="Alt+N"/>
                         </StackPanel>
                     </Grid>
 
@@ -77,17 +77,17 @@
                                           MinWidth="70" Click="AfterPreviewButton_OnClick" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="−" Width="30" Height="28" Padding="0" ToolTip="縮小"
-                                    Click="ZoomOutButton_OnClick" />
+                            <Button Content="−(_O)" Height="28" Padding="0" ToolTip="縮小"
+                                    Click="ZoomOutButton_OnClick"  MinWidth="30" AutomationProperties.AccessKey="Alt+O"/>
                             <Slider x:Name="PreviewZoomSlider" Width="100" Margin="5,0"
                                     Minimum="25" Maximum="400" Value="100" TickFrequency="25"
-                                    IsSnapToTickEnabled="False" ValueChanged="PreviewZoomSlider_OnValueChanged" />
-                            <Button Content="＋" Width="30" Height="28" Padding="0" ToolTip="拡大"
-                                    Click="ZoomInButton_OnClick" />
+                                    IsSnapToTickEnabled="False" ValueChanged="PreviewZoomSlider_OnValueChanged" kb:KeyboardAccess.Key="Z" AutomationProperties.Name="PreviewZoomSlider" AutomationProperties.AccessKey="Alt+Z"/>
+                            <Button Content="＋(_I)" Height="28" Padding="0" ToolTip="拡大"
+                                    Click="ZoomInButton_OnClick"  MinWidth="30" AutomationProperties.AccessKey="Alt+I"/>
                             <TextBlock x:Name="PreviewZoomText" Width="48" Margin="6,0,0,0"
                                        Text="100%" TextAlignment="Right" VerticalAlignment="Center" />
-                            <Button Content="全体" Margin="5,0,0,0" Padding="8,3" ToolTip="ページ全体を表示"
-                                    Click="FitPreviewButton_OnClick" />
+                            <Button Content="全体(_F)" Margin="5,0,0,0" Padding="8,3" ToolTip="ページ全体を表示"
+                                    Click="FitPreviewButton_OnClick" AutomationProperties.AccessKey="Alt+F"/>
                         </StackPanel>
                     </Grid>
 
@@ -97,7 +97,7 @@
                                           HorizontalScrollBarVisibility="Auto"
                                           VerticalScrollBarVisibility="Auto"
                                           PreviewMouseWheel="CandidatePreviewScrollViewer_OnPreviewMouseWheel"
-                                          SizeChanged="CandidatePreviewScrollViewer_OnSizeChanged">
+                                          SizeChanged="CandidatePreviewScrollViewer_OnSizeChanged" Focusable="False">
                                 <Grid x:Name="CandidatePreviewZoomHost"
                                       HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Viewbox x:Name="CandidatePreviewViewbox" Stretch="Uniform">
@@ -116,8 +116,8 @@
                     </Border>
 
                     <StackPanel Grid.Row="3" Margin="0,8,0,0">
-                        <Button Content="このページをメイン画面で確認して閉じる"
-                                HorizontalAlignment="Stretch" Click="OpenCandidateInMainWindow_OnClick" />
+                        <Button Content="このページをメイン画面で確認して閉じる(_G)"
+                                HorizontalAlignment="Stretch" Click="OpenCandidateInMainWindow_OnClick" AutomationProperties.AccessKey="Alt+G"/>
                         <TextBlock Margin="2,3,2,0" Foreground="#687783" FontSize="11" TextWrapping="Wrap"
                                    Text="反映元の選択を保つため、メイン画面で確認する場合はこの候補画面を閉じます。確認後、必要に応じて一括反映をもう一度開いてください。" />
                     </StackPanel>

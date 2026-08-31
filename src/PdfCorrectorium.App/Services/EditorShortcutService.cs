@@ -18,6 +18,8 @@ public static class EditorShortcutService
         "Ctrl+Subtract",
         "Ctrl+S",
         "Ctrl+Shift+S",
+        "Ctrl+O", "Ctrl+F", "Ctrl+H", "Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V",
+        "F6", "Shift+F6", "Alt+F4",
     };
 
     /// <summary>
@@ -66,7 +68,10 @@ public static class EditorShortcutService
     public static bool IsReserved(string? shortcut) =>
         TryNormalize(shortcut, out var normalized) &&
         !string.IsNullOrEmpty(normalized) &&
-        ReservedShortcuts.Contains(normalized);
+        (ReservedShortcuts.Contains(normalized) ||
+         (TryParse(normalized, out var key, out var modifiers) &&
+          (key is Key.Tab or Key.Escape or Key.Return ||
+           (modifiers == ModifierKeys.Alt && (key is >= Key.A and <= Key.Z or >= Key.D0 and <= Key.D9)))));
 
     /// <summary>
     /// 設定画面で押されたキーを保存可能なショートカット文字列へ変換します。

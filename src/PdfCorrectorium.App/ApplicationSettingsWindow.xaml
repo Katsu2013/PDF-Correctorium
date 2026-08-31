@@ -2,63 +2,63 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="設定" Width="620" Height="650" MinWidth="560" MinHeight="570"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResize">
-    <DockPanel Margin="16">
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-            <Button Content="既定値に戻す" Click="ResetButton_OnClick" Margin="3,3,16,3" />
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResize" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
+    <DockPanel Margin="16" KeyboardNavigation.TabNavigation="Local">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
+            <Button Content="既定値に戻す(_D)" Click="ResetButton_OnClick" Margin="3,3,16,3" AutomationProperties.AccessKey="Alt+D"/>
             <Button Content="キャンセル" IsCancel="True" Width="96" />
-            <Button Content="保存" IsDefault="True" Width="96" Click="SaveButton_OnClick" />
+            <Button Content="保存(_S)" IsDefault="True" Click="SaveButton_OnClick"  MinWidth="96" AutomationProperties.AccessKey="Alt+S"/>
         </StackPanel>
 
-        <TabControl>
-            <TabItem Header="表示">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+<TabControl x:Name="SettingsTabs" KeyboardNavigation.TabNavigation="Local" KeyboardNavigation.TabIndex="0">
+            <TabItem Header="表示(_V)" AutomationProperties.AccessKey="Alt+V">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel Margin="16">
                         <TextBlock Text="画面レイアウト" FontSize="15" FontWeight="SemiBold" />
                         <Grid Margin="0,10,0,10">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="表示言語" VerticalAlignment="Center" />
-                            <ComboBox x:Name="UiLanguageComboBox" Grid.Column="1" SelectedValuePath="Tag">
+                            <Label Content="表示言語(_L)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=UiLanguageComboBox}" />
+                            <ComboBox x:Name="UiLanguageComboBox" Grid.Column="1" SelectedValuePath="Tag" AutomationProperties.AccessKey="Alt+L">
                                 <ComboBoxItem Content="日本語" Tag="ja-JP" />
                                 <ComboBoxItem Content="English" Tag="en-US" />
                             </ComboBox>
                         </Grid>
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="ツールバー表示" VerticalAlignment="Center" />
-                            <ComboBox x:Name="ToolbarDisplayModeComboBox" Grid.Column="1">
+                            <Label Content="ツールバー表示(_T)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ToolbarDisplayModeComboBox}" />
+                            <ComboBox x:Name="ToolbarDisplayModeComboBox" Grid.Column="1" AutomationProperties.AccessKey="Alt+T">
                                 <ComboBoxItem Content="アイコンのみ" />
                                 <ComboBoxItem Content="アイコン＋説明" />
                             </ComboBox>
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="ツールバーサイズ" VerticalAlignment="Center" />
-                            <Slider x:Name="ToolbarButtonSizeSlider" Grid.Column="1" Minimum="28" Maximum="64" TickFrequency="2" IsSnapToTickEnabled="True" />
+                            <Label Content="ツールバーサイズ(_Z)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ToolbarButtonSizeSlider}" />
+                            <Slider x:Name="ToolbarButtonSizeSlider" Grid.Column="1" Minimum="28" Maximum="64" TickFrequency="2" IsSnapToTickEnabled="True" AutomationProperties.AccessKey="Alt+Z"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=ToolbarButtonSizeSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <CheckBox x:Name="ShowPropertyHelpTextCheckBox"
-                                  Content="プロパティ領域に詳しい説明を表示する"
-                                  Margin="0,12,0,0" />
+ Content="プロパティ領域に詳しい説明を表示する(_H)"
+                                  Margin="0,12,0,0" AutomationProperties.AccessKey="Alt+H"/>
                         <CheckBox x:Name="ShowPageListPanelCheckBox"
-                                  Content="ページ一覧を表示する"
-                                  Margin="0,8,0,0" />
+ Content="ページ一覧を表示する(_P)"
+                                  Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+P"/>
                         <CheckBox x:Name="ShowPropertiesPanelCheckBox"
-                                  Content="OCRプロパティを表示する"
-                                  Margin="0,8,0,0" />
+ Content="OCRプロパティを表示する(_O)"
+                                  Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+O"/>
                         <CheckBox x:Name="ShowStatusBarCheckBox"
-                                  Content="ステータスバーを表示する"
-                                  Margin="0,8,0,0" />
+ Content="ステータスバーを表示する(_B)"
+                                  Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+B"/>
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="ページ一覧の幅" VerticalAlignment="Center" />
-                            <Slider x:Name="PageListWidthSlider" Grid.Column="1" Minimum="160" Maximum="420" TickFrequency="10" IsSnapToTickEnabled="True" />
+                            <Label Content="ページ一覧の幅(_W)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=PageListWidthSlider}" />
+                            <Slider x:Name="PageListWidthSlider" Grid.Column="1" Minimum="160" Maximum="420" TickFrequency="10" IsSnapToTickEnabled="True" AutomationProperties.AccessKey="Alt+W"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=PageListWidthSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="プロパティ領域の幅" VerticalAlignment="Center" />
-                            <Slider x:Name="PropertiesPanelWidthSlider" Grid.Column="1" Minimum="240" Maximum="600" TickFrequency="10" IsSnapToTickEnabled="True" />
+                            <Label Content="プロパティ領域の幅(_I)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=PropertiesPanelWidthSlider}" />
+                            <Slider x:Name="PropertiesPanelWidthSlider" Grid.Column="1" Minimum="240" Maximum="600" TickFrequency="10" IsSnapToTickEnabled="True" AutomationProperties.AccessKey="Alt+I"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=PropertiesPanelWidthSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
 
@@ -66,27 +66,27 @@
                         <TextBlock Text="OCRオーバーレイ" FontSize="15" FontWeight="SemiBold" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="表示色" VerticalAlignment="Center" />
-                            <TextBox x:Name="OcrOverlayColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Label Content="表示色(_C)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=OcrOverlayColorTextBox}" />
+                            <TextBox x:Name="OcrOverlayColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" AutomationProperties.AccessKey="Alt+C"/>
                             <Border x:Name="OcrOverlayPreview" Grid.Column="2" Margin="10,2,0,2" BorderBrush="#667085" BorderThickness="1" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
-                            <Slider x:Name="OcrOverlayOpacitySlider" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <Label Content="不透明度(_Y)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=OcrOverlayOpacitySlider}" />
+                            <Slider x:Name="OcrOverlayOpacitySlider" Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" AutomationProperties.AccessKey="Alt+Y"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=OcrOverlayOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <CheckBox x:Name="ShowUnselectedCharacterCellBordersCheckBox"
-                                  Content="文字編集時、未選択のOCR行にも文字枠を表示する"
-                                  Margin="0,12,0,0" />
+ Content="文字編集時、未選択のOCR行にも文字枠を表示する(_U)"
+                                  Margin="0,12,0,0" AutomationProperties.AccessKey="Alt+U"/>
                         <TextBlock Text="オフにすると、選択中のOCR行だけに文字単位の枠を表示します。文字の重ね表示はどちらの場合も各文字枠の位置と大きさに合わせます。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="文字編集枠の太さ" VerticalAlignment="Center" />
+                            <Label Content="文字編集枠の太さ(_N)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=CharacterCellBorderThicknessSlider}" />
                             <Slider x:Name="CharacterCellBorderThicknessSlider" Grid.Column="1"
                                     Minimum="0.25" Maximum="2" TickFrequency="0.1"
-                                    ValueChanged="PreviewSlider_OnValueChanged" />
+                                    ValueChanged="PreviewSlider_OnValueChanged" AutomationProperties.AccessKey="Alt+N"/>
                             <TextBlock Grid.Column="2"
                                        Text="{Binding ElementName=CharacterCellBorderThicknessSlider, Path=Value, StringFormat={}{0:0.0}px}"
                                        VerticalAlignment="Center" TextAlignment="Right" />
@@ -94,8 +94,8 @@
                         <TextBlock Text="表示倍率にかかわらず、画面上では同じ太さになるように表示します。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
                         <CheckBox x:Name="ShowPageThumbnailsCheckBox"
-                                  Content="ページ一覧にサムネイルを表示する"
-                                  Margin="0,12,0,0" />
+ Content="ページ一覧にサムネイルを表示する(_M)"
+                                  Margin="0,12,0,0" AutomationProperties.AccessKey="Alt+M"/>
                         <TextBlock Text="オンにするとページ画像を順次読み込みます。大きな文書では、必要なときだけオンにするとメモリ使用量を抑えられます。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="22,4,0,0" />
 
@@ -103,20 +103,20 @@
                         <TextBlock Text="文字幅の調整ハンドル" FontSize="15" FontWeight="SemiBold" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="色" VerticalAlignment="Center" />
-                            <TextBox x:Name="CharacterHandleColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Label Content="色(_A)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=CharacterHandleColorTextBox}" />
+                            <TextBox x:Name="CharacterHandleColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" AutomationProperties.AccessKey="Alt+A"/>
                             <Border x:Name="CharacterHandlePreview" Grid.Column="2" Width="8" HorizontalAlignment="Center" Margin="10,2,0,2" BorderBrush="#667085" BorderThickness="1" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="太さ" VerticalAlignment="Center" />
-                            <Slider x:Name="CharacterHandleThicknessSlider" Grid.Column="1" Minimum="2" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <Label Content="太さ" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=CharacterHandleThicknessSlider}" />
+                            <Slider x:Name="CharacterHandleThicknessSlider" Grid.Column="1" Minimum="2" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=CharacterHandleThicknessSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
-                            <Slider x:Name="CharacterHandleOpacitySlider" Grid.Column="1" Minimum="15" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <Label Content="不透明度" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=CharacterHandleOpacitySlider}" />
+                            <Slider x:Name="CharacterHandleOpacitySlider" Grid.Column="1" Minimum="15" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=CharacterHandleOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
 
@@ -124,64 +124,64 @@
                         <TextBlock Text="領域のサイズ変更ハンドル" FontSize="15" FontWeight="SemiBold" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="塗り色" VerticalAlignment="Center" />
-                            <TextBox x:Name="ResizeHandleFillColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Label Content="塗り色(_F)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ResizeHandleFillColorTextBox}" />
+                            <TextBox x:Name="ResizeHandleFillColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" AutomationProperties.AccessKey="Alt+F"/>
                             <Border x:Name="ResizeHandlePreview" Grid.Column="2" Width="16" Height="16" HorizontalAlignment="Center" Margin="10,2,0,2" BorderThickness="2" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="枠線色" VerticalAlignment="Center" />
-                            <TextBox x:Name="ResizeHandleBorderColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged" />
+                            <Label Content="枠線色" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ResizeHandleBorderColorTextBox}" />
+                            <TextBox x:Name="ResizeHandleBorderColorTextBox" Grid.Column="1" TextChanged="ColorTextBox_OnTextChanged"/>
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="大きさ" VerticalAlignment="Center" />
-                            <Slider x:Name="ResizeHandleSizeSlider" Grid.Column="1" Minimum="5" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <Label Content="大きさ(_X)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ResizeHandleSizeSlider}" />
+                            <Slider x:Name="ResizeHandleSizeSlider" Grid.Column="1" Minimum="5" Maximum="18" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="PreviewSlider_OnValueChanged" AutomationProperties.AccessKey="Alt+X"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=ResizeHandleSizeSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="54"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="不透明度" VerticalAlignment="Center" />
-                            <Slider x:Name="ResizeHandleOpacitySlider" Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged" />
+                            <Label Content="不透明度" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=ResizeHandleOpacitySlider}" />
+                            <Slider x:Name="ResizeHandleOpacitySlider" Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5" ValueChanged="PreviewSlider_OnValueChanged"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=ResizeHandleOpacitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="編集">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TabItem Header="編集(_E)" AutomationProperties.AccessKey="Alt+E">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel Margin="16">
                         <TextBlock Text="文字幅の自動推定" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock Text="文字境界が空白へ偏る場合は均等性と文字画素の必須率を上げます。細い英字や記号を扱う場合は最小幅を下げてください。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,4" />
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="最小幅／行高さ" VerticalAlignment="Center" />
-                            <Slider x:Name="EstimationMinimumAspectSlider" Grid.Column="1" Minimum="5" Maximum="60" TickFrequency="5" />
+                            <Label Content="最小幅／行高さ(_M)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=EstimationMinimumAspectSlider}" />
+                            <Slider x:Name="EstimationMinimumAspectSlider" Grid.Column="1" Minimum="5" Maximum="60" TickFrequency="5" AutomationProperties.AccessKey="Alt+M"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationMinimumAspectSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="最大幅／行高さ" VerticalAlignment="Center" />
-                            <Slider x:Name="EstimationMaximumAspectSlider" Grid.Column="1" Minimum="75" Maximum="400" TickFrequency="25" />
+                            <Label Content="最大幅／行高さ(_X)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=EstimationMaximumAspectSlider}" />
+                            <Slider x:Name="EstimationMaximumAspectSlider" Grid.Column="1" Minimum="75" Maximum="400" TickFrequency="25" AutomationProperties.AccessKey="Alt+X"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationMaximumAspectSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="均等幅への寄せ方" VerticalAlignment="Center" />
-                            <Slider x:Name="EstimationUniformitySlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" />
+                            <Label Content="均等幅への寄せ方(_Q)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=EstimationUniformitySlider}" />
+                            <Slider x:Name="EstimationUniformitySlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" AutomationProperties.AccessKey="Alt+Q"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationUniformitySlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="文字画素の必須率" VerticalAlignment="Center" />
-                            <Slider x:Name="EstimationInkCoverageSlider" Grid.Column="1" Minimum="2" Maximum="50" TickFrequency="2" />
+                            <Label Content="文字画素の必須率(_I)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=EstimationInkCoverageSlider}" />
+                            <Slider x:Name="EstimationInkCoverageSlider" Grid.Column="1" Minimum="2" Maximum="50" TickFrequency="2" AutomationProperties.AccessKey="Alt+I"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationInkCoverageSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="文字情報への寄せ方" VerticalAlignment="Center" />
-                            <Slider x:Name="EstimationGlyphPriorSlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" />
+                            <Label Content="文字情報への寄せ方(_P)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=EstimationGlyphPriorSlider}" />
+                            <Slider x:Name="EstimationGlyphPriorSlider" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" AutomationProperties.AccessKey="Alt+P"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=EstimationGlyphPriorSlider, Path=Value, StringFormat={}{0:0}%}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
                         <TextBlock Text="ひらがな・カタカナ・漢字を全角1字分へ寄せ、欧文は文字形状に応じた標準幅を使用します。「い」「け」など文字内部の隙間で分割される場合は上げ、装飾文字の画像上の幅を優先する場合は下げます。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
@@ -190,16 +190,16 @@
                         <TextBlock Text="Undo／Redo" FontSize="15" FontWeight="SemiBold" />
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="保持する編集操作数" VerticalAlignment="Center" />
-                            <TextBox x:Name="UndoHistoryLimitTextBox" Grid.Column="1" />
+                            <Label Content="保持する編集操作数(_U)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=UndoHistoryLimitTextBox}" />
+                            <TextBox x:Name="UndoHistoryLimitTextBox" Grid.Column="1" AutomationProperties.AccessKey="Alt+U"/>
                         </Grid>
                         <TextBlock Text="10～1000件で設定できます。値を小さくすると、古いUndo履歴から破棄されます。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="ショートカット">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <TabItem Header="ショートカット(_K)" AutomationProperties.AccessKey="Alt+K">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                     <StackPanel Margin="16">
                         <TextBlock Text="文字編集のショートカット" FontSize="15" FontWeight="SemiBold" />
                         <TextBlock Text="入力欄を選び、使用したいキーの組み合わせを実際に押してください。BackspaceまたはDeleteで割り当てを解除できます。"
@@ -219,30 +219,30 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="前の文字へ移動" VerticalAlignment="Center" Margin="0,4" />
+                            <Label Grid.Row="0" Content="前の文字へ移動(_P)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=PreviousCharacterShortcutTextBox}" />
                             <TextBox x:Name="PreviousCharacterShortcutTextBox" Grid.Row="0" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="1" Text="次の文字へ移動" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+P"/>
+                            <Label Grid.Row="1" Content="次の文字へ移動(_N)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=NextCharacterShortcutTextBox}" />
                             <TextBox x:Name="NextCharacterShortcutTextBox" Grid.Row="1" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="2" Text="選択文字の幅を狭める" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+N"/>
+                            <Label Grid.Row="2" Content="選択文字の幅を狭める(_W)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=DecreaseCharacterAdvanceShortcutTextBox}" />
                             <TextBox x:Name="DecreaseCharacterAdvanceShortcutTextBox" Grid.Row="2" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="3" Text="選択文字の幅を広げる" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+W"/>
+                            <Label Grid.Row="3" Content="選択文字の幅を広げる(_I)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=IncreaseCharacterAdvanceShortcutTextBox}" />
                             <TextBox x:Name="IncreaseCharacterAdvanceShortcutTextBox" Grid.Row="3" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="4" Text="選択行を画像から自動調整" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+I"/>
+                            <Label Grid.Row="4" Content="選択行を画像から自動調整(_A)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=EstimateCharacterAdvancesShortcutTextBox}" />
                             <TextBox x:Name="EstimateCharacterAdvancesShortcutTextBox" Grid.Row="4" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="5" Text="選択文字以降を自動調整" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+A"/>
+                            <Label Grid.Row="5" Content="選択文字以降を自動調整(_T)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=EstimateCharacterSuffixAdvancesShortcutTextBox}" />
                             <TextBox x:Name="EstimateCharacterSuffixAdvancesShortcutTextBox" Grid.Row="5" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="6" Text="選択行の文字幅を等分" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+T"/>
+                            <Label Grid.Row="6" Content="選択行の文字幅を等分(_Q)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=EqualizeCharacterAdvancesShortcutTextBox}" />
                             <TextBox x:Name="EqualizeCharacterAdvancesShortcutTextBox" Grid.Row="6" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
-                            <TextBlock Grid.Row="7" Text="OCR取込時の文字幅へ戻す" VerticalAlignment="Center" Margin="0,4" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+Q"/>
+                            <Label Grid.Row="7" Content="OCR取込時の文字幅へ戻す(_O)" VerticalAlignment="Center" Margin="0,4"  Padding="0" Target="{Binding ElementName=RestoreOriginalCharacterAdvancesShortcutTextBox}" />
                             <TextBox x:Name="RestoreOriginalCharacterAdvancesShortcutTextBox" Grid.Row="7" Grid.Column="1" Margin="0,4"
-                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" />
+                                     PreviewKeyDown="ShortcutTextBox_OnPreviewKeyDown" AutomationProperties.AccessKey="Alt+O"/>
                         </Grid>
                         <TextBlock Text="通常の文字キーにはCtrl、Alt、Winのいずれかが必要です。F1～F24は単独で割り当てられます。重複する割り当ては保存できません。"
                                    Foreground="#667085" TextWrapping="Wrap" Margin="0,14,0,0" />
@@ -250,16 +250,16 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="保存・復旧">
+            <TabItem Header="保存・復旧(_R)" AutomationProperties.AccessKey="Alt+R">
                 <StackPanel Margin="16">
                     <TextBlock Text="自動保存" FontSize="15" FontWeight="SemiBold" />
                     <CheckBox x:Name="AutoSaveEnabledCheckBox"
-                              Content="編集内容を自動保存する"
-                              Margin="0,12,0,0" />
+ Content="編集内容を自動保存する(_A)"
+                              Margin="0,12,0,0" AutomationProperties.AccessKey="Alt+A"/>
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Text="自動保存の間隔" VerticalAlignment="Center" />
-                        <TextBox x:Name="AutoSaveIntervalMinutesTextBox" Grid.Column="1" />
+                        <Label Content="自動保存の間隔(_I)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=AutoSaveIntervalMinutesTextBox}" />
+                        <TextBox x:Name="AutoSaveIntervalMinutesTextBox" Grid.Column="1" AutomationProperties.AccessKey="Alt+I"/>
                         <TextBlock Grid.Column="2" Text="分" Margin="8,0,0,0" VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock Text="自動保存は元PDFや通常のプロジェクトを直接上書きせず、復旧専用ファイルへ保存します。"
@@ -271,8 +271,8 @@
                     <TextBlock Text="世代バックアップ" FontSize="15" FontWeight="SemiBold" />
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <TextBlock Text="保持する世代数" VerticalAlignment="Center" />
-                        <TextBox x:Name="BackupGenerationCountTextBox" Grid.Column="1" />
+                        <Label Content="保持する世代数(_B)" VerticalAlignment="Center"  Padding="0" Target="{Binding ElementName=BackupGenerationCountTextBox}" />
+                        <TextBox x:Name="BackupGenerationCountTextBox" Grid.Column="1" AutomationProperties.AccessKey="Alt+B"/>
                         <TextBlock Grid.Column="2" Text="世代" Margin="8,0,0,0" VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock Text="明示保存の直前に復元用コピーを作成します。1～20世代で設定できます。"
@@ -280,14 +280,59 @@
                 </StackPanel>
             </TabItem>
 
-            <TabItem Header="保存先">
-                <StackPanel Margin="16">
-                    <TextBlock Text="現在の動作モード" FontWeight="SemiBold" />
-                    <TextBlock x:Name="StorageModeTextBlock" Margin="0,4,0,14" />
-                    <TextBlock Text="設定ファイル" FontWeight="SemiBold" />
-                    <TextBox x:Name="SettingsPathTextBox" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,0" />
-                    <TextBlock Text="Portable版では実行フォルダー内のconfig、インストール版ではAppDataへ保存します。" Foreground="#667085" TextWrapping="Wrap" Margin="0,12,0,0" />
-                </StackPanel>
+            <TabItem x:Name="ManagementTab" Header="管理(_G)" AutomationProperties.AccessKey="Alt+G">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <StackPanel Margin="16" KeyboardNavigation.TabNavigation="Local">
+                        <TextBlock Text="最近開いたファイル" FontSize="15" FontWeight="SemiBold" />
+                        <Label Content="表示件数(_C)" Target="{Binding ElementName=RecentFileLimitTextBox}" Padding="0" Margin="0,8,0,4" />
+                        <TextBox x:Name="RecentFileLimitTextBox" Width="80" HorizontalAlignment="Left" AutomationProperties.AccessKey="Alt+C"
+                                 ToolTip="最近開いたファイルの表示件数（0～30件） (Alt+C)" KeyboardNavigation.TabIndex="0" />
+                        <TextBlock Text="既定10件、最大30件。0件では表示・記録を停止します。履歴を消すには「履歴をクリア」を選び、「保存」してください。"
+                                   TextWrapping="Wrap" Foreground="#667085" Margin="0,6,0,6" />
+                        <Button x:Name="ClearRecentFilesButton" Content="履歴をクリア(_H)" Click="ClearRecentFiles_OnClick" HorizontalAlignment="Left"
+                                AutomationProperties.AccessKey="Alt+H" ToolTip="最近開いたファイルの履歴だけを削除します。文書自体は削除しません。 (Alt+H)" KeyboardNavigation.TabIndex="1" />
+                        <TextBlock x:Name="RecentFilesStatusTextBlock" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" />
+                        <Separator Margin="0,16,0,16" />
+                        <TextBlock Text="設定のインポート／エクスポート" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="表示・編集・ショートカット設定とプリセットをJSONで持ち運べます。PDFや作業中の編集内容、保存先のパスは含みません。"
+                                   TextWrapping="Wrap" Foreground="#667085" Margin="0,8,0,10" />
+                        <WrapPanel>
+                            <Button x:Name="ImportSettingsButton" Content="取り込み(_I)" Click="ImportSettings_OnClick" AutomationProperties.AccessKey="Alt+I"
+                                    ToolTip="書き出した設定を取り込みます。「保存」までは本画面に反映しません。 (Alt+I)" KeyboardNavigation.TabIndex="2" />
+                            <Button x:Name="ExportSettingsButton" Content="書き出し(_X)" Click="ExportSettings_OnClick" AutomationProperties.AccessKey="Alt+X"
+                                    ToolTip="設定画面の現在の内容を書き出します。 (Alt+X)" KeyboardNavigation.TabIndex="3" />
+                        </WrapPanel>
+                        <Separator Margin="0,16,0,16" />
+                        <TextBlock Text="ワークスペースプリセット" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="「表示」タブのパネル幅・表示状態・サムネイル表示を名前付きで保存します。倍率やPDFの編集内容は含みません。"
+                                   TextWrapping="Wrap" Foreground="#667085" Margin="0,8,0,10" />
+                        <Label Content="プリセット(_P)" Target="{Binding ElementName=WorkspacePresetComboBox}" Padding="0" />
+                        <ComboBox x:Name="WorkspacePresetComboBox" DisplayMemberPath="Name" Margin="0,4,0,10"
+                                  SelectionChanged="WorkspacePreset_OnSelectionChanged" AutomationProperties.AccessKey="Alt+P" KeyboardNavigation.TabIndex="4" />
+                        <Label Content="名前(_N)" Target="{Binding ElementName=WorkspacePresetNameTextBox}" Padding="0" />
+                        <TextBox x:Name="WorkspacePresetNameTextBox" MaxLength="64" Margin="0,4,0,8" AutomationProperties.AccessKey="Alt+N" KeyboardNavigation.TabIndex="5" />
+                        <WrapPanel>
+                            <Button x:Name="SaveWorkspacePresetButton" Content="登録・更新(_U)" Click="SaveWorkspacePreset_OnClick" AutomationProperties.AccessKey="Alt+U"
+                                    ToolTip="現在の配置を登録、または同名のプリセットを更新します。 (Alt+U)" KeyboardNavigation.TabIndex="6" />
+                            <Button x:Name="ApplyWorkspacePresetButton" Content="選択を適用(_A)" Click="ApplyWorkspacePreset_OnClick" AutomationProperties.AccessKey="Alt+A" IsEnabled="False"
+                                    ToolTip="選択した配置を「表示」タブに反映します。 (Alt+A)" KeyboardNavigation.TabIndex="7" />
+                            <Button x:Name="DeleteWorkspacePresetButton" Content="削除(_L)" Click="DeleteWorkspacePreset_OnClick" AutomationProperties.AccessKey="Alt+L" IsEnabled="False"
+                                    ToolTip="選択したプリセットを削除します。 (Alt+L)" KeyboardNavigation.TabIndex="8" />
+                        </WrapPanel>
+                        <TextBlock Text="最大20件。「保存」で確定、「キャンセル」で破棄します。「既定値に戻す」では登録済みプリセットを保持します。"
+                                   TextWrapping="Wrap" Foreground="#667085" Margin="0,10,0,0" />
+                        <TextBlock x:Name="ManagementStatusTextBlock" TextWrapping="Wrap" Margin="0,14,0,0" AutomationProperties.LiveSetting="Polite" />
+                        <Expander Header="保存先(_F)" Margin="0,14,0,0" AutomationProperties.AccessKey="Alt+F" KeyboardNavigation.TabIndex="9">
+                            <StackPanel Margin="4,8,4,0">
+                                <TextBlock Text="現在の動作モード" FontWeight="SemiBold" />
+                                <TextBlock x:Name="StorageModeTextBlock" Margin="0,4,0,10" />
+                                <TextBlock Text="設定ファイル" FontWeight="SemiBold" />
+                                <TextBox x:Name="SettingsPathTextBox" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,0" IsTabStop="False" />
+                                <TextBlock Text="Portable版では実行フォルダー内のconfig、インストール版ではAppDataへ保存します。" Foreground="#667085" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </DockPanel>

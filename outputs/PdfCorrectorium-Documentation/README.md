@@ -2,6 +2,8 @@
 
 本書群は、PDF Correctorium Version 1.0 の実装・レビュー・OSS公開に用いる設計基準である。
 
+dev.128では[最近開いたファイル](../../RECENT-FILES.md)と、設定の表示件数・履歴クリアを追加した。dev.127の設定JSON移出入と固定パネルの名前付きプリセットも維持している。[設定操作・保存形式ガイド](../../SETTINGS-WORKSPACES.md)、[画面設計](docs/03_Screens/03-01_ScreenSpecification.md)、[最新の検証記録](docs/11_Test/11-01_TestStrategy.md)を参照。設定画面の変更は旧設計PDFには含まれない。
+
 dev.124では版番号を共通ビルド設定へ一元化し、数値版・画面表示・保存情報・配布名を揃えた。[版管理ルール](../../VERSIONING.md)に今後の更新・検証手順を定めている。以下のdev.122/123の記録は、各更新時点の履歴である。
 
 2026-08-30の現行ソース（dev.123へ更新する前の配布物dev.122）との整合性監査を反映した。要求文はVersion 1.0の目標を表し、実装済みであることを意味しない。各文書の「現行実装」または「実装状況」を実装判定の根拠とし、全体の既知問題はリポジトリ直下の[実装状況](../../IMPLEMENTATION_STATUS.md#known-implementation-defects)で管理する。
@@ -23,6 +25,8 @@ Markdownファイルを正本とする。`PDF-Correctorium-Design-Documentation.
 > OCR済みPDFの透明テキスト、配置、読み順、文字方向、回転、ルビおよび文書構造を、安全かつ効率よく編集できるプロジェクト管理型PDF編集ソフト。
 
 ## 文書の読み順
+
+2026-09-01の将来要望4件は[追加機能の検討一覧](docs/13_Roadmap/13-02_FutureFeatureRequests.md)に集約した。未実装の要望・設計案・未確定事項を区別しており、現行画面の図版やアプリの実装を変更したものではない。
 
 1. [プロジェクト概要](docs/00_Project/00-01_ProjectOverview.md)
 2. [設計思想](docs/00_Project/00-02_DesignPhilosophy.md)

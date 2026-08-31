@@ -4,11 +4,11 @@
 
 版番号の定義元は[Directory.Build.props](Directory.Build.props)の`ApplicationVersionPrefix`と`DevelopmentRevision`だけとする。各プロジェクトで別々に設定しない。
 
-| 項目 | dev.124の値 | 参照・反映先 |
+| 項目 | dev.128の値 | 参照・反映先 |
 |---|---|---|
-| 製品バージョン | `1.0.0-dev.124` | Version、InformationalVersion、タイトルバー、ヘルプ→バージョン情報、起動ログ、保存プロジェクトのapplicationVersion |
-| 数値の版番号 | `1.0.0.124` | ソリューション内の全プロジェクトのAssemblyVersion・FileVersion、EXE/DLLのファイル情報、生成するWindowsアプリケーションマニフェスト |
-| 配布名 | `PdfCorrectorium-v1.0.0-dev.124-win-x64-日時` | 実際のMSBuild設定から取得。文書の文字列を命名元にしない |
+| 製品バージョン | `1.0.0-dev.128` | Version、InformationalVersion、タイトルバー、ヘルプ→バージョン情報、起動ログ、保存プロジェクトのapplicationVersion |
+| 数値の版番号 | `1.0.0.128` | ソリューション内の全プロジェクトのAssemblyVersion・FileVersion、EXE/DLLのファイル情報、生成するWindowsアプリケーションマニフェスト |
+| 配布名 | `PdfCorrectorium-v1.0.0-dev.128-win-x64-日時` | 実際のMSBuild設定から取得。文書の文字列を命名元にしない |
 
 数値版番号の4番目が開発リビジョンである。`.sln`の`VisualStudioVersion`はソリューションを扱う開発ツールの版であり、アプリの版番号ではない。`app.manifest`内の`1.0.0.0`はテンプレート値であり、ビルド時に中間フォルダーへコピーして数値版番号を書き込み、その生成版をEXEへ埋め込む。
 
@@ -43,7 +43,7 @@ dotnet run --project tests/PdfCorrectorium.ContractTests -c Release --no-build
 
 ## データ形式との区別
 
-アプリの版を進めただけでは、プロジェクト形式を変更しない。dev.124の保存形式は引き続き1.1、必要最小アプリ版は形式1.1へ対応した`1.0.0-dev.123`である。`applicationVersion`だけを実行中の版に追随させる。
+アプリの版を進めただけでは、プロジェクト形式を変更しない。dev.128の保存形式は引き続き1.1、必要最小アプリ版は形式1.1へ対応した`1.0.0-dev.123`である。`applicationVersion`だけを実行中の版に追随させる。
 
 ## dev.123からの是正
 

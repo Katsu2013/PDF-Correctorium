@@ -7,7 +7,7 @@
         MinWidth="760"
         MinHeight="540"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Grid Background="#F3F5F7">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -28,7 +28,7 @@
 
         <Border Grid.Row="0" Grid.Column="1" Margin="0,12,12,12" Padding="16" Background="White"
                 BorderBrush="#CBD3DA" BorderThickness="1">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
                 <StackPanel>
                     <TextBlock Text="最適化内容" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock x:Name="PageSummaryText" Margin="0,12,0,0" TextWrapping="Wrap" />
@@ -53,8 +53,8 @@
                     </StackPanel>
                     <TextBlock x:Name="SelectionSummaryText" Margin="0,9,0,0" FontWeight="SemiBold" />
                     <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
-                        <Button Padding="8,3" Margin="0,0,6,0" Click="ReplaceAllButton_OnClick" Content="すべて置換" />
-                        <Button Padding="8,3" Click="KeepAllButton_OnClick" Content="すべて保持" />
+                        <Button Padding="8,3" Margin="0,0,6,0" Click="ReplaceAllButton_OnClick" Content="すべて置換(_R)" AutomationProperties.AccessKey="Alt+R"/>
+                        <Button Padding="8,3" Click="KeepAllButton_OnClick" Content="すべて保持(_K)" AutomationProperties.AccessKey="Alt+K"/>
                     </StackPanel>
 
                     <Separator Margin="0,16,0,12" />
@@ -83,8 +83,8 @@
                 BorderThickness="0,1,0,0" Padding="12">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Width="96" Margin="3,3,8,3" Padding="8,5" IsCancel="True" Content="キャンセル" />
-                <Button Width="132" Padding="8,5" IsDefault="True" Click="ApplyButton_OnClick"
-                        Content="この内容で実行" />
+                <Button Padding="8,5" IsDefault="True" Click="ApplyButton_OnClick"
+ Content="この内容で実行(_E)"  MinWidth="132" AutomationProperties.AccessKey="Alt+E"/>
             </StackPanel>
         </Border>
     </Grid>

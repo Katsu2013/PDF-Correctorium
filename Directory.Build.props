@@ -7,7 +7,7 @@
     <Deterministic>true</Deterministic>
     <!-- The only editable application-version inputs. Bump the revision before delivering changed code. -->
     <ApplicationVersionPrefix>1.0.0</ApplicationVersionPrefix>
-    <DevelopmentRevision>124</DevelopmentRevision>
+    <DevelopmentRevision>128</DevelopmentRevision>
     <Version>$(ApplicationVersionPrefix)-dev.$(DevelopmentRevision)</Version>
     <AssemblyVersion>$(ApplicationVersionPrefix).$(DevelopmentRevision)</AssemblyVersion>
     <FileVersion>$(AssemblyVersion)</FileVersion>

@@ -569,6 +569,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.F6 && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
+        {
+            MoveKeyboardPane(Keyboard.Modifiers == ModifierKeys.Shift);
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.F or Key.H)
         {
             ShowOcrSearchReplaceWindow(focusReplacement: e.Key == Key.H);
@@ -619,6 +625,10 @@ public partial class MainWindow : Window
 
     private bool TryExecuteConfiguredShortcut(KeyEventArgs e)
     {
+        // Let a focused dropdown consume its native Alt+Up/Down open/close gestures.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (Keyboard.Modifiers == ModifierKeys.Alt && key is Key.Up or Key.Down &&
+            e.OriginalSource is DependencyObject source && FindAncestor<ComboBox>(source) is not null) return false;
         var settings = ViewModel.CurrentApplicationSettings;
         var mappings = new (string Shortcut, ICommand Command)[]
         {
@@ -633,13 +643,27 @@ public partial class MainWindow : Window
         };
         foreach (var (shortcut, command) in mappings)
         {
-            if (!EditorShortcutService.Matches(e, shortcut) || !command.CanExecute(null)) continue;
+            if (EditorShortcutService.IsReserved(shortcut) || !EditorShortcutService.Matches(e, shortcut) || !command.CanExecute(null)) continue;
             CommitPendingEditorBindings();
             command.Execute(null);
             OverlayCanvas.Focus();
             return true;
         }
         return false;
+    }
+
+    /// <summary>F6/Shift+F6で主要な作業領域を順方向／逆方向へ移動します。</summary>
+    internal void MoveKeyboardPane(bool reverse)
+    {
+        FrameworkElement[] panes = [MainToolbarPanel, KeyboardNavigationTabs, OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
+        var index = Array.FindIndex(panes, pane => pane.IsKeyboardFocusWithin);
+        if (index < 0 && reverse) index = 0;
+        for (var step = 1; step <= panes.Length; step++)
+        {
+            var candidate = panes[(index + (reverse ? -step : step) + panes.Length * 2) % panes.Length];
+            if (!candidate.IsVisible || !candidate.IsEnabled) continue;
+            if ((candidate.Focusable && candidate.Focus()) || candidate.MoveFocus(new TraversalRequest(FocusNavigationDirection.First))) return;
+        }
     }
 
     private void RegionBody_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -949,22 +973,59 @@ public partial class MainWindow : Window
 
     private async void ApplicationSettingsMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        var previousLanguage = ViewModel.CurrentApplicationSettings.UiLanguage;
+        ViewModel.ReloadRecentFiles();
         var dialog = new ApplicationSettingsWindow(
-            ViewModel.CurrentApplicationSettings,
+            CaptureWorkspaceSettings(),
             ViewModel.StorageModeText,
-            ViewModel.SettingsFilePath)
+            ViewModel.SettingsFilePath,
+            ViewModel.RecentFileCount)
         {
             Owner = this,
         };
         if (dialog.ShowDialog() != true) return;
-        await ViewModel.ApplyApplicationSettingsAsync(dialog.ResultSettings);
+        await ApplySettingsDialogAsync(dialog);
+    }
+
+    internal async Task<bool> ApplySettingsDialogAsync(ApplicationSettingsWindow dialog)
+    {
+        var previousLanguage = ViewModel.CurrentApplicationSettings.UiLanguage;
+        if (!await ViewModel.ApplyApplicationSettingsAsync(dialog.ResultSettings)) return false;
+        RestoreWorkspaceWidthBindings();
+        var cleared = !dialog.ClearRecentFilesRequested || await ViewModel.ClearRecentFilesAsync();
         if (!string.Equals(previousLanguage, dialog.ResultSettings.UiLanguage, StringComparison.OrdinalIgnoreCase))
         {
             LocalizationService.SetLanguage(dialog.ResultSettings.UiLanguage);
             LocalizationService.Apply(this);
             ViewModel.RefreshLocalization();
         }
+        return cleared;
+    }
+
+    private void FileMenu_OnSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (ReferenceEquals(sender, e.OriginalSource)) ViewModel.ReloadRecentFiles();
+    }
+
+    /// <summary>スプリッターで変更した実際の幅も、設定画面の下書きへ引き継ぎます。</summary>
+    internal ApplicationSettings CaptureWorkspaceSettings()
+    {
+        var settings = ViewModel.CurrentApplicationSettings;
+        return (settings with
+        {
+            PageListWidth = settings.ShowPageListPanel && WorkspaceLayoutGrid.ColumnDefinitions[0].ActualWidth > 0
+                ? WorkspaceLayoutGrid.ColumnDefinitions[0].ActualWidth : settings.PageListWidth,
+            PropertiesPanelWidth = settings.ShowPropertiesPanel && WorkspaceLayoutGrid.ColumnDefinitions[4].ActualWidth > 0
+                ? WorkspaceLayoutGrid.ColumnDefinitions[4].ActualWidth : settings.PropertiesPanelWidth,
+        }).Normalize();
+    }
+
+    internal void RestoreWorkspaceWidthBindings()
+    {
+        // GridSplitter can replace a one-way Width binding; reattach it when applying settings.
+        WorkspaceLayoutGrid.ColumnDefinitions[0].SetBinding(ColumnDefinition.WidthProperty,
+            new System.Windows.Data.Binding(nameof(MainWindowViewModel.PageListColumnWidth)));
+        WorkspaceLayoutGrid.ColumnDefinitions[4].SetBinding(ColumnDefinition.WidthProperty,
+            new System.Windows.Data.Binding(nameof(MainWindowViewModel.PropertiesPanelColumnWidth)));
     }
 
     private void OverlayCanvas_OnSelectionChanged(object sender, SelectionChangedEventArgs e)

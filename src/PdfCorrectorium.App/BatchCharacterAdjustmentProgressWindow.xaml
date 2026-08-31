@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="前処理付き一括自動調整" Width="520" SizeToContent="Height"
         MinWidth="460" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        ResizeMode="NoResize" Closing="Window_OnClosing">
+        ResizeMode="NoResize" Closing="Window_OnClosing" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -29,8 +29,8 @@
         <Grid Grid.Row="4" Margin="0,18,0,0">
             <TextBlock x:Name="DetailTextBlock" VerticalAlignment="Center"
                        Foreground="#52606D" Text="調整済み 0 行" />
-            <Button x:Name="CancelButton" HorizontalAlignment="Right" Width="100"
-                    Content="中止" Click="CancelButton_OnClick" />
+            <Button x:Name="CancelButton" HorizontalAlignment="Right"
+ Content="中止(_S)" Click="CancelButton_OnClick"  MinWidth="100" AutomationProperties.AccessKey="Alt+S"/>
         </Grid>
     </Grid>
 </Window>

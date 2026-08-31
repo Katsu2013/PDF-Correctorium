@@ -23,6 +23,15 @@ public static class LocalizationService
 
     private static readonly Dictionary<string, string> JapaneseToEnglish = new(StringComparer.Ordinal)
     {
+        ["概要"] = "Description",
+        ["セキュリティ"] = "Security",
+        ["フォント"] = "Fonts",
+        ["カスタム"] = "Custom",
+        ["詳細設定"] = "Advanced",
+        ["選択文字"] = "Selected character",
+        ["確認対象"] = "Review targets",
+        ["編集モード"] = "Editing mode",
+        ["分析結果"] = "Analysis results",
         ["設定した間隔に加え、操作停止から約30秒後にも保存します。通常保存前の文書は元PDFを含む復旧用プロジェクトとして作業フォルダーのrecoveryへ保存します。"] = "Autosave also runs about 30 seconds after input stops. Documents not yet saved are stored with their source PDF in a recovery project under the workspace recovery folder.",
         ["ファイル(_F)"] = "_File",
         ["編集(_E)"] = "_Edit",
@@ -445,6 +454,52 @@ public static class LocalizationService
         ["プロジェクトファイル"] = "Project file",
         ["OCRデータソース"] = "OCR data source",
         ["設定ファイル"] = "Settings file",
+        ["管理"] = "Manage",
+        ["最近開いたファイル"] = "Recent Files",
+        ["最近開いたPDF・プロジェクトを開きます。表示件数と履歴クリアは設定画面で変更できます。"] = "Open a recent PDF or project. Set the display count or clear history in Settings.",
+        ["表示件数"] = "Display Count",
+        ["履歴をクリア"] = "Clear History",
+        ["最近開いたファイルの表示件数（0～30件） (Alt+C)"] = "Number of recent files to display (0–30) (Alt+C)",
+        ["既定10件、最大30件。0件では表示・記録を停止します。履歴を消すには「履歴をクリア」を選び、「保存」してください。"] = "Default: 10; maximum: 30. Set to 0 to stop displaying and recording history. To erase history, select Clear History, then Save.",
+        ["最近開いたファイルの履歴だけを削除します。文書自体は削除しません。 (Alt+H)"] = "Clear recent file history without deleting documents. (Alt+H)",
+        ["保存されている履歴: {0}件"] = "Stored history: {0} files",
+        ["表示件数は0～30の整数で入力してください。"] = "Enter a whole number from 0 to 30 for the display count.",
+        ["最近開いたファイルの履歴をクリアしますか？文書自体は削除しません。「保存」で確定します。"] = "Clear recent file history? Documents will not be deleted. Select Save to confirm the change.",
+        ["履歴のクリアは「保存」で確定します。「キャンセル」では履歴を残します。"] = "History will be cleared when you select Save. Cancel keeps the history.",
+        ["文書は開きましたが、最近開いたファイルの履歴を保存できませんでした。"] = "The document opened, but recent file history could not be saved.",
+        ["最近開いたファイルの履歴をクリアしました。PDFやプロジェクト自体は削除していません。"] = "Recent file history cleared. PDF and project files have not been deleted.",
+        ["最近開いたファイルの履歴をクリアできませんでした。"] = "Could not clear recent file history.",
+        ["保存・復旧"] = "Save / Recovery",
+        ["保存先"] = "Storage",
+        ["設定のインポート／エクスポート"] = "Import / Export Settings",
+        ["表示・編集・ショートカット設定とプリセットをJSONで持ち運べます。PDFや作業中の編集内容、保存先のパスは含みません。"] = "Transfer display, editing, shortcut settings and presets as JSON. PDFs, document edits and storage paths are not included.",
+        ["取り込み"] = "Import",
+        ["書き出し"] = "Export",
+        ["ワークスペースプリセット"] = "Workspace Presets",
+        ["「表示」タブのパネル幅・表示状態・サムネイル表示を名前付きで保存します。倍率やPDFの編集内容は含みません。"] = "Save panel widths, visibility and thumbnail display from the View tab under a name. Zoom and PDF edits are not included.",
+        ["プリセット"] = "Preset",
+        ["名前"] = "Name",
+        ["登録・更新"] = "Add / Update",
+        ["選択を適用"] = "Apply Selected",
+        ["最大20件。「保存」で確定、「キャンセル」で破棄します。「既定値に戻す」では登録済みプリセットを保持します。"] = "Up to 20 presets. Save commits changes; Cancel discards them. Restore Defaults keeps registered presets.",
+        ["書き出した設定を取り込みます。「保存」までは本画面に反映しません。 (Alt+I)"] = "Import exported settings. Changes apply to the main window only after Save. (Alt+I)",
+        ["設定画面の現在の内容を書き出します。 (Alt+X)"] = "Export the current contents of this settings dialog. (Alt+X)",
+        ["現在の配置を登録、または同名のプリセットを更新します。 (Alt+U)"] = "Add the current layout or update a preset with the same name. (Alt+U)",
+        ["選択した配置を「表示」タブに反映します。 (Alt+A)"] = "Load the selected layout into the View tab. (Alt+A)",
+        ["選択したプリセットを削除します。 (Alt+L)"] = "Delete the selected preset. (Alt+L)",
+        ["名前は1～64文字で入力してください。"] = "Enter a name containing 1–64 characters.",
+        ["プリセットは20件まで登録できます。"] = "You can register up to 20 presets.",
+        ["同じ名前のプリセットを更新しますか？"] = "Update the preset with the same name?",
+        ["プリセットを登録しました。設定画面の「保存」で確定します。"] = "Preset registered. Choose Save in this dialog to commit.",
+        ["配置を設定画面へ読み込みました。「保存」で本画面へ反映します。"] = "Layout loaded into this dialog. Choose Save to apply it to the main window.",
+        ["選択したプリセットを削除しますか？"] = "Delete the selected preset?",
+        ["プリセットを削除しました。設定画面の「保存」で確定します。"] = "Preset removed. Choose Save in this dialog to commit.",
+        ["設定画面の内容を、取り込んだ設定とプリセットで置き換えますか？"] = "Replace this dialog's settings and preset list with the imported data?",
+        ["設定を取り込みました。「保存」で確定します。取り込んだプリセット一覧で置き換わります。"] = "Settings imported. Choose Save to commit. The imported preset list replaces the current list.",
+        ["設定を取り込めませんでした。対応形式・容量・ショートカット・プリセット名を確認してください。"] = "Could not import settings. Check the format, file size, shortcuts and preset names.",
+        ["アプリが使用中の設定ファイルとは別の保存先を選んでください。"] = "Choose a destination other than the application's active settings file.",
+        ["設定画面の内容を書き出しました。本画面の設定は変更していません。"] = "Dialog settings exported. The main window's settings have not changed.",
+        ["設定を書き出せませんでした。保存先を確認してください。"] = "Could not export settings. Check the destination.",
     };
 
     private static readonly Dictionary<string, string> EnglishToJapanese =
@@ -470,6 +525,23 @@ public static class LocalizationService
     public static string Translate(string? text)
     {
         if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
+        if (IsEnglish && JapaneseToEnglish.TryGetValue(text, out var exactEnglish)) return exactEnglish;
+        if (!IsEnglish && EnglishToJapanese.TryGetValue(text, out var exactJapanese)) return exactJapanese;
+        if (text.EndsWith(':')) return Translate(text[..^1]) + ":";
+        // Translate the caption, not its stable mnemonic. Keep Japanese/English keys identical.
+        var mnemonic = Regex.Match(text, @"^(.*)(\(_[A-Za-z0-9]\))$", RegexOptions.Singleline);
+        if (mnemonic.Success)
+        {
+            var caption = mnemonic.Groups[1].Value;
+            var translatedCaption = Translate(caption);
+            if (translatedCaption == caption)
+            {
+                var dictionary = IsEnglish ? JapaneseToEnglish : EnglishToJapanese;
+                var entry = dictionary.FirstOrDefault(pair => StripMnemonic(pair.Key) == caption);
+                if (entry.Value is not null) translatedCaption = StripMnemonic(entry.Value);
+            }
+            return translatedCaption + mnemonic.Groups[2].Value;
+        }
         if (IsEnglish)
         {
             if (JapaneseToEnglish.TryGetValue(text, out var english)) return english;
@@ -547,6 +619,9 @@ public static class LocalizationService
             case TextBlock textBlock:
                 TranslateProperty(textBlock, TextBlock.TextProperty);
                 break;
+            case AccessText accessText:
+                TranslateProperty(accessText, AccessText.TextProperty);
+                break;
             case Run run:
                 TranslateProperty(run, Run.TextProperty);
                 break;
@@ -565,6 +640,7 @@ public static class LocalizationService
         if (current is FrameworkElement element)
         {
             TranslateProperty(element, FrameworkElement.ToolTipProperty);
+            KeyboardAccess.RefreshHint(element);
             if (element.ContextMenu is not null) ApplyCore(element.ContextMenu, visited);
         }
 
@@ -594,6 +670,8 @@ public static class LocalizationService
             // FrameworkContentElement など、Visual ではない論理要素は論理ツリーだけを処理します。
         }
     }
+
+    internal static string StripMnemonic(string text) => Regex.Replace(text, @"\(_[A-Za-z0-9]\)$", "").Replace("_", "");
 
     private static void TranslateProperty(DependencyObject target, DependencyProperty property)
     {
