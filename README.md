@@ -6,9 +6,24 @@
 
 ## 概要（日本語）
 
-PDF Correctoriumは、OCRの文字レイヤー、位置・サイズ、読み順、日本語の縦書き、ルビ、確認状態の修正を目的としたWindows向けPDFエディターです。編集中に元のPDFを書き換えない設計で、Apache License 2.0のもとで提供しています。ルビなど、目的に含まれていても未実装の機能があります。現在の対応範囲は以下を参照してください。
+PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認・修正するWindowsアプリ**です。文字の読み取り間違いや位置のずれを修正できるほか、ページの追加・削除・並べ替えなどの簡単なページ編集、しおりの修正、文書情報の編集にも対応しています。
 
-Version 1.0の互換性基準として実行対象を.NET 8に設定し、Visual Studio 2026 / .NET 10の開発ツールでビルドしています。
+元のPDFを残したまま作業でき、編集内容を保存して後から再開したり、修正結果を別のPDFファイルとして出力したりできます。
+
+### できること
+
+- **文字の修正**：OCRの読み取り間違いを直し、文字を追加・削除できます。
+- **位置・サイズの調整**：透明テキストの位置、大きさ、回転、文字ごとの間隔を調整できます。
+- **縦書き・横書きの設定**：日本語の縦書きを含め、文字方向や読み順を編集できます。
+- **文字領域の整理**：領域の分割・結合や、不要な領域の削除ができます。
+- **検索・一括置換**：同じ読み取り間違いを探し、まとめて修正できます。
+- **校正・確認**：未確認・要再確認などの状態で対象を絞り込み、順番に確認できます。
+- **ページの編集**：ページの追加・削除・並べ替え・回転ができます。
+- **しおりの編集**：しおりの追加・修正・削除や、階層・順序の整理ができます。
+- **文書情報の編集**：タイトル、作者、文書の言語、出力PDFのバージョンなどを変更できます。
+- **作業の保存・PDF出力**：プロジェクトとして保存して編集を再開し、修正結果を別のPDFとして出力できます。
+
+現在は開発版です。アプリ内で画像から新たにOCRを実行する機能など、未実装の項目もあります。詳しくは「現在の開発状況」と「残る制限」をご確認ください。
 
 ## 現在の開発状況
 
@@ -80,6 +95,8 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.1、読み込みに必要な最小版はdev.123のままです。この変更時点の作業フォルダーではGit管理情報を利用できませんでした。ローカルのビルド記録はGit履歴の代わりにはなりません。
 
 ### 前提条件と実行手順
+
+Version 1.0の互換性基準として実行対象を.NET 8に設定し、Visual Studio 2026 / .NET 10の開発ツールでビルドしています。
 
 Windowsのファイル関連付けから`.pdf`や`.pdfocrproj`を開くことに対応しています。アプリはファイル引数を1つ受け取り、「ファイル」メニューと同じ読み込み処理で先頭ページを表示します。日本語名、空白を含む名前、相対パス、大文字の拡張子も扱えます。起動のたびに新しいウィンドウを開き、すでに起動中のアプリへ要求を転送することはありません。ファイルが存在しない場合や破損している場合は、読み込み成功と扱わずエラーを表示します。
 
@@ -153,9 +170,24 @@ Apache License 2.0です。第三者コンポーネントは`THIRD-PARTY-NOTICES
 
 ## Overview (English)
 
-PDF Correctorium is an Apache-2.0 licensed Windows PDF editor focused on correcting OCR text layers, geometry, reading order, vertical Japanese text, ruby, and review state without modifying the source PDF during editing.
+PDF Correctorium is a **Windows application for reviewing and correcting invisible OCR text layers in PDFs**. Alongside fixing recognition errors and misplaced text, it supports basic page editing such as adding, deleting, and reordering pages, as well as editing bookmarks and document information.
 
-The application targets .NET 8 for the Version 1.0 compatibility baseline and is built with the Visual Studio 2026 / .NET 10 toolchain.
+You can work without changing the source PDF, save your edits to resume later, and export the corrected result as a separate PDF file.
+
+### What you can do
+
+- **Correct text**: Fix OCR recognition errors and add or remove characters.
+- **Adjust position and size**: Change the position, size, rotation, and character spacing of invisible text.
+- **Set writing direction**: Edit writing direction and reading order, including vertical Japanese text.
+- **Organize text regions**: Split or merge regions and delete unnecessary ones.
+- **Search and replace**: Find repeated recognition errors and correct them in bulk.
+- **Proofread and review**: Filter regions by states such as unreviewed or needs-review and check them in sequence.
+- **Edit pages**: Add, delete, reorder, and rotate pages.
+- **Edit bookmarks**: Add, modify, and delete bookmarks, and organize their hierarchy and order.
+- **Edit document information**: Change the title, author, document language, output PDF version, and other properties.
+- **Save your work and export PDFs**: Save a project to resume editing later and export the corrected result as a separate PDF.
+
+This is a development version. Some features, including running new OCR on images within the application, are not yet implemented. See "Current milestone" and "Safety fixes and remaining limitations" below for details.
 
 ## Current milestone
 
@@ -227,6 +259,8 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format remains 1.1; its minimum reader remains dev.123. Git metadata was unavailable in this working folder at the time of this change; local build records are not a substitute for Git history.
 
 ### Commands and prerequisites
+
+The application targets .NET 8 for the Version 1.0 compatibility baseline and is built with the Visual Studio 2026 / .NET 10 toolchain.
 
 Opening a `.pdf` or `.pdfocrproj` through a Windows file association is supported: the application consumes the single file argument and loads the first page, using the same loader as the File menu. Japanese names, spaces, relative paths, and uppercase extensions are supported. Each launch creates a new window; existing instances do not receive forwarded requests. Missing/corrupt files report an error without silently claiming a successful open.
 
