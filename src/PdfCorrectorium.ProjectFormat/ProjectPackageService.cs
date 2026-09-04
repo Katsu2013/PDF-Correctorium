@@ -19,6 +19,8 @@ public sealed class ProjectPackageService
     public const string ProjectExtension = ".pdfocrproj";
     /// <summary>通常保存時に保持する世代バックアップ数です。</summary>
     public int BackupGenerationCount { get; set; } = 5;
+    /// <summary>信頼できないプロジェクトの展開量を制限する読込ポリシーです。</summary>
+    public ProjectPackageLimits Limits { get; init; } = new();
     /// <summary>列挙値を可読な文字列で保存する共通JSON設定です。</summary>
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -129,6 +131,8 @@ public sealed class ProjectPackageService
 
         try
         {
+            // 先に一時ZIPを完成させて検証する。既存ファイルを途中状態で開かせないため、
+            // 検証前は目的のパスを変更しない。
             await using (var file = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.Asynchronous))
             using (var archive = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: false))
             {
@@ -176,6 +180,7 @@ public sealed class ProjectPackageService
 
             if (File.Exists(fullPath))
             {
+                // 通常保存では直前の状態を複数の復旧経路へ残してから、検証済みZIPを置き換える。
                 if (createBackups)
                 {
                     File.Copy(fullPath, backupPath, overwrite: true);
@@ -214,6 +219,7 @@ public sealed class ProjectPackageService
             var validation = await ValidateAsync(candidate, cancellationToken);
             if (!validation.IsValid) continue;
 
+            // 復元前の現行ファイルも別名で保持し、復元操作自体が失敗しても戻せるようにする。
             var recoveryCopy = fullPath + $".pre-recovery-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}";
             if (File.Exists(fullPath)) File.Copy(fullPath, recoveryCopy, overwrite: false);
             var temporaryPath = fullPath + ".restore.tmp";
@@ -255,8 +261,10 @@ public sealed class ProjectPackageService
         CancellationToken cancellationToken = default)
     {
         var result = new Dictionary<int, byte[]>();
+        EnsureArchiveFileWithinLimits(projectPath);
         await using var file = File.OpenRead(projectPath);
         using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+        EnsureArchiveWithinLimits(archive);
         foreach (var entry in archive.Entries.Where(x =>
                      x.FullName.StartsWith("thumbnails/page-", StringComparison.OrdinalIgnoreCase) &&
                      x.FullName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)))
@@ -266,7 +274,7 @@ public sealed class ProjectPackageService
             if (!int.TryParse(fileName.AsSpan("page-".Length), out var pageNumber) || pageNumber <= 0)
                 continue;
             // A cached thumbnail must stay small enough that a damaged project cannot exhaust memory.
-            if (entry.Length <= 0 || entry.Length > 4 * 1024 * 1024)
+            if (entry.Length <= 0 || entry.Length > Limits.MaximumThumbnailEntryBytes)
                 continue;
             await using var input = entry.Open();
             using var buffer = new MemoryStream((int)entry.Length);
@@ -280,20 +288,25 @@ public sealed class ProjectPackageService
     /// <summary>形式識別子とバージョンを確認してプロジェクトモデルを読み込みます。</summary>
     public async Task<PdfCorrectoriumProject> OpenAsync(string projectPath, CancellationToken cancellationToken = default)
     {
+        EnsureArchiveFileWithinLimits(projectPath);
         await using var file = File.OpenRead(projectPath);
         using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+        EnsureArchiveWithinLimits(archive);
         var manifest = await ReadJsonAsync<ProjectManifest>(archive, "manifest.json", cancellationToken);
         if (!ProjectManifest.IsSupportedFormat(manifest.Format))
             throw new InvalidDataException($"Unsupported project format: {manifest.Format}");
         if (!ProjectManifest.IsSupportedVersion(manifest.FormatVersion))
             throw new InvalidDataException($"Unsupported project version: {manifest.FormatVersion}");
-        return await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
+        var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
+        EnsureSourceReferenceIsSafe(project.SourcePdf);
+        return project;
     }
 
     /// <summary>外部参照PDFのサイズとSHA-256がプロジェクト記録と一致するか確認します。</summary>
     public async Task<bool> VerifySourceAsync(SourcePdfReference source, string projectDirectory, CancellationToken cancellationToken = default)
     {
         if (source.IsEmbedded) return true;
+        EnsureSourceReferenceIsSafe(source);
         string sourcePath;
         try { sourcePath = ResolveExternalSourcePath(source, projectDirectory); }
         catch (FileNotFoundException) { return false; }
@@ -324,22 +337,27 @@ public sealed class ProjectPackageService
         CancellationToken cancellationToken = default)
     {
         if (!source.IsEmbedded) return ResolveExternalSourcePath(source, Path.GetDirectoryName(projectPath)!);
+        EnsureSourceReferenceIsSafe(source);
         Directory.CreateDirectory(destinationDirectory);
-        var destinationPath = Path.Combine(destinationDirectory, $"{source.Sha256}.pdf");
-        if (File.Exists(destinationPath) && new FileInfo(destinationPath).Length == source.FileSize) return destinationPath;
+        var destinationPath = Path.Combine(destinationDirectory, $"{source.Sha256.ToLowerInvariant()}.pdf");
+        if (await FileMatchesSourceAsync(destinationPath, source, cancellationToken)) return destinationPath;
 
-        var temporaryPath = destinationPath + ".tmp";
-        if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        // 直接書き込まず、サイズとハッシュを検証した一時ファイルだけを公開名へ移動する。
+        var temporaryPath = destinationPath + $".{Guid.NewGuid():N}.tmp";
         try
         {
+            EnsureArchiveFileWithinLimits(projectPath);
             await using (var file = File.OpenRead(projectPath))
             using (var archive = new ZipArchive(file, ZipArchiveMode.Read))
             {
+                EnsureArchiveWithinLimits(archive);
                 var entry = archive.GetEntry("source/document.pdf")
                     ?? throw new InvalidDataException("The embedded source PDF is missing from the project.");
+                if (source.FileSize < 0 || source.FileSize > Limits.MaximumEmbeddedPdfBytes || entry.Length != source.FileSize)
+                    throw new InvalidDataException("The embedded source PDF size does not match the validated project reference.");
                 await using var input = entry.Open();
                 await using var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
-                await input.CopyToAsync(output, cancellationToken);
+                await CopyWithLimitAsync(input, output, Limits.MaximumEmbeddedPdfBytes, cancellationToken);
             }
 
             await using (var stream = File.OpenRead(temporaryPath))
@@ -366,8 +384,11 @@ public sealed class ProjectPackageService
         var issues = new List<ProjectValidationIssue>();
         try
         {
+            // 外部から取得したZIPを読むため、JSONのデシリアライズより先に展開量と圧縮率を検査する。
+            EnsureArchiveFileWithinLimits(projectPath);
             await using var file = File.OpenRead(projectPath);
             using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+            EnsureArchiveWithinLimits(archive);
             if (archive.GetEntry("manifest.json") is null) issues.Add(new("manifest.missing", "manifest.json is missing.", true));
             if (archive.GetEntry("project.json") is null) issues.Add(new("project.missing", "project.json is missing.", true));
             if (archive.GetEntry("source/source-reference.json") is null) issues.Add(new("sourceReference.missing", "The source reference is missing.", true));
@@ -378,8 +399,12 @@ public sealed class ProjectPackageService
                 var source = await ReadJsonAsync<SourcePdfReference>(archive, "source/source-reference.json", cancellationToken);
                 if (manifest.ProjectId != project.ProjectId) issues.Add(new("projectId.mismatch", "Manifest and project IDs differ.", true));
                 if (source != project.SourcePdf) issues.Add(new("sourceReference.mismatch", "The project and source reference entries differ.", true));
+                try { EnsureSourceReferenceIsSafe(source); }
+                catch (InvalidDataException ex) { issues.Add(new("sourceReference.invalid", ex.Message, true)); }
                 if (source.IsEmbedded && archive.GetEntry("source/document.pdf") is null)
                     issues.Add(new("sourcePdf.missing", "The project declares an embedded PDF, but source/document.pdf is missing.", true));
+                if (source.IsEmbedded && archive.GetEntry("source/document.pdf") is { } embedded && embedded.Length != source.FileSize)
+                    issues.Add(new("sourcePdf.sizeMismatch", "The embedded PDF size does not match its source reference.", true));
                 if (!ProjectManifest.IsSupportedFormat(manifest.Format)) issues.Add(new("format.unsupported", manifest.Format, true));
                 if (!ProjectManifest.IsSupportedVersion(manifest.FormatVersion)) issues.Add(new("version.unsupported", manifest.FormatVersion, true));
                 if (project.Pages.Select(x => x.PageNumber).Distinct().Count() != project.Pages.Count)
@@ -388,6 +413,7 @@ public sealed class ProjectPackageService
         }
         catch (InvalidDataException ex) { issues.Add(new("zip.invalid", ex.Message, true)); }
         catch (JsonException ex) { issues.Add(new("json.invalid", ex.Message, true)); }
+        catch (OverflowException ex) { issues.Add(new("size.invalid", ex.Message, true)); }
         catch (IOException ex) { issues.Add(new("io.error", ex.Message, true)); }
         return new(issues);
     }
@@ -399,12 +425,118 @@ public sealed class ProjectPackageService
         await JsonSerializer.SerializeAsync(stream, value, JsonOptions, cancellationToken);
     }
 
-    private static async Task<T> ReadJsonAsync<T>(ZipArchive archive, string name, CancellationToken cancellationToken)
+    private async Task<T> ReadJsonAsync<T>(ZipArchive archive, string name, CancellationToken cancellationToken)
     {
         var entry = archive.GetEntry(name) ?? throw new InvalidDataException($"Missing entry: {name}");
+        if (entry.Length <= 0 || entry.Length > Limits.MaximumJsonEntryBytes)
+            throw new InvalidDataException($"JSON entry exceeds the allowed size: {name}");
         await using var stream = entry.Open();
         return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken)
             ?? throw new InvalidDataException($"Empty JSON entry: {name}");
+    }
+
+    private void EnsureArchiveWithinLimits(ZipArchive archive)
+    {
+        ValidateLimits();
+        if (archive.Entries.Count > Limits.MaximumEntryCount)
+            throw new InvalidDataException("The project package contains too many entries.");
+
+        long totalBytes = 0;
+        long thumbnailBytes = 0;
+        var thumbnailCount = 0;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in archive.Entries)
+        {
+            var name = entry.FullName.Replace('\\', '/');
+            var parts = name.Split('/');
+            if (!string.Equals(name, entry.FullName, StringComparison.Ordinal) ||
+                name.StartsWith("/", StringComparison.Ordinal) ||
+                Path.IsPathRooted(name) ||
+                name.Contains(':', StringComparison.Ordinal) ||
+                parts.Any(part => part is "" or "." or ".."))
+                throw new InvalidDataException($"The project package contains an unsafe entry name: {entry.FullName}");
+            if (!names.Add(name))
+                throw new InvalidDataException($"The project package contains a duplicate entry: {name}");
+            if (entry.Length < 0)
+                throw new InvalidDataException($"The project package contains an invalid entry size: {name}");
+            totalBytes = checked(totalBytes + entry.Length);
+            if (totalBytes > Limits.MaximumTotalUncompressedBytes)
+                throw new InvalidDataException("The expanded project package exceeds the allowed total size.");
+            if (entry.Length > 1024 * 1024 &&
+                (entry.CompressedLength <= 0 || entry.Length / (double)entry.CompressedLength > Limits.MaximumCompressionRatio))
+                throw new InvalidDataException($"The project package entry has an unsafe compression ratio: {name}");
+
+            if (name.StartsWith("thumbnails/page-", StringComparison.OrdinalIgnoreCase) &&
+                name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+            {
+                thumbnailCount++;
+                thumbnailBytes = checked(thumbnailBytes + entry.Length);
+                if (thumbnailCount > Limits.MaximumThumbnailCount ||
+                    entry.Length > Limits.MaximumThumbnailEntryBytes ||
+                    thumbnailBytes > Limits.MaximumTotalThumbnailBytes)
+                    throw new InvalidDataException("The project thumbnail cache exceeds the allowed limits.");
+            }
+            else if (name.Equals("source/document.pdf", StringComparison.OrdinalIgnoreCase) &&
+                     entry.Length > Limits.MaximumEmbeddedPdfBytes)
+            {
+                throw new InvalidDataException("The embedded source PDF exceeds the allowed size.");
+            }
+        }
+    }
+
+    private void EnsureArchiveFileWithinLimits(string path)
+    {
+        ValidateLimits();
+        var length = new FileInfo(path).Length;
+        if (length <= 0 || length > Limits.MaximumArchiveBytes)
+            throw new InvalidDataException("The compressed project package exceeds the allowed file size.");
+    }
+
+    private void ValidateLimits()
+    {
+        if (Limits.MaximumArchiveBytes <= 0 || Limits.MaximumEntryCount <= 0 ||
+            Limits.MaximumJsonEntryBytes <= 0 || Limits.MaximumThumbnailCount <= 0 ||
+            Limits.MaximumThumbnailEntryBytes <= 0 || Limits.MaximumTotalThumbnailBytes <= 0 ||
+            Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
+            !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0)
+            throw new InvalidOperationException("Project package resource limits must be positive finite values.");
+    }
+
+    private static async Task CopyWithLimitAsync(
+        Stream input,
+        Stream output,
+        long maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        long copied = 0;
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            copied = checked(copied + read);
+            if (copied > maximumBytes)
+                throw new InvalidDataException("The expanded project entry exceeds the allowed size.");
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+    }
+
+    private static void EnsureSourceReferenceIsSafe(SourcePdfReference source)
+    {
+        if (source.FileSize < 0)
+            throw new InvalidDataException("The source PDF size is invalid.");
+        if (source.Sha256.Length != 64 || source.Sha256.Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidDataException("The source PDF SHA-256 value must contain exactly 64 hexadecimal characters.");
+    }
+
+    private static async Task<bool> FileMatchesSourceAsync(
+        string path,
+        SourcePdfReference source,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length != source.FileSize) return false;
+        await using var stream = File.OpenRead(path);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return string.Equals(Convert.ToHexString(hash), source.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveExternalSourcePath(SourcePdfReference source, string projectDirectory)

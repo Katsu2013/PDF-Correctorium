@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="bblanchon.PDFium.Win32" Version="136.0.7060" />
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="154.0.8035" />
   </ItemGroup>
 
   <ItemGroup>

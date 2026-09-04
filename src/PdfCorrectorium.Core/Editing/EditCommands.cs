@@ -23,11 +23,15 @@ public sealed class EditHistory(int capacity = 100)
 {
     private readonly Stack<IEditCommand> _undo = new();
     private readonly Stack<IEditCommand> _redo = new();
+    /// <summary>Undoスタックへ保持できる操作の最大件数です。</summary>
     public int Capacity { get; } = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+    /// <summary>取り消し可能な操作が存在するかを示します。</summary>
     public bool CanUndo => _undo.Count > 0;
+    /// <summary>再実行可能な操作が存在するかを示します。</summary>
     public bool CanRedo => _redo.Count > 0;
 
     /// <summary>操作を実行してUndoスタックへ追加し、Redoスタックを破棄します。</summary>
+    /// <remarks>新しい操作は以前の分岐とは両立しないため、Redo履歴を引き継ぎません。</remarks>
     public PdfCorrectoriumProject Execute(PdfCorrectoriumProject project, IEditCommand command)
     {
         var result = command.Execute(project);
@@ -38,6 +42,7 @@ public sealed class EditHistory(int capacity = 100)
     }
 
     /// <summary>直前の操作を取り消します。履歴が空の場合は入力状態をそのまま返します。</summary>
+    /// <remarks>取り消したコマンドはRedoスタックへ移し、同じコマンドを再実行できるようにします。</remarks>
     public PdfCorrectoriumProject Undo(PdfCorrectoriumProject project)
     {
         if (!_undo.TryPop(out var command)) return project;
@@ -47,6 +52,7 @@ public sealed class EditHistory(int capacity = 100)
     }
 
     /// <summary>直前に取り消した操作を再実行します。履歴が空の場合は入力状態をそのまま返します。</summary>
+    /// <remarks>再実行したコマンドはUndoスタックへ戻します。</remarks>
     public PdfCorrectoriumProject Redo(PdfCorrectoriumProject project)
     {
         if (!_redo.TryPop(out var command)) return project;
@@ -58,6 +64,7 @@ public sealed class EditHistory(int capacity = 100)
     private void Trim()
     {
         if (_undo.Count <= Capacity) return;
+        // Stackの列挙順は新しい操作から古い操作の順なので、古い履歴だけを落とします。
         var retained = _undo.Take(Capacity).Reverse().ToArray();
         _undo.Clear();
         foreach (var item in retained) _undo.Push(item);

@@ -41,6 +41,15 @@ if ($PublishDirectory) {
     if (!$identity.Success -or !$identity.Value.Contains('version="' + $properties.FileVersion + '"')) {
         throw 'Embedded Windows application-manifest version does not match FileVersion.'
     }
+    $dependencyChecks = & (Join-Path $PSScriptRoot 'TestDependencyLock.ps1') -PublishDirectory $resolvedDirectory
+    foreach ($native in $dependencyChecks.PublishedFiles) {
+        $binaryChecks += [pscustomobject]@{
+            file = $native.file; fileVersion = $null; productVersion = $native.version
+            assemblyVersion = $null; sha256 = $native.sha256; dependency = $native.dependency
+        }
+    }
+} else {
+    $null = & (Join-Path $PSScriptRoot 'TestDependencyLock.ps1')
 }
 
 [pscustomobject]@{

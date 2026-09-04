@@ -1,7 +1,6 @@
 using System.IO;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
@@ -1394,26 +1393,13 @@ public sealed class PdfExportService
         string expectedOutputPath,
         CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = qpdfPath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("qpdfを起動できませんでした。");
-        var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-        process.WaitForExitAsync(cancellationToken).GetAwaiter().GetResult();
-        var output = standardOutput.GetAwaiter().GetResult();
-        var error = standardError.GetAwaiter().GetResult();
-        if ((process.ExitCode != 0 && process.ExitCode != 3) || !File.Exists(expectedOutputPath))
+        var result = ExternalProcessRunner.RunAsync(
+                qpdfPath, arguments, TimeSpan.FromMinutes(5), cancellationToken, 16 * 1024 * 1024)
+            .GetAwaiter().GetResult();
+        if ((result.ExitCode != 0 && result.ExitCode != 3) || !File.Exists(expectedOutputPath))
             throw new InvalidDataException(
-                $"qpdfによる文字送り補正に失敗しました（終了コード {process.ExitCode}）。\n" +
-                string.Join("\n", new[] { error, output }.Where(value => !string.IsNullOrWhiteSpace(value))));
+                $"qpdfによる文字送り補正に失敗しました（終了コード {result.ExitCode}）。\n" +
+                string.Join("\n", new[] { result.StandardError, result.StandardOutput }.Where(value => !string.IsNullOrWhiteSpace(value))));
     }
 
     private static bool ShouldApplyToPdf(OcrTextRegion region) =>
@@ -1467,31 +1453,17 @@ public sealed class PdfExportService
         var compactPath = pdfPath + ".qpdf";
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = qpdfPath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            startInfo.ArgumentList.Add("--object-streams=generate");
-            startInfo.ArgumentList.Add("--recompress-flate");
-            startInfo.ArgumentList.Add("--compression-level=9");
-            startInfo.ArgumentList.Add(pdfPath);
-            startInfo.ArgumentList.Add(compactPath);
-
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("qpdfを起動できませんでした。");
-            var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-            process.WaitForExitAsync(cancellationToken).GetAwaiter().GetResult();
-            var output = standardOutput.GetAwaiter().GetResult();
-            var error = standardError.GetAwaiter().GetResult();
-            if (process.ExitCode != 0 || !File.Exists(compactPath))
+            var result = ExternalProcessRunner.RunAsync(
+                    qpdfPath,
+                    ["--object-streams=generate", "--recompress-flate", "--compression-level=9", pdfPath, compactPath],
+                    TimeSpan.FromMinutes(5),
+                    cancellationToken,
+                    16 * 1024 * 1024)
+                .GetAwaiter().GetResult();
+            if (result.ExitCode != 0 || !File.Exists(compactPath))
                 throw new InvalidDataException(
-                    $"qpdfによる不要画像データの除去に失敗しました（終了コード {process.ExitCode}）。\n" +
-                    string.Join("\n", new[] { error, output }.Where(value => !string.IsNullOrWhiteSpace(value))));
+                    $"qpdfによる不要画像データの除去に失敗しました（終了コード {result.ExitCode}）。\n" +
+                    string.Join("\n", new[] { result.StandardError, result.StandardOutput }.Where(value => !string.IsNullOrWhiteSpace(value))));
 
             File.Move(compactPath, pdfPath, true);
         }

@@ -69,7 +69,7 @@ finally
     Pop-Location
 }
 
-foreach ($fileName in @("LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md", "FILE-ASSOCIATIONS.md"))
+foreach ($fileName in @("LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md", "FILE-ASSOCIATIONS.md", "DEPENDENCIES.lock.json"))
 {
     $sourcePath = Join-Path $repositoryRoot $fileName
     if (Test-Path -LiteralPath $sourcePath)

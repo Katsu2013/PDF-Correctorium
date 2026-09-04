@@ -23,7 +23,7 @@ internal static class PdfDocumentPropertiesService
         string pdfPath,
         CancellationToken cancellationToken)
     {
-        return Task.Run(() => Read(pdfPath, cancellationToken), cancellationToken);
+        return PdfNativeWorkerClient.Shared.ReadPropertiesAsync(pdfPath, cancellationToken);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ internal static class PdfDocumentPropertiesService
     }
 
     /// <summary>PDFiumを使用してPDF文書の情報を読み取ります。</summary>
-    private static PdfDocumentPropertiesInfo Read(
+    internal static PdfDocumentPropertiesInfo ReadInProcess(
         string pdfPath,
         CancellationToken cancellationToken)
     {

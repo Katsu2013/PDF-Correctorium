@@ -72,6 +72,7 @@ internal static class PdfOutputFileCommitter
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
+                // ウイルス対策ソフトやPDFビューアが短時間だけファイルを占有する場合を吸収する。
                 CommitOnce(completed, destination);
                 return new PdfOutputCommitResult(destination);
             }
@@ -89,6 +90,7 @@ internal static class PdfOutputFileCommitter
         var recoveredPath = CreateRecoveredPath(destination);
         try
         {
+            // 保存先を置き換えられなくても、生成・検証済みのPDF自体は利用者へ渡せるよう保持する。
             File.Move(completed, recoveredPath);
             return new PdfOutputCommitResult(
                 recoveredPath,

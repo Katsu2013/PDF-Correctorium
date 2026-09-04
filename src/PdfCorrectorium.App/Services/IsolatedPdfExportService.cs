@@ -15,6 +15,8 @@ internal sealed class IsolatedPdfExportService(
     ApplicationPaths paths)
 {
     private const string WorkerOption = "--isolated-pdf-export";
+    private static readonly TimeSpan ExportTimeout = TimeSpan.FromMinutes(30);
+    private const int MaximumWorkerOutputCharacters = 4 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -85,33 +87,56 @@ internal sealed class IsolatedPdfExportService(
 
             using var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("PDF出力プロセスを開始できませんでした。");
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var exitTask = process.WaitForExitAsync(cancellationToken);
-            string? lastProgressKey = null;
-            while (!exitTask.IsCompleted)
+            using var job = WindowsProcessJob.Attach(process);
+            using var timeoutSource = new CancellationTokenSource(ExportTimeout);
+            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            var errorTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
+                process.StandardError, MaximumWorkerOutputCharacters, linkedSource.Token);
+            var outputTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
+                process.StandardOutput, MaximumWorkerOutputCharacters, linkedSource.Token);
+            try
             {
-                var progressState = await TryReadStateAsync(statePath, cancellationToken);
-                if (progressState is not null)
+                var exitTask = process.WaitForExitAsync(linkedSource.Token);
+                string? lastProgressKey = null;
+                while (!exitTask.IsCompleted)
                 {
-                    var progressKey = $"{progressState.Phase}:{progressState.Current}:{progressState.Total}:{progressState.Message}";
-                    if (!string.Equals(progressKey, lastProgressKey, StringComparison.Ordinal))
+                    if (errorTask.IsFaulted) await errorTask;
+                    if (outputTask.IsFaulted) await outputTask;
+                    var progressState = await TryReadStateAsync(statePath, linkedSource.Token);
+                    if (progressState is not null)
                     {
-                        progress?.Report(new PdfExportProgress(
-                            progressState.Phase,
-                            progressState.Current,
-                            progressState.Total,
-                            progressState.Message ?? DescribePhase(progressState.Phase)));
-                        lastProgressKey = progressKey;
+                        var progressKey = $"{progressState.Phase}:{progressState.Current}:{progressState.Total}:{progressState.Message}";
+                        if (!string.Equals(progressKey, lastProgressKey, StringComparison.Ordinal))
+                        {
+                            progress?.Report(new PdfExportProgress(
+                                progressState.Phase,
+                                progressState.Current,
+                                progressState.Total,
+                                progressState.Message ?? DescribePhase(progressState.Phase)));
+                            lastProgressKey = progressKey;
+                        }
                     }
+
+                    await Task.WhenAny(exitTask, Task.Delay(250, linkedSource.Token));
                 }
 
-                await Task.WhenAny(exitTask, Task.Delay(250, cancellationToken));
+                await exitTask;
+                standardError = await errorTask;
+                _ = await outputTask;
             }
-
-            await exitTask;
-            standardError = await errorTask;
-            _ = await outputTask;
+            catch (OperationCanceledException)
+            {
+                ExternalProcessRunner.TryTerminate(process);
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+                if (cancellationToken.IsCancellationRequested) throw;
+                throw new TimeoutException($"PDF出力が制限時間 {ExportTimeout.TotalMinutes:N0} 分以内に完了しませんでした。");
+            }
+            catch
+            {
+                ExternalProcessRunner.TryTerminate(process);
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+                throw;
+            }
 
             var state = await ReadStateAsync(statePath, cancellationToken);
             if (process.ExitCode == 0 && state?.Result is not null)

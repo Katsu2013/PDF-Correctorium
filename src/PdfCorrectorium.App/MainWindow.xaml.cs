@@ -1850,7 +1850,11 @@ public partial class MainWindow : Window
 
     private async void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {
-        if (_allowClose) return;
+        if (_allowClose)
+        {
+            ViewModel.ReleaseTransientResources();
+            return;
+        }
         if (ViewModel.IsPdfExporting)
         {
             e.Cancel = true;
@@ -1866,7 +1870,11 @@ public partial class MainWindow : Window
         // deciding whether the project contains unsaved edits.
         CommitPendingEditorBindings();
         OverlayCanvas.Focus();
-        if (!ViewModel.HasUnsavedChanges) return;
+        if (!ViewModel.HasUnsavedChanges)
+        {
+            ViewModel.ReleaseTransientResources();
+            return;
+        }
         if (_closePromptActive)
         {
             e.Cancel = true;
@@ -1894,6 +1902,7 @@ public partial class MainWindow : Window
                 // Close() again here raises VerifyNotClosing. Let the active
                 // close operation complete instead.
                 _allowClose = true;
+                ViewModel.ReleaseTransientResources();
                 e.Cancel = false;
                 return;
             }

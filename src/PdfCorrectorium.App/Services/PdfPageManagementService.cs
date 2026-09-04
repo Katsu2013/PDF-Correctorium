@@ -9,6 +9,9 @@ namespace PdfCorrectorium.App.Services;
 /// </summary>
 public sealed class PdfPageManagementService
 {
+    /// <summary>1回のページ構成処理に許可する既定の最大時間です。</summary>
+    public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromMinutes(3);
+
     /// <summary>ページ構成へ渡す1つの入力PDFとページ範囲です。</summary>
     /// <param name="PdfPath">ページを取得するPDFの絶対パス。</param>
     /// <param name="PageRange">qpdf形式のページ範囲。例: <c>1-3</c>、<c>1,4,2</c>、<c>1-z</c>。</param>
@@ -32,7 +35,7 @@ public sealed class PdfPageManagementService
         }
         arguments.Add("--");
         arguments.Add(outputPath);
-        return RunAsync(arguments, outputPath, cancellationToken);
+        return RunAsync(arguments, outputPath, OperationTimeout, cancellationToken);
     }
 
     /// <summary>指定ページを相対角度で回転した新しいPDFを生成します。</summary>
@@ -51,37 +54,26 @@ public sealed class PdfPageManagementService
         return RunAsync(
             [sourcePdfPath, $"--rotate={sign}90:{range}", outputPath],
             outputPath,
+            OperationTimeout,
             cancellationToken);
     }
 
     private static async Task RunAsync(
         IReadOnlyList<string> arguments,
         string outputPath,
+        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         var qpdfPath = ResolveQpdfPath();
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
         if (File.Exists(outputPath)) File.Delete(outputPath);
 
-        var startInfo = new ProcessStartInfo(qpdfPath)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-        };
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("qpdfを起動できませんでした。");
-        var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var output = await standardOutput.ConfigureAwait(false);
-        var error = await standardError.ConfigureAwait(false);
-        if (process.ExitCode != 0 || !File.Exists(outputPath))
+        var result = await ExternalProcessRunner.RunAsync(qpdfPath, arguments, timeout, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.ExitCode != 0 || !File.Exists(outputPath))
             throw new InvalidOperationException(
-                $"ページ操作に失敗しました（qpdf終了コード {process.ExitCode.ToString(CultureInfo.InvariantCulture)}）。\n" +
-                string.Join(Environment.NewLine, new[] { error, output }.Where(value => !string.IsNullOrWhiteSpace(value))));
+                $"ページ操作に失敗しました（qpdf終了コード {result.ExitCode.ToString(CultureInfo.InvariantCulture)}）。\n" +
+                string.Join(Environment.NewLine, new[] { result.StandardError, result.StandardOutput }.Where(value => !string.IsNullOrWhiteSpace(value))));
     }
 
     private static string ResolveQpdfPath()

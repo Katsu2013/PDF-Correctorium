@@ -6,7 +6,8 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $inputs = @()
 foreach ($name in @('Directory.Build.props', 'Directory.Build.targets', 'global.json', 'NuGet.Config',
-    'PdfCorrectorium.sln', 'LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'FILE-ASSOCIATIONS.md')) {
+    'PdfCorrectorium.sln', 'LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'FILE-ASSOCIATIONS.md',
+    'DEPENDENCIES.lock.json')) {
     $inputs += Get-Item -LiteralPath (Join-Path $repositoryRoot $name)
 }
 $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -File -Recurse |
@@ -14,6 +15,14 @@ $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -File -R
 $inputs += Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File
 if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'qpdf')) {
     $inputs += Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'qpdf') -File -Recurse
+}
+if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'local-packages')) {
+    $dependencyLock = Get-Content -LiteralPath (Join-Path $repositoryRoot 'DEPENDENCIES.lock.json') -Raw | ConvertFrom-Json
+    foreach ($file in $dependencyLock.dependencies.repositoryFiles) {
+        if (([string]$file.path).StartsWith('local-packages/', [StringComparison]::OrdinalIgnoreCase)) {
+            $inputs += Get-Item -LiteralPath (Join-Path $repositoryRoot ([string]$file.path))
+        }
+    }
 }
 $lines = foreach ($inputFile in ($inputs | Sort-Object FullName -Unique)) {
     $relativePath = $inputFile.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')

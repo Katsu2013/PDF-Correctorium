@@ -12,6 +12,8 @@ public sealed class AsyncCommand(Func<Task> execute, Func<bool>? canExecute = nu
     public event EventHandler? CanExecuteChanged;
     public bool CanExecute(object? parameter) => !_running && (canExecute?.Invoke() ?? true);
 
+    // ICommand.Executeはvoid契約のためasync voidになる。例外は呼び出し元のUI同期コンテキストへ返し、
+    // finallyで再実行抑止状態を必ず解除する。
     public async void Execute(object? parameter)
     {
         if (!CanExecute(parameter)) return;

@@ -54,6 +54,7 @@ public partial class RepeatedRegionSearchProgressWindow : Window
     private void Window_OnClosing(object? sender, CancelEventArgs e)
     {
         if (_allowClose) return;
+        // 検索中のCloseは処理を強制終了せず、通常のキャンセル要求へ変換する。
         e.Cancel = true;
         RequestCancellation();
     }

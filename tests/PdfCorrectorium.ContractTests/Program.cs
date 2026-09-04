@@ -19,6 +19,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Project package round-trips and validates", ProjectRoundTripAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
     ("Project package preserves compressed page thumbnails", ProjectThumbnailCacheAsync),
+    ("Project package rejects excessive JSON entries", ProjectJsonLimitAsync),
+    ("Project package rejects excessive entry counts", ProjectEntryCountLimitAsync),
+    ("Project package rejects excessive archive files", ProjectArchiveSizeLimitAsync),
+    ("Project package rejects drive-qualified entries", ProjectUnsafeEntryNameAsync),
+    ("Project package rejects embedded PDF size mismatches", EmbeddedPdfSizeLimitAsync),
+    ("Project package rejects unsafe source fingerprints", UnsafeSourceFingerprintAsync),
+    ("Embedded source cache is rehashed before reuse", EmbeddedSourceCacheIntegrityAsync),
     ("Legacy PdfOcrEditor project packages remain readable", LegacyProjectFormatAsync),
     ("Project validator rejects a missing manifest", MissingManifestAsync),
     ("Source fingerprint detects source changes", SourceFingerprintAsync),
@@ -28,6 +35,165 @@ var tests = new (string Name, Func<Task> Run)[]
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
 };
+
+static async Task ProjectArchiveSizeLimitAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var path = Path.Combine(directory, "oversized-archive.pdfocrproj");
+        await File.WriteAllBytesAsync(path, new byte[32]);
+        var limited = new ProjectPackageService
+        {
+            Limits = new ProjectPackageLimits { MaximumArchiveBytes = 16 },
+        };
+        True(!(await limited.ValidateAsync(path)).IsValid,
+            "A compressed project above the file-size limit must be rejected before ZIP parsing.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task ProjectUnsafeEntryNameAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var path = Path.Combine(directory, "unsafe-entry.pdfocrproj");
+        await using (var stream = File.Create(path))
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            archive.CreateEntry("C:/outside.json");
+        True(!(await new ProjectPackageService().ValidateAsync(path)).IsValid,
+            "Drive-qualified ZIP entry names must be rejected.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task ProjectJsonLimitAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var path = Path.Combine(directory, "oversized-json.pdfocrproj");
+        var writer = new ProjectPackageService();
+        await writer.SaveAsync(path, new PdfCorrectoriumProject { SourcePdf = await writer.CreateSourceReferenceAsync(pdf) });
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            archive.GetEntry("project.json")!.Delete();
+            await using var output = archive.CreateEntry("project.json", CompressionLevel.Optimal).Open();
+            await using var text = new StreamWriter(output);
+            await text.WriteAsync("{\"padding\":\"" + new string('x', 4096) + "\"}");
+        }
+        var limited = new ProjectPackageService
+        {
+            Limits = new ProjectPackageLimits { MaximumJsonEntryBytes = 2048 },
+        };
+        True(!(await limited.ValidateAsync(path)).IsValid, "Oversized project JSON must fail before deserialization.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task ProjectEntryCountLimitAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var path = Path.Combine(directory, "too-many-entries.pdfocrproj");
+        var writer = new ProjectPackageService();
+        await writer.SaveAsync(path, new PdfCorrectoriumProject { SourcePdf = await writer.CreateSourceReferenceAsync(pdf) });
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            archive.CreateEntry("extra/one");
+            archive.CreateEntry("extra/two");
+        }
+        var limited = new ProjectPackageService
+        {
+            Limits = new ProjectPackageLimits { MaximumEntryCount = 4 },
+        };
+        True(!(await limited.ValidateAsync(path)).IsValid, "Packages above the entry-count limit must be rejected.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task EmbeddedPdfSizeLimitAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var path = Path.Combine(directory, "mismatched-source.pdfocrproj");
+        var writer = new ProjectPackageService();
+        await writer.SaveAsync(path,
+            new PdfCorrectoriumProject { SourcePdf = await writer.CreateSourceReferenceAsync(pdf) }, embedSourcePdf: true);
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            archive.GetEntry("source/document.pdf")!.Delete();
+            await using var output = archive.CreateEntry("source/document.pdf", CompressionLevel.NoCompression).Open();
+            await output.WriteAsync("%PDF-1.4\nchanged\n%%EOF"u8.ToArray());
+        }
+        True(!(await writer.ValidateAsync(path)).IsValid, "Embedded PDF length must match the signed source reference.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task UnsafeSourceFingerprintAsync()
+{
+    // ハッシュ値はキャッシュファイル名にも使われるため、パスとして解釈されない形式を受け入れる契約を検証する。
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var path = Path.Combine(directory, "unsafe-hash.pdfocrproj");
+        var packages = new ProjectPackageService();
+        await packages.SaveAsync(path,
+            new PdfCorrectoriumProject { SourcePdf = await packages.CreateSourceReferenceAsync(pdf) }, embedSourcePdf: true);
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            foreach (var entryName in new[] { "project.json", "source/source-reference.json" })
+            {
+                var entry = archive.GetEntry(entryName)!;
+                JsonNode root;
+                using (var input = entry.Open()) root = (await JsonNode.ParseAsync(input))!;
+                if (entryName == "project.json") root["sourcePdf"]!["sha256"] = "../outside";
+                else root["sha256"] = "../outside";
+                entry.Delete();
+                await using var output = archive.CreateEntry(entryName).Open();
+                await JsonSerializer.SerializeAsync(output, root);
+            }
+        }
+        True(!(await packages.ValidateAsync(path)).IsValid, "Unsafe fingerprints must not become extraction paths.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task EmbeddedSourceCacheIntegrityAsync()
+{
+    // サイズが一致するだけの壊れたキャッシュを再利用せず、内容ハッシュで検出する契約を検証する。
+    var directory = CreateTempDirectory();
+    try
+    {
+        var original = "%PDF-1.4\ncache integrity\n%%EOF"u8.ToArray();
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllBytesAsync(pdf, original);
+        var packages = new ProjectPackageService();
+        var source = await packages.CreateSourceReferenceAsync(pdf);
+        var path = Path.Combine(directory, "embedded.pdfocrproj");
+        await packages.SaveAsync(path, new PdfCorrectoriumProject { SourcePdf = source }, embedSourcePdf: true);
+        var cache = Path.Combine(directory, "cache");
+        Directory.CreateDirectory(cache);
+        var cached = Path.Combine(cache, source.Sha256 + ".pdf");
+        await File.WriteAllBytesAsync(cached, Enumerable.Repeat((byte)'x', original.Length).ToArray());
+        var materialized = await packages.MaterializeEmbeddedSourceAsync(path, source with { IsEmbedded = true }, cache);
+        True((await File.ReadAllBytesAsync(materialized)).SequenceEqual(original),
+            "A same-length corrupted cache file must be replaced from the verified package.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
 
 var failures = new List<string>();
 foreach (var test in tests)

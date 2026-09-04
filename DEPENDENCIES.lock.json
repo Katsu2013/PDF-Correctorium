@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "dependencies": [
+    {
+      "name": "bblanchon.PDFium.Win32",
+      "version": "154.0.8035",
+      "sourceUrl": "https://www.nuget.org/packages/bblanchon.PDFium.Win32/154.0.8035",
+      "sourceCommit": "5453f3afc4785cbad82c05f6ceb4dabea0cb81a0",
+      "sourceSha512": "Mqwuv4Iu6zU5ofRxoR4mKMYAu1cu2BSo+aJRnXZ9j8fHMdlk0Zf6lv8EuT7/J9TlnizqBp0ZonTTxPVXA3diuA==",
+      "repositoryFiles": [
+        {
+          "path": "local-packages/bblanchon.pdfium.win32.154.0.8035.nupkg",
+          "sha256": "43327317ddf86f1d3d17446a7e3fcf5642bfd66e8f72af9c1ae0dc5379257dda"
+        }
+      ],
+      "publishFiles": [
+        {
+          "path": "runtimes/win-arm64/native/pdfium.dll",
+          "sha256": "fedd38ea942533e6625a4ed523ed760b114f506f5123fd0985a6b9e54131f40c"
+        },
+        {
+          "path": "runtimes/win-x64/native/pdfium.dll",
+          "sha256": "ccfac1aad9e78624ebfb3f54f3f4ddb77af6db2f52803f150e2f9876beda49fe"
+        },
+        {
+          "path": "runtimes/win-x86/native/pdfium.dll",
+          "sha256": "e4e39ac2f0a61f8db0776b064d3b246acd18ea6ba1f854769cc36667bedd3dbd"
+        }
+      ]
+    },
+    {
+      "name": "qpdf",
+      "version": "12.4.1",
+      "sourceUrl": "https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1-msvc64.zip",
+      "sourceSha256": "3cd016cd433ef7232e42f4c13348a49cc14907a3c7278ef4f99120593126f7a6",
+      "repositoryFiles": [
+        { "path": "tools/qpdf/bin/concrt140.dll", "sha256": "54716f0738af891f283d213b5c8d11b25896bb8ee3097d301eae718560cf974e" },
+        { "path": "tools/qpdf/bin/fix-qdf.exe", "sha256": "2872497dad0af0fcfd2e92b650067042519ee0108922b9b36eaa1a1b511b43fc" },
+        { "path": "tools/qpdf/bin/msvcp140_1.dll", "sha256": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982" },
+        { "path": "tools/qpdf/bin/msvcp140_2.dll", "sha256": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838" },
+        { "path": "tools/qpdf/bin/msvcp140_atomic_wait.dll", "sha256": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b" },
+        { "path": "tools/qpdf/bin/msvcp140_codecvt_ids.dll", "sha256": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78" },
+        { "path": "tools/qpdf/bin/msvcp140.dll", "sha256": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca" },
+        { "path": "tools/qpdf/bin/qpdf.exe", "sha256": "57c003e868fb66cd343fd5afb91be8c2277f56434eea8635762499731bf9f60d" },
+        { "path": "tools/qpdf/bin/qpdf30.dll", "sha256": "36fe5b2023f244e5785d96b8372dba26b75ea51b63adf4d4f1e66ad0aa1c8a61" },
+        { "path": "tools/qpdf/bin/vcruntime140_1.dll", "sha256": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e" },
+        { "path": "tools/qpdf/bin/vcruntime140.dll", "sha256": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7" },
+        { "path": "tools/qpdf/bin/zlib-flate.exe", "sha256": "6898b9fd9e253c410efd28742d4f78919855f4eb0fc2261361f188bf67aa1602" }
+      ],
+      "publishFiles": [
+        { "path": "concrt140.dll", "sha256": "54716f0738af891f283d213b5c8d11b25896bb8ee3097d301eae718560cf974e" },
+        { "path": "fix-qdf.exe", "sha256": "2872497dad0af0fcfd2e92b650067042519ee0108922b9b36eaa1a1b511b43fc" },
+        { "path": "msvcp140_1.dll", "sha256": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982" },
+        { "path": "msvcp140_2.dll", "sha256": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838" },
+        { "path": "msvcp140_atomic_wait.dll", "sha256": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b" },
+        { "path": "msvcp140_codecvt_ids.dll", "sha256": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78" },
+        { "path": "msvcp140.dll", "sha256": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca" },
+        { "path": "qpdf.exe", "sha256": "57c003e868fb66cd343fd5afb91be8c2277f56434eea8635762499731bf9f60d" },
+        { "path": "qpdf30.dll", "sha256": "36fe5b2023f244e5785d96b8372dba26b75ea51b63adf4d4f1e66ad0aa1c8a61" },
+        { "path": "vcruntime140_1.dll", "sha256": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e" },
+        { "path": "vcruntime140.dll", "sha256": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7" },
+        { "path": "zlib-flate.exe", "sha256": "6898b9fd9e253c410efd28742d4f78919855f4eb0fc2261361f188bf67aa1602" }
+      ]
+    }
+  ]
+}

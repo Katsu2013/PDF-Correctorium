@@ -47,7 +47,7 @@ public partial class App : Application
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _isSmokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
-        _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
@@ -55,8 +55,11 @@ public partial class App : Application
         _isNonInteractiveTest |= e.Args.Contains("--recent-files-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--review-mode-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--persistence-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--page-history-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--startup-file-test", StringComparer.OrdinalIgnoreCase) ||
             e.Args.Contains("--file-launch-tests", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--diagnostic-delay-worker", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--diagnostic-output-worker", StringComparer.OrdinalIgnoreCase);
         _diagnostics.Write("startup.begin", $"Args: {string.Join(' ', e.Args)}");
         _diagnostics.Write("startup.version", $"Version: {PdfCorrectorium.Core.ApplicationBuildInfo.InformationalVersion}; build: {PdfCorrectorium.Core.ApplicationBuildInfo.NumericVersion}");
 
@@ -67,6 +70,38 @@ public partial class App : Application
         {
             base.OnStartup(e);
             _diagnostics.Write("startup.application-ready");
+
+            var delayWorkerIndex = Array.FindIndex(e.Args,
+                value => string.Equals(value, "--diagnostic-delay-worker", StringComparison.OrdinalIgnoreCase));
+            if (delayWorkerIndex >= 0)
+            {
+                var seconds = e.Args.Length > delayWorkerIndex + 1 && int.TryParse(e.Args[delayWorkerIndex + 1], out var value)
+                    ? Math.Clamp(value, 1, 30)
+                    : 5;
+                await Task.Delay(TimeSpan.FromSeconds(seconds));
+                Shutdown(0);
+                return;
+            }
+
+            var outputWorkerIndex = Array.FindIndex(e.Args,
+                value => string.Equals(value, "--diagnostic-output-worker", StringComparison.OrdinalIgnoreCase));
+            if (outputWorkerIndex >= 0)
+            {
+                var count = e.Args.Length > outputWorkerIndex + 1 && int.TryParse(e.Args[outputWorkerIndex + 1], out var value)
+                    ? Math.Clamp(value, 1, 1_000_000)
+                    : 1024;
+                await Console.Out.WriteAsync(new string('x', count));
+                await Console.Out.FlushAsync();
+                Shutdown(0);
+                return;
+            }
+
+            if (e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase))
+            {
+                var exitCode = Task.Run(() => PdfNativeWorkerClient.RunServerAsync()).GetAwaiter().GetResult();
+                Shutdown(exitCode);
+                return;
+            }
 
             var isolatedExportIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--isolated-pdf-export", StringComparison.OrdinalIgnoreCase));
             if (isolatedExportIndex >= 0)
@@ -155,6 +190,7 @@ public partial class App : Application
             }
 
             var documentUiTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--document-ui-test", StringComparison.OrdinalIgnoreCase));
+            var pageHistoryTestIndex = Array.FindIndex(e.Args, value => value.Equals("--page-history-test", StringComparison.OrdinalIgnoreCase));
             var keyboardTestIndex = Array.FindIndex(e.Args, value => value.Equals("--keyboard-test", StringComparison.OrdinalIgnoreCase));
             var settingsTestIndex = Array.FindIndex(e.Args, value => value.Equals("--settings-test", StringComparison.OrdinalIgnoreCase));
             var recentFilesTestIndex = Array.FindIndex(e.Args, value => value.Equals("--recent-files-test", StringComparison.OrdinalIgnoreCase));
@@ -176,6 +212,11 @@ public partial class App : Application
             if (documentUiTestIndex >= 0)
             {
                 RunDocumentUiTest(window, e.Args, documentUiTestIndex);
+                return;
+            }
+            if (pageHistoryTestIndex >= 0)
+            {
+                await RunPageHistoryTestAsync(window, e.Args, pageHistoryTestIndex);
                 return;
             }
 
@@ -212,6 +253,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        PdfNativeWorkerClient.Shared.Shutdown();
         _diagnostics?.Write("shutdown", $"Exit code: {e.ApplicationExitCode}");
         base.OnExit(e);
     }

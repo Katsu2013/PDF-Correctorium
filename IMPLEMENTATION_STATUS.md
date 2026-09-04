@@ -1,6 +1,50 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.128
+## Current repository snapshot: v1.0.0-dev.132
+
+### Bookmark allocation fix and external-processing containment (2026-09-04)
+
+- Updated the bundled qpdf from 12.3.2 to 12.4.1 and `bblanchon.PDFium.Win32` from 136.0.7060 to 154.0.8035. `DEPENDENCIES.lock.json` pins repository/publish SHA-256 values; version verification and `build-info.json` now cover native dependencies as well as the five managed/application binaries.
+- All qpdf calls and the isolated PDF-export worker now have deadlines, bounded stdout/stderr and whole-process-tree termination. PDFium and export workers are attached to Windows Job Objects with per-process/job memory and active-process limits. Job Objects do not reduce the worker token or provide AppContainer isolation.
+- PDFium worker protocol lines, JSON results, PNG previews and output directories are bounded/validated. A protocol or result error discards the worker before another request. NDLOCR companion and bookmark JSON/XML/TXT imports now limit file/count/page/line/title/depth resources; XML DTDs are prohibited.
+- Project packages now reject an oversized compressed archive before ZIP parsing and additionally reject rooted, drive-qualified, empty-segment and dot-segment entry names. Contract coverage is 23 cases and `--page-history-test` adds worker containment, external output, NDLOCR and bookmark limit checks for 29 cases.
+- Fixed an existing collision between newly allocated bookmark objects and a newly created PDF `/Info` object when the source PDF had no document-information dictionary. The permanent bookmark diagnostic now covers that case.
+- Product/numeric versions: 1.0.0-dev.132 / 1.0.0.132. Project format 1.1 and minimum reader dev.123 are unchanged. No Git commit, push, tag or release is performed in this increment.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 76 recent-file, 79 settings, 3479 keyboard, 139 document-UI, 38 persistence, 69 review, 80 file-launch, 29 page-history, 23 contract and 18 version/dependency-management checks passed (4030 total). The final packaged bookmark diagnostic and smoke test both exited 0. The page-history diagnostic also confirmed Windows Job containment and left no app/qpdf process running.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.132-win-x64-20260904-194232`. Product version `1.0.0-dev.132`, numeric version `1.0.0.132`, distribution label and all five managed/application binary versions agree. The 15 native dependency files match `DEPENDENCIES.lock.json`; all 20 managed/application/native records are present in `build-info.json`. SDK 10.0.400; source fingerprint `4396D8E5432BED8EB7057FF53BCD79713A410752185273F0364B554501835F33`, which matches the post-build repository fingerprint. Results are under `outputs/.verification/final-dev132-20260904-193857546`, `outputs/.verification/bookmark-dev132-20260904-193837749`, `outputs/.verification/versioning-dev132-publish-20260904-194300504`, `outputs/.verification/packaged-dev132-20260904-194300504` and `outputs/.verification/packaged-dev132-final-20260904-194605469`. Both dev.131 folders (`...-192741` and `...-192928`) are superseded intermediate outputs and must not be distributed.
+
+## Previous repository snapshot: v1.0.0-dev.130
+
+### Native/PDF package hardening and bounded work files (2026-09-04)
+
+- Project packages are rejected before deserialization or extraction when entry counts, expanded totals, compression ratios, JSON, thumbnail totals or embedded PDFs exceed configurable defaults. Unsafe/duplicate entry names, malformed source SHA-256 values and embedded-source size mismatches are invalid. A same-size cached embedded PDF is rehashed before reuse, and concurrent materialization uses unique temporary names.
+- PDFium preview rendering, text extraction and document-property inspection now run through a reusable worker process instead of the WPF process. Managed failures are returned through a JSON protocol; native crashes, cancellation and deadlines discard the worker and the next request starts a clean process.
+- Page-edit PDFs use a locked per-session store. Files are retained only while referenced by the current state or reachable Undo/Redo snapshots, and are removed when branches are invalidated, history is trimmed, documents change or the session closes. Abandoned locked-session directories are reclaimed on the next session.
+- qpdf page operations use the shared external-process runner with captured output, a three-minute deadline, cancellation and process-tree termination. Partial output is reclaimed by the page-session store.
+- Contract coverage adds package entry/JSON/embedded-PDF/fingerprint/cache-integrity limits. `--page-history-test` now also checks native-worker isolation, deadline termination and work-file reclamation.
+- Product/numeric versions: 1.0.0-dev.130 / 1.0.0.130. Project format 1.1 and minimum reader dev.123 are unchanged. No Git commit, push, tag or release is performed in this increment.
+
+Final verification: Release solution build succeeded with 0 warnings/errors. 76 recent-file, 79 settings, 3479 keyboard, 139 document-UI, 38 persistence, 69 review, 80 file-launch, 25 page-history, 21 contract and 18 version-management checks passed (4024 total). The packaged page-history diagnostic passed all 25 checks, the packaged smoke test exited 0, and no app/worker process, page working PDF or native-worker temporary file remained afterward.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.130-win-x64-20260904-131308`. Product version 1.0.0-dev.130, numeric version 1.0.0.130, title/About, saved-manifest application version and folder label agree. SDK 10.0.400; source fingerprint `F337CD741C45E5560D717CCAE7B1306186896DE7AE32AAB95106196CBFF21E83`. Source and binary hashes match `build-info.json`; previous build folders are unchanged. Results are under `outputs/.verification/final-dev130-20260904-130707418`, `outputs/.verification/packaged-dev130-page-history-20260904-131351333` and `outputs/.verification/versioning-20260904-131326107`.
+
+## Previous repository snapshot: v1.0.0-dev.129
+
+### Page-structure Undo/Redo (2026-09-01)
+
+- Page insertion, deletion, reordering and 90-degree rotation now participate in the same ordered Undo/Redo history as OCR edits. Ctrl+Z/Ctrl+Y restores the corresponding PDF, project pages, bookmarks, current/multi-page selection and loaded OCR page cache; OCR edits made before a page operation remain reachable after undoing that operation.
+- Each page operation retains before/after working-PDF snapshots without modifying the source PDF. Undo/Redo validates the target PDF before switching state, keeps the history entry when restoration fails, prevents concurrent history execution during page reconstruction/export, and clears a stale redo branch after any new OCR edit.
+- The page-deletion confirmation now states that Undo is available. Working-PDF names were shortened so the bundled Windows qpdf can create them below its legacy 260-character path limit in the current portable workspace.
+- Added `--page-history-test <new-output-directory>` with generated PDFs. It covers all four page operations, PDF/page/OCR geometry restoration, OCR-history continuity and instance identity, redo invalidation, page selection, long-path avoidance, and save/reload after redo.
+- Product/numeric versions: 1.0.0-dev.129 / 1.0.0.129. Project format 1.1 and minimum reader dev.123 are unchanged. No Git commit, push, tag or release is performed in this increment.
+
+Final verification: Release solution build succeeded with 0 warnings/errors. 76 recent-file, 79 settings, 3479 keyboard, 139 document-UI, 38 persistence, 69 review, 80 file-launch, 21 page-history, 16 contract and 18 version-management checks passed (4015 total). The packaged page-history diagnostic also passed all 21 checks, and packaged smoke test exited 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.129-win-x64-20260901-233021`. Product version 1.0.0-dev.129, numeric version 1.0.0.129, title/About, saved-manifest application version and folder label agree. SDK 10.0.400; source fingerprint `0A994537D19D6AB985617B269A501A2AADE2CB74E74053A91555A617C8522BEC`. Source and binary hashes match build-info.json; previous build folders are unchanged. Results are under `outputs/.verification/final-dev129-20260901-232932033`, `outputs/.verification/packaged-dev129-page-history-20260901-233040274` and `outputs/.verification/versioning-20260901-233436071`.
+
+## Previous repository snapshot: v1.0.0-dev.128
 
 ### Recent files (2026-09-01)
 
@@ -76,7 +120,7 @@ Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.
 
 ### Current remaining scope
 
-The five safety fixes from dev.123 remain implemented. Page-structure Undo and the larger Version 1.0 feature gaps listed below remain unfinished; this revision changes build identification and safeguards, not those features.
+The five safety fixes from dev.123 remain implemented. Page-structure Undo was completed in dev.129; the larger Version 1.0 feature gaps listed below remain unfinished.
 
 ## Previous repository snapshot: v1.0.0-dev.123
 
@@ -97,14 +141,14 @@ The permanent `--persistence-test <new-output-directory>` covers document replac
 
 Final verification on 2026-08-30: repository-root Release build succeeded with 0 warnings/errors; 15 contract, 38 persistence, 69 review, 136 document-UI and 67 file-launch checks passed (325 total). Packaged `--smoke-test` also exited successfully. App diagnostics used `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.123-win-x64-20260830-180424`; all five updated SVGs were rendered and visually checked.
 
-### Known implementation defects
+### Defects known at the dev.123 milestone
 
-- Page insertion, deletion, reordering and rotation still do not support Undo, and clear earlier OCR Undo history (FR-104 remains unmet).
+- At dev.123, page insertion, deletion, reordering and rotation did not support Undo and cleared earlier OCR Undo history. dev.129 resolves this FR-104 gap; the statement is retained as historical milestone evidence.
 - The five dev.122 audit defects listed below were addressed in dev.123; their old descriptions are retained only as historical evidence.
 
 ### Remaining Version 1.0 gaps
 
-Google Vision and in-application OCR/provider contracts; ruby editing; comments, tags, diffs, hierarchical review aggregation and audit history; migration/repair/read-only/rescue UI and versioned schemas; plugin contracts; docking/presets/command palette and settings import-export; export-strategy selection, complete input warnings and multi-engine validation remain unfinished. Recovery-package discovery at startup is also not implemented. The old design PDF remains a dated snapshot. This increment is not completion of all unimplemented scope.
+Google Vision and in-application OCR/provider contracts; ruby editing; comments, tags, diffs, hierarchical review aggregation and audit history; migration/repair/read-only/rescue UI and versioned schemas; plugin contracts; freely docking/floating panes and a command palette; export-strategy selection, complete input warnings and multi-engine validation remain unfinished. Recovery-package discovery at startup is also not implemented. The old design PDF remains a dated snapshot. This increment is not completion of all unimplemented scope.
 
 ## Previous audited snapshot: v1.0.0-dev.122
 
@@ -157,7 +201,7 @@ All items below were unfixed at the dev.122 audit. The first five were reproduce
 | P2 | OCR quality-analysis keyword-width correction bypasses the review-mode geometry guard. With review active and `CanEditGeometry=false`, the correction changed a test region's width from 720 to 1080. The analysis window has an execution confirmation; this is not an unprompted automatic change. Ordinary drag/resize controls are guarded, but review mode is not a universal geometry lock. |
 | P2 | Bulk replace assigns `Modified`, whereas FR-700 requires `NeedsReview`. Replacing `ABC` with `XYZ` removed the region from the default unreviewed/needs-review list. Use all statuses to revisit it; the requirement remains needs-review and has not been relaxed to match the bug. |
 
-- Page insertion, deletion, reordering, and rotation are non-Undo operations even though FR-104 requires Undo; adopting the changed working PDF also clears the earlier overlay Undo history.
+- At this dev.122 audit, page insertion, deletion, reordering, and rotation were non-Undo operations and adopting the working PDF cleared earlier overlay history. dev.129 resolves this historical defect.
 - New project manifests write `minimumApplicationVersion` and `applicationVersion` as fixed `0.1.0` values instead of tracking the application version. The project-format example documents these actual values, not completion of version tracking.
 
 ### Audit and documentation reconciliation on 2026-08-30
@@ -278,11 +322,11 @@ The following figures are retained from the early foundation milestone and have 
 
 ## Next implementation slice
 
-1. Fix lossless OCR-region round-trip, including empty text and all persisted attributes, and add ViewModel-to-project regression tests.
-2. Repair the UI startup smoke test and make it part of the repeatable verification command.
-3. Decide whether page structure operations will become Undoable or whether FR-104 will be revised through the design process.
-4. Align SDK selection, manifest application versions, release metadata, and documentation publication.
-5. Implement or explicitly defer the remaining Version 1.0 gaps listed above.
+1. Expand the new package and native-worker safeguards with hostile-PDF/package corpora, fuzzing, resource telemetry and recovery UX.
+2. Define and implement the in-application OCR/provider boundary, including explicit privacy and credential handling.
+3. Implement or explicitly defer ruby, comments, tags, diffs, hierarchical progress and audit history.
+4. Add project migration, structured repair, read-only/rescue modes and published schemas.
+5. Complete or defer the remaining workspace/docking and extensibility requirements.
 
 ## Known constraints
 

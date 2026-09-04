@@ -177,14 +177,44 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         [25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400];
     /// <summary>1領域の編集前後をまとめ、Undo/Redoで復元できる形にした変更単位です。</summary>
     private sealed record OverlayRegionChange(OverlayRegionViewModel Region, OverlayRegionSnapshot Before, OverlayRegionSnapshot After);
+    /// <summary>OCR編集とページ構成編集を同じ順序でUndo/Redoするための共通履歴項目です。</summary>
+    private abstract record HistoryEdit(
+        string Description,
+        long BeforeStateId = 0,
+        long AfterStateId = 0);
     /// <summary>一度に行われた複数領域の変更と、その履歴表示名・状態IDを保持します。</summary>
     private sealed record OverlayEdit(
         IReadOnlyList<OverlayRegionChange> Changes,
         string Description,
         long BeforeStateId = 0,
-        long AfterStateId = 0);
+        long AfterStateId = 0) : HistoryEdit(Description, BeforeStateId, AfterStateId);
     /// <summary>画像ピクセルとPDFポイントの座標変換に使うページ寸法です。</summary>
     private sealed record PageMetrics(int PixelWidth, int PixelHeight, double WidthPoints, double HeightPoints);
+    /// <summary>
+    /// ページ構成操作の前後にある、PDF・プロジェクト・OCR表示キャッシュ・選択状態をまとめた復元点です。
+    /// OCR領域のインスタンスも保持し、ページ操作より前のOCR履歴が参照切れにならないようにします。
+    /// </summary>
+    private sealed record PageStructureSnapshot(
+        PdfCorrectoriumProject Project,
+        string ResolvedPdfPath,
+        NdlOcrDocument? NdlOcrDocument,
+        bool HasPageStructureEdits,
+        IReadOnlyDictionary<int, List<OverlayRegionViewModel>> PageOverlays,
+        IReadOnlyDictionary<int, PageMetrics> PageMetrics,
+        IReadOnlyDictionary<int, byte[]> ThumbnailCache,
+        IReadOnlyList<int> SelectedPageNumbers,
+        int CurrentPageNumber,
+        IReadOnlyList<OverlayRegionViewModel> SelectedOverlays,
+        OverlayRegionViewModel? PrimaryOverlay,
+        OverlayRegionViewModel? AlignmentReference,
+        string OcrDataSourceText);
+    /// <summary>ページ追加・削除・並べ替え・回転の前後にある復元点です。</summary>
+    private sealed record PageStructureEdit(
+        PageStructureSnapshot Before,
+        PageStructureSnapshot After,
+        string Description,
+        long BeforeStateId = 0,
+        long AfterStateId = 0) : HistoryEdit(Description, BeforeStateId, AfterStateId);
     /// <summary>検索対象文字列内で見つかった範囲と、正規表現のキャプチャ情報を保持します。</summary>
     private sealed record OcrSearchOccurrence(int StartIndex, int Length, Match? RegularExpressionMatch = null);
     /// <summary>置換前の位置・長さと、正規表現の展開後文字列を保持します。</summary>
@@ -210,6 +240,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private readonly PdfBookmarkService _bookmarkService = new();
     /// <summary>元PDFを保護したままページ構成を変更するサービスです。</summary>
     private readonly PdfPageManagementService _pageManagementService = new();
+    /// <summary>ページ編集用PDFをセッション内で所有し、履歴寿命に合わせて回収します。</summary>
+    private readonly PageWorkingFileStore _pageWorkingFiles;
     /// <summary>終了確認完了後にメインウィンドウを閉じるコールバックです。</summary>
     private readonly Action _close;
     /// <summary>正規化済みの現在のアプリケーション設定です。</summary>
@@ -276,9 +308,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>自動的なプロパティ変更を1件の履歴へまとめるための直前状態です。</summary>
     private readonly Dictionary<Guid, OverlayRegionSnapshot> _lastOverlaySnapshots = [];
     /// <summary>取り消し可能な編集を新しい順に保持します。</summary>
-    private readonly Stack<OverlayEdit> _undo = [];
+    private readonly Stack<HistoryEdit> _undo = [];
     /// <summary>Undo後にやり直せる編集を保持します。</summary>
-    private readonly Stack<OverlayEdit> _redo = [];
+    private readonly Stack<HistoryEdit> _redo = [];
     /// <summary>囲み選択やCtrl選択を含む、現在選択中の全OCR領域です。</summary>
     private readonly List<OverlayRegionViewModel> _selectedOverlays = [];
     /// <summary>整列・同一サイズ操作で位置や寸法の基準にする領域です。</summary>
@@ -289,6 +321,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private OverlayRegionSnapshot? _batchStart;
     /// <summary>Undo/Redoの再適用中に新しい履歴が作られることを防ぐフラグです。</summary>
     private bool _applyingHistory;
+    /// <summary>ページ構成の復元中に履歴コマンドが再実行されることを防ぎます。</summary>
+    private bool _historyOperationInProgress;
     /// <summary>プレビューへ適用する表示倍率を百分率で保持します。</summary>
     private double _zoomPercent = 100;
     /// <summary>通常編集と読み順編集を切り替える画面選択インデックスです。</summary>
@@ -346,6 +380,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _ndlOcrCompanionService = ndlOcrCompanionService;
         _log = log;
         _paths = paths;
+        _pageWorkingFiles = new PageWorkingFileStore(paths.WorkspaceDirectory);
         _isolatedExportService = new IsolatedPdfExportService(packages, paths);
         _settingsService = new ApplicationSettingsService(paths);
         _applicationSettings = _settingsService.Load();
@@ -383,8 +418,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         GoToBookmarkCommand = new RelayCommand(GoToBookmark, () => HasDocument && SelectedBookmark is not null);
         ImportBookmarksCommand = new AsyncCommand(ImportBookmarksAsync, () => HasDocument);
         ExportBookmarksCommand = new AsyncCommand(ExportBookmarksAsync, () => HasDocument && BookmarkItems.Count > 0);
-        UndoCommand = new RelayCommand(Undo, () => _undo.Count > 0);
-        RedoCommand = new RelayCommand(Redo, () => _redo.Count > 0);
+        UndoCommand = new RelayCommand(Undo, () => _undo.Count > 0 && CanUseHistory());
+        RedoCommand = new RelayCommand(Redo, () => _redo.Count > 0 && CanUseHistory());
         EqualWidthCommand = GeometryCommand(EqualizeSelectedWidths, () => _selectedOverlays.Count > 1);
         EqualHeightCommand = GeometryCommand(EqualizeSelectedHeights, () => _selectedOverlays.Count > 1);
         AlignLeftCommand = GeometryCommand(() => AlignSelection("left"), () => _selectedOverlays.Count > 1);
@@ -775,7 +810,16 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public string OcrDataSourceText { get => LocalizationService.Translate(_ocrDataSourceText); private set => Set(ref _ocrDataSourceText, value); }
     public string OverlaySummary { get => LocalizationService.Translate(_overlaySummary); private set => Set(ref _overlaySummary, value); }
     /// <summary>ステータスバーに長時間処理の進捗を表示する場合は<c>true</c>です。</summary>
-    public bool IsBackgroundOperationVisible { get => _isBackgroundOperationVisible; private set { if (Set(ref _isBackgroundOperationVisible, value)) NotifyRecentFileCommands(); } }
+    public bool IsBackgroundOperationVisible
+    {
+        get => _isBackgroundOperationVisible;
+        private set
+        {
+            if (!Set(ref _isBackgroundOperationVisible, value)) return;
+            NotifyRecentFileCommands();
+            NotifyHistoryState();
+        }
+    }
     /// <summary>進捗バーを不確定表示にする場合は<c>true</c>です。</summary>
     public bool IsBackgroundOperationIndeterminate { get => _isBackgroundOperationIndeterminate; private set => Set(ref _isBackgroundOperationIndeterminate, value); }
     /// <summary>長時間処理の進捗率です。処理量を算出できる場合に0～100で更新します。</summary>
@@ -814,7 +858,16 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         private set { if (Set(ref _isPreviewLoading, value)) NotifyReviewState(); }
     }
     /// <summary>PDFの生成と保存後検証が進行中の場合は<c>true</c>です。</summary>
-    public bool IsPdfExporting { get => _isPdfExporting; private set { if (Set(ref _isPdfExporting, value)) NotifyRecentFileCommands(); } }
+    public bool IsPdfExporting
+    {
+        get => _isPdfExporting;
+        private set
+        {
+            if (!Set(ref _isPdfExporting, value)) return;
+            NotifyRecentFileCommands();
+            NotifyHistoryState();
+        }
+    }
     public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set => Set(ref _isOcrOverlayVisible, value); }
     public int EditorModeIndex
     {
@@ -1268,7 +1321,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             await ShowErrorAsync("バックアップからプロジェクトを復旧できませんでした。", ex);
             return false;
         }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            EndBackgroundOperation();
+        }
     }
 
     /// <summary>
@@ -1428,6 +1484,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     internal Task LoadPdfForDiagnosticsAsync(string pdfPath) => LoadPdfAsync(pdfPath);
     internal Task LoadProjectForDiagnosticsAsync(string projectPath) => LoadProjectAsync(projectPath);
+    internal string? ResolvedPdfPathForDiagnostics => _resolvedPdfPath;
+    internal PdfCorrectoriumProject? ProjectForDiagnostics => _project;
+    internal int UndoCountForDiagnostics => _undo.Count;
+    internal int RedoCountForDiagnostics => _redo.Count;
+    internal int PageWorkingFileCountForDiagnostics => _pageWorkingFiles.FileCount;
 
     private async Task LoadPdfAsync(string pdfPath)
     {
@@ -1882,7 +1943,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = "プロジェクトを上書き保存し、検証が完了しました。";
             await _log.WriteAsync(LogLevel.Information, "project.save", $"Saved project {_project.ProjectId} to {_projectFilePath}");
         }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            EndBackgroundOperation();
+        }
     }
 
     private async Task OptimizeCurrentPageImageAsync()
@@ -1965,7 +2029,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         {
             await ShowErrorAsync("ページ画像を安全に最適化できませんでした。元PDFは変更していません。", ex);
         }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            EndBackgroundOperation();
+        }
     }
 
     private void ReplaceProjectPage(OcrPage replacement)
@@ -2097,7 +2164,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         {
             await ShowErrorAsync("PDF全体の画像を解析・最適化できませんでした。元PDFは変更していません。", ex);
         }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            EndBackgroundOperation();
+        }
     }
 
     private async Task ExportPdfAsync()
@@ -2735,7 +2805,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 [new PdfPageManagementService.PageSource(_resolvedPdfPath, string.Join(",", ordered))],
                 ordered.Select(page => (int?)page).ToArray(),
                 Math.Min(insertionIndex + 1, ordered.Length),
-                "ページを並べ替えました。");
+                "ページを並べ替えました。",
+                "ページを並べ替え");
         }
         catch (Exception ex)
         {
@@ -2760,21 +2831,32 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             Title = "挿入するPDFを選択",
         };
         if (dialog.ShowDialog() != true) return;
+        await InsertPagesFromFileAsync(dialog.FileName, SelectedPage?.PageNumber ?? PageItems.Count);
+    }
+
+    private async Task InsertPagesFromFileAsync(string inputPdfPath, int insertAfter)
+    {
+        if (_resolvedPdfPath is null) return;
         try
         {
-            var imported = await _previewService.RenderPageAsync(dialog.FileName, 1, 240);
-            var insertAfter = SelectedPage?.PageNumber ?? PageItems.Count;
+            var imported = await _previewService.RenderPageAsync(inputPdfPath, 1, 240);
+            insertAfter = Math.Clamp(insertAfter, 0, PageItems.Count);
             var sources = new List<PdfPageManagementService.PageSource>();
             if (insertAfter > 0)
                 sources.Add(new(_resolvedPdfPath, $"1-{insertAfter}"));
-            sources.Add(new(dialog.FileName, "1-z"));
+            sources.Add(new(inputPdfPath, "1-z"));
             if (insertAfter < PageItems.Count)
                 sources.Add(new(_resolvedPdfPath, $"{insertAfter + 1}-z"));
             var oldOrder = Enumerable.Range(1, insertAfter).Select(page => (int?)page)
                 .Concat(Enumerable.Repeat<int?>(null, imported.PageCount))
                 .Concat(Enumerable.Range(insertAfter + 1, PageItems.Count - insertAfter).Select(page => (int?)page))
                 .ToArray();
-            await ComposeCurrentPdfAsync(sources, oldOrder, insertAfter + 1, $"{imported.PageCount}ページを追加しました。");
+            await ComposeCurrentPdfAsync(
+                sources,
+                oldOrder,
+                insertAfter + 1,
+                $"{imported.PageCount}ページを追加しました。",
+                "ページを追加");
         }
         catch (Exception ex) { await ShowErrorAsync("ページを追加できませんでした。元PDFは変更していません。", ex); }
     }
@@ -2783,11 +2865,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     {
         if (!CanDeleteSelectedPages() || _resolvedPdfPath is null) return;
         var answer = MessageBox.Show(
-            $"選択した{_selectedPageNumbers.Count}ページを削除します。\n元PDFは変更されませんが、この操作はUndoでは戻せません。続行しますか？",
+            $"選択した{_selectedPageNumbers.Count}ページを削除します。\n元PDFは変更されず、削除後もUndoで元に戻せます。続行しますか？",
             "ページを削除",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
         if (answer != MessageBoxResult.Yes) return;
+        await DeleteSelectedPagesCoreAsync();
+    }
+
+    private async Task DeleteSelectedPagesCoreAsync()
+    {
+        if (!CanDeleteSelectedPages() || _resolvedPdfPath is null) return;
         try
         {
             var selected = _selectedPageNumbers.ToHashSet();
@@ -2797,10 +2885,19 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 [new PdfPageManagementService.PageSource(_resolvedPdfPath, string.Join(',', kept))],
                 kept.Select(page => (int?)page).ToArray(),
                 target,
-                $"{selected.Count}ページを削除しました。");
+                $"{selected.Count}ページを削除しました。",
+                "ページを削除");
         }
         catch (Exception ex) { await ShowErrorAsync("ページを削除できませんでした。元PDFは変更していません。", ex); }
     }
+
+    internal Task InsertPagesForDiagnosticsAsync(string inputPdfPath, int insertAfter) =>
+        InsertPagesFromFileAsync(inputPdfPath, insertAfter);
+
+    internal Task DeleteSelectedPagesForDiagnosticsAsync() => DeleteSelectedPagesCoreAsync();
+
+    internal Task RotateSelectedPagesForDiagnosticsAsync(int clockwiseDegrees) =>
+        RotateSelectedPagesAsync(clockwiseDegrees);
 
     private async Task RotateSelectedPagesAsync(int clockwiseDegrees)
     {
@@ -2808,7 +2905,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         BeginBackgroundOperation("ページを回転して再構成しています...");
         try
         {
-            SynchronizeProjectPages();
+            var before = CapturePageStructureSnapshot();
             var outputPath = CreatePageWorkingPdfPath();
             await _pageManagementService.RotateAsync(_resolvedPdfPath, _selectedPageNumbers, clockwiseDegrees, outputPath);
             var selected = _selectedPageNumbers.ToHashSet();
@@ -2818,24 +2915,31 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                     ? RotateOcrPage(page, clockwiseDegrees)
                     : page).ToArray(),
             };
-            await AdoptPageWorkingPdfAsync(outputPath, PageItems.Count, _selectedPageNumbers.Min(),
-                $"選択した{selected.Count}ページを{(clockwiseDegrees > 0 ? "右" : "左")}へ90°回転しました。");
+            var completedMessage = $"選択した{selected.Count}ページを{(clockwiseDegrees > 0 ? "右" : "左")}へ90°回転しました。";
+            await AdoptPageWorkingPdfAsync(outputPath, PageItems.Count, _selectedPageNumbers.Min(), completedMessage);
+            RecordPageStructureEdit(before, CapturePageStructureSnapshot(),
+                $"ページを{(clockwiseDegrees > 0 ? "右" : "左")}へ90°回転");
         }
         catch (Exception ex) { await ShowErrorAsync("ページを回転できませんでした。元PDFは変更していません。", ex); }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            CleanupPageWorkingFiles();
+            EndBackgroundOperation();
+        }
     }
 
     private async Task ComposeCurrentPdfAsync(
         IReadOnlyList<PdfPageManagementService.PageSource> sources,
         IReadOnlyList<int?> oldPageAtNewPosition,
         int targetPage,
-        string completedMessage)
+        string completedMessage,
+        string historyDescription)
     {
         if (_resolvedPdfPath is null || _project is null) return;
         BeginBackgroundOperation("ページを再構成しています...");
         try
         {
-            SynchronizeProjectPages();
+            var before = CapturePageStructureSnapshot();
             var outputPath = CreatePageWorkingPdfPath();
             await _pageManagementService.ComposeAsync(_resolvedPdfPath, sources, outputPath);
             var oldToNew = oldPageAtNewPosition
@@ -2854,8 +2958,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             };
             LoadBookmarkItems(_project.Bookmarks);
             await AdoptPageWorkingPdfAsync(outputPath, oldPageAtNewPosition.Count, targetPage, completedMessage);
+            RecordPageStructureEdit(before, CapturePageStructureSnapshot(), historyDescription);
         }
-        finally { EndBackgroundOperation(); }
+        finally
+        {
+            CleanupPageWorkingFiles();
+            EndBackgroundOperation();
+        }
     }
 
     private async Task AdoptPageWorkingPdfAsync(string pdfPath, int pageCount, int targetPage, string completedMessage)
@@ -2870,22 +2979,88 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _ndlOcrDocument = null;
         _thumbnailCache.Clear();
         CancelThumbnailLoading(clearImages: true);
-        ClearOverlaySession();
+        ClearOverlaySession(clearHistory: false);
         _selectedPageNumbers.Clear();
         OnPropertyChanged(nameof(SelectedPageCount));
         await RenderPageAsync(Math.Clamp(targetPage, 1, pageCount), populatePageList: true);
-        MarkNonUndoableChange();
         StatusMessage = completedMessage;
         RaisePageManagementCommands();
         await _log.WriteAsync(LogLevel.Information, "page.structure.changed", completedMessage);
     }
 
+    /// <summary>ページ構成のUndo/Redoに必要な文書状態と表示中OCRモデルを、参照を保ったまま保存します。</summary>
+    private PageStructureSnapshot CapturePageStructureSnapshot()
+    {
+        if (_project is null || _resolvedPdfPath is null)
+            throw new InvalidOperationException("ページ構成の復元点を作成できるPDFが開かれていません。");
+        SynchronizeProjectPages();
+        return new PageStructureSnapshot(
+            _project,
+            _resolvedPdfPath,
+            _ndlOcrDocument,
+            _hasPageStructureEdits,
+            _pageOverlays.ToDictionary(pair => pair.Key, pair => pair.Value),
+            _pageMetrics.ToDictionary(pair => pair.Key, pair => pair.Value),
+            _thumbnailCache.ToDictionary(pair => pair.Key, pair => pair.Value),
+            _selectedPageNumbers.ToArray(),
+            SelectedPage?.PageNumber ?? 1,
+            _selectedOverlays.ToArray(),
+            SelectedOverlay,
+            _alignmentReference,
+            OcrDataSourceText);
+    }
+
+    /// <summary>保存したページ構成へPDFとOCR表示キャッシュを切り替えます。</summary>
+    private async Task RestorePageStructureSnapshotAsync(PageStructureSnapshot snapshot)
+    {
+        if (!File.Exists(snapshot.ResolvedPdfPath))
+            throw new FileNotFoundException("Undo/Redoに必要な作業用PDFが見つかりません。", snapshot.ResolvedPdfPath);
+
+        var targetPage = Math.Clamp(snapshot.CurrentPageNumber, 1, snapshot.Project.SourcePdf.PageCount ?? 1);
+        // 状態を切り替える前にPDFを検証し、失敗時は現在の編集画面を維持します。
+        var preparedPreview = await _previewService.RenderPageAsync(snapshot.ResolvedPdfPath, targetPage, 240);
+
+        CancelThumbnailLoading(clearImages: true);
+        ClearOverlaySession(clearHistory: false);
+        _project = snapshot.Project;
+        _resolvedPdfPath = snapshot.ResolvedPdfPath;
+        _ndlOcrDocument = snapshot.NdlOcrDocument;
+        _hasPageStructureEdits = snapshot.HasPageStructureEdits;
+        SourcePdfPath = snapshot.ResolvedPdfPath;
+        SourceHash = snapshot.Project.SourcePdf.Sha256;
+        foreach (var pair in snapshot.PageMetrics) _pageMetrics[pair.Key] = pair.Value;
+        foreach (var pair in snapshot.PageOverlays)
+        {
+            _pageOverlays[pair.Key] = pair.Value;
+            foreach (var overlay in pair.Value) AttachOverlay(overlay);
+        }
+        ReplaceThumbnailCache(snapshot.ThumbnailCache);
+        LoadBookmarkItems(snapshot.Project.Bookmarks);
+
+        await RenderPageAsync(targetPage, populatePageList: true, preparedPreview);
+        var selectedPages = snapshot.SelectedPageNumbers
+            .Where(number => number >= 1 && number <= PageItems.Count)
+            .Select(number => PageItems[number - 1])
+            .ToArray();
+        SetPageSelection(selectedPages.Length > 0 ? selectedPages : [PageItems[targetPage - 1]]);
+
+        var visibleSelection = snapshot.SelectedOverlays.Where(OverlayItems.Contains).ToArray();
+        var visiblePrimary = snapshot.PrimaryOverlay is not null && OverlayItems.Contains(snapshot.PrimaryOverlay)
+            ? snapshot.PrimaryOverlay
+            : visibleSelection.FirstOrDefault();
+        if (IsReviewMode) SetOverlaySelection(visibleSelection, visiblePrimary);
+        else SelectedOverlay = visiblePrimary;
+        _alignmentReference = snapshot.AlignmentReference;
+        OcrDataSourceText = snapshot.OcrDataSourceText;
+        OnPropertyChanged(nameof(AlignmentReferenceDescription));
+        RaiseMultiSelectionCommands();
+        RaisePageManagementCommands();
+    }
+
     private string CreatePageWorkingPdfPath()
     {
         if (_project is null) throw new InvalidOperationException("プロジェクトが開かれていません。");
-        var directory = Path.Combine(_paths.WorkspaceDirectory, _project.ProjectId.ToString("N"), "page-edits");
-        Directory.CreateDirectory(directory);
-        return Path.Combine(directory, $"pages-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}.pdf");
+        return _pageWorkingFiles.CreatePath();
     }
 
     private static OcrPage RotateOcrPage(OcrPage page, int clockwiseDegrees)
@@ -5051,6 +5226,19 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void RecordEdit(OverlayEdit edit)
     {
+        RecordHistory(edit);
+    }
+
+    private void RecordPageStructureEdit(
+        PageStructureSnapshot before,
+        PageStructureSnapshot after,
+        string description)
+    {
+        RecordHistory(new PageStructureEdit(before, after, description));
+    }
+
+    private void RecordHistory(HistoryEdit edit)
+    {
         edit = edit with
         {
             BeforeStateId = _currentEditStateId,
@@ -5060,14 +5248,22 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _redo.Clear();
         SetCurrentEditState(edit.AfterStateId);
         TrimUndoHistory();
+        CleanupPageWorkingFiles();
         StatusMessage = edit.Description;
         NotifyHistoryState();
     }
 
     private void Undo()
     {
-        if (!_undo.TryPop(out var edit)) return;
-        foreach (var change in edit.Changes) ApplyHistory(change.Region, change.Before);
+        if (!CanUseHistory() || !_undo.TryPeek(out var edit)) return;
+        if (edit is PageStructureEdit)
+        {
+            _ = UndoPageStructureAsync();
+            return;
+        }
+        _undo.Pop();
+        var overlayEdit = (OverlayEdit)edit;
+        foreach (var change in overlayEdit.Changes) ApplyHistory(change.Region, change.Before);
         _redo.Push(edit);
         SetCurrentEditState(edit.BeforeStateId);
         StatusMessage = $"元に戻す: {edit.Description}";
@@ -5077,14 +5273,92 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void Redo()
     {
-        if (!_redo.TryPop(out var edit)) return;
-        foreach (var change in edit.Changes) ApplyHistory(change.Region, change.After);
+        if (!CanUseHistory() || !_redo.TryPeek(out var edit)) return;
+        if (edit is PageStructureEdit)
+        {
+            _ = RedoPageStructureAsync();
+            return;
+        }
+        _redo.Pop();
+        var overlayEdit = (OverlayEdit)edit;
+        foreach (var change in overlayEdit.Changes) ApplyHistory(change.Region, change.After);
         _undo.Push(edit);
         SetCurrentEditState(edit.AfterStateId);
         StatusMessage = $"やり直す: {edit.Description}";
         NotifyCharacterSelectionState();
         NotifyHistoryState();
     }
+
+    /// <summary>ページ構成履歴を非同期で取り消します。復元に失敗した場合は履歴と現在状態を維持します。</summary>
+    private async Task UndoPageStructureAsync()
+    {
+        if (!CanUseHistory() || !_undo.TryPeek(out var item) || item is not PageStructureEdit edit) return;
+        _historyOperationInProgress = true;
+        NotifyHistoryState();
+        BeginBackgroundOperation("ページ構成を元に戻しています...");
+        try
+        {
+            await RestorePageStructureSnapshotAsync(edit.Before);
+            _undo.Pop();
+            _redo.Push(edit);
+            SetCurrentEditState(edit.BeforeStateId);
+            StatusMessage = $"元に戻す: {edit.Description}";
+            await _log.WriteAsync(LogLevel.Information, "page.structure.undo", edit.Description);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("ページ構成を元に戻せませんでした。現在の編集状態は維持しています。", ex);
+        }
+        finally
+        {
+            EndBackgroundOperation();
+            _historyOperationInProgress = false;
+            NotifyHistoryState();
+        }
+    }
+
+    /// <summary>取り消したページ構成履歴を非同期で再適用します。</summary>
+    private async Task RedoPageStructureAsync()
+    {
+        if (!CanUseHistory() || !_redo.TryPeek(out var item) || item is not PageStructureEdit edit) return;
+        _historyOperationInProgress = true;
+        NotifyHistoryState();
+        BeginBackgroundOperation("ページ構成をやり直しています...");
+        try
+        {
+            await RestorePageStructureSnapshotAsync(edit.After);
+            _redo.Pop();
+            _undo.Push(edit);
+            SetCurrentEditState(edit.AfterStateId);
+            StatusMessage = $"やり直す: {edit.Description}";
+            await _log.WriteAsync(LogLevel.Information, "page.structure.redo", edit.Description);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("ページ構成をやり直せませんでした。現在の編集状態は維持しています。", ex);
+        }
+        finally
+        {
+            EndBackgroundOperation();
+            _historyOperationInProgress = false;
+            NotifyHistoryState();
+        }
+    }
+
+    internal async Task UndoForDiagnosticsAsync()
+    {
+        if (_undo.TryPeek(out var edit) && edit is PageStructureEdit) await UndoPageStructureAsync();
+        else Undo();
+    }
+
+    internal async Task RedoForDiagnosticsAsync()
+    {
+        if (_redo.TryPeek(out var edit) && edit is PageStructureEdit) await RedoPageStructureAsync();
+        else Redo();
+    }
+
+    private bool CanUseHistory() =>
+        !_historyOperationInProgress && !IsBackgroundOperationVisible && !IsPdfExporting;
 
     private void ApplyHistory(OverlayRegionViewModel region, OverlayRegionSnapshot snapshot)
     {
@@ -5136,7 +5410,30 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var retained = _undo.Take(limit).Reverse().ToArray();
         _undo.Clear();
         foreach (var item in retained) _undo.Push(item);
+        CleanupPageWorkingFiles();
         NotifyHistoryState();
+    }
+
+    /// <summary>現在状態またはUndo/Redoが参照しているPDFだけを残します。</summary>
+    private void CleanupPageWorkingFiles()
+    {
+        IEnumerable<string> SnapshotPaths(HistoryEdit edit) => edit is PageStructureEdit page
+            ? new[] { page.Before.ResolvedPdfPath, page.After.ResolvedPdfPath }
+            : [];
+        var retained = new[] { _resolvedPdfPath }
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Cast<string>()
+            .Concat(_undo.SelectMany(SnapshotPaths))
+            .Concat(_redo.SelectMany(SnapshotPaths));
+        _pageWorkingFiles.DeleteUnreferenced(retained);
+    }
+
+    /// <summary>アプリ終了時にこの編集セッションが所有する一時PDFをすべて解放します。</summary>
+    public void ReleaseTransientResources()
+    {
+        _renderCancellation?.Cancel();
+        _thumbnailCancellation?.Cancel();
+        _pageWorkingFiles.Dispose();
     }
 
     private void SetCurrentEditState(long stateId)
@@ -5165,7 +5462,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasUnsavedChanges));
     }
 
-    private void ClearOverlaySession()
+    private void ClearOverlaySession(bool clearHistory = true)
     {
         _overlaySessionVersion++;
         CancelReviewNavigation();
@@ -5174,8 +5471,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _pageOverlays.Clear();
         _pageMetrics.Clear();
         _lastOverlaySnapshots.Clear();
-        _undo.Clear();
-        _redo.Clear();
+        if (clearHistory)
+        {
+            _undo.Clear();
+            _redo.Clear();
+            CleanupPageWorkingFiles();
+        }
         _selectedOverlays.Clear();
         _alignmentReference = null;
         _batchedRegion = null;

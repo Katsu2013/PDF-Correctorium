@@ -18,7 +18,10 @@ public sealed class DiagnosticLog(string logDirectory, LogLevel minimumLevel = L
     /// <summary>
     /// 利用者名をマスクした1件の診断イベントをログへ追記します。
     /// </summary>
-    /// <remarks>PDF本文、APIキー、認証情報をメッセージとして渡さないでください。</remarks>
+    /// <remarks>
+    /// PDF本文、APIキー、認証情報をメッセージとして渡さないでください。
+    /// ファイル追記はプロセス内で直列化しますが、ログの機密性を完全に保証するものではありません。
+    /// </remarks>
     public async Task WriteAsync(LogLevel level, string eventId, string message, Exception? exception = null, CancellationToken cancellationToken = default)
     {
         if (level < minimumLevel) return;

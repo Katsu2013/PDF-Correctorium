@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml;
 using System.Xml.Linq;
 using PdfCorrectorium.Core.Documents;
 
@@ -20,6 +20,19 @@ public sealed class PdfBookmarkService
     private const string CurrentBookmarkFormat = "PdfCorrectoriumBookmarks";
     private const string LegacyBookmarkFormat = "PdfOcrEditorBookmarks";
     private sealed record BookmarkFile(string Format, int Version, IReadOnlyList<PdfBookmark> Bookmarks);
+
+    /// <summary>交換ファイルの最大バイト数です。</summary>
+    public long MaximumImportBytes { get; init; } = 64L * 1024 * 1024;
+    /// <summary>1回に取り込めるしおり総数です。</summary>
+    public int MaximumBookmarkCount { get; init; } = 100_000;
+    /// <summary>しおり階層の最大深度です。</summary>
+    public int MaximumBookmarkDepth { get; init; } = 256;
+    /// <summary>しおりタイトル1件の最大文字数です。</summary>
+    public int MaximumTitleCharacters { get; init; } = 32_768;
+    /// <summary>qpdf 1回の処理期限です。</summary>
+    public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromMinutes(5);
+    /// <summary>qpdfの標準出力・標準エラーそれぞれの最大文字数です。</summary>
+    public int MaximumQpdfOutputCharacters { get; init; } = 64 * 1024 * 1024;
 
     /// <summary>階層型テキストを読み込む途中で、子要素を追加可能な形で保持します。</summary>
     private sealed class BookmarkBuilder(string title, int pageNumber)
@@ -198,6 +211,7 @@ public sealed class PdfBookmarkService
         string path,
         CancellationToken cancellationToken = default)
     {
+        EnsureImportFileWithinLimits(path);
         var extension = Path.GetExtension(path);
         if (extension.Equals(".txt", StringComparison.OrdinalIgnoreCase))
             return await ImportTextAsync(path, cancellationToken);
@@ -207,7 +221,11 @@ public sealed class PdfBookmarkService
         await using var stream = File.OpenRead(path);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
         if (document.RootElement.ValueKind == JsonValueKind.Array)
-            return JsonSerializer.Deserialize<IReadOnlyList<PdfBookmark>>(document.RootElement.GetRawText(), JsonOptions) ?? [];
+        {
+            var result = JsonSerializer.Deserialize<IReadOnlyList<PdfBookmark>>(document.RootElement.GetRawText(), JsonOptions) ?? [];
+            ValidateBookmarks(result);
+            return result;
+        }
 
         var file = JsonSerializer.Deserialize<BookmarkFile>(document.RootElement.GetRawText(), JsonOptions)
                    ?? throw new InvalidDataException("しおりファイルが空です。");
@@ -216,6 +234,7 @@ public sealed class PdfBookmarkService
             string.Equals(file.Format, LegacyBookmarkFormat, StringComparison.Ordinal);
         if (!supportedFormat || file.Version != 1)
             throw new InvalidDataException("対応していないしおりファイルです。");
+        ValidateBookmarks(file.Bookmarks);
         return file.Bookmarks;
     }
 
@@ -245,31 +264,40 @@ public sealed class PdfBookmarkService
     }
 
     /// <summary>pdf_as形式の階層付きテキストを読み込みます。</summary>
-    private static async Task<IReadOnlyList<PdfBookmark>> ImportTextAsync(
+    private async Task<IReadOnlyList<PdfBookmark>> ImportTextAsync(
         string path,
         CancellationToken cancellationToken)
     {
         var lines = await File.ReadAllLinesAsync(path, cancellationToken);
         var roots = new List<BookmarkBuilder>();
         var latestAtDepth = new List<BookmarkBuilder>();
+        var count = 0;
         foreach (var rawLine in lines)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(rawLine)) continue;
             var depth = rawLine.TakeWhile(character => character == '\t').Count();
+            if (depth >= MaximumBookmarkDepth)
+                throw new InvalidDataException($"しおりの階層が上限 {MaximumBookmarkDepth:N0} を超えています。");
             var value = rawLine[depth..].Trim();
             var separator = value.LastIndexOf('/');
             if (separator <= 0 || !int.TryParse(value[(separator + 1)..].Trim(), out var pageNumber))
                 throw new InvalidDataException($"しおり行「{value}」の末尾に /ページ番号 がありません。");
 
             var node = new BookmarkBuilder(value[..separator].Trim(), Math.Max(1, pageNumber));
+            if (node.Title.Length > MaximumTitleCharacters)
+                throw new InvalidDataException($"しおりタイトルが上限 {MaximumTitleCharacters:N0} 文字を超えています。");
             depth = Math.Min(depth, latestAtDepth.Count);
             if (depth == 0) roots.Add(node);
             else latestAtDepth[depth - 1].Children.Add(node);
             if (latestAtDepth.Count > depth) latestAtDepth.RemoveRange(depth, latestAtDepth.Count - depth);
             latestAtDepth.Add(node);
+            if (++count > MaximumBookmarkCount)
+                throw new InvalidDataException($"しおり数が上限 {MaximumBookmarkCount:N0} 件を超えています。");
         }
-        return roots.Select(root => root.ToModel()).ToArray();
+        var result = roots.Select(root => root.ToModel()).ToArray();
+        ValidateBookmarks(result);
+        return result;
     }
 
     /// <summary>
@@ -300,19 +328,33 @@ public sealed class PdfBookmarkService
     /// <summary>
     /// bookmark-tree形式に加え、Bookmark／Outline／Itemを入れ子にする一般的なXMLも読み込みます。
     /// </summary>
-    private static async Task<IReadOnlyList<PdfBookmark>> ImportXmlAsync(
+    private async Task<IReadOnlyList<PdfBookmark>> ImportXmlAsync(
         string path,
         CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(path);
-        var document = await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken);
+        using var reader = XmlReader.Create(stream, new XmlReaderSettings
+        {
+            Async = true,
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = MaximumImportBytes,
+        });
+        var document = await XDocument.LoadAsync(reader, LoadOptions.None, cancellationToken);
         var root = document.Root ?? throw new InvalidDataException("しおりXMLにルート要素がありません。");
         var rootElements = IsBookmarkElement(root)
             ? [root]
             : BookmarkChildren(root).ToArray();
         if (rootElements.Length == 0)
             throw new InvalidDataException("しおりXMLにbookmark、outline、またはitem要素がありません。");
-        return rootElements.Select(ParseXmlBookmark).ToArray();
+        var bookmarkElements = document.Descendants().Where(IsBookmarkElement).ToArray();
+        if (bookmarkElements.Length > MaximumBookmarkCount)
+            throw new InvalidDataException($"しおり数が上限 {MaximumBookmarkCount:N0} 件を超えています。");
+        if (bookmarkElements.Any(element => element.Ancestors().Count(IsBookmarkElement) >= MaximumBookmarkDepth))
+            throw new InvalidDataException($"しおりの階層が上限 {MaximumBookmarkDepth:N0} を超えています。");
+        var result = rootElements.Select(ParseXmlBookmark).ToArray();
+        ValidateBookmarks(result);
+        return result;
     }
 
     private static PdfBookmark ParseXmlBookmark(XElement element)
@@ -456,6 +498,9 @@ public sealed class PdfBookmarkService
                     var outlineRootReference = $"{nextObjectId++} 0 R";
                     catalogValue["/Outlines"] = outlineRootReference;
                     var nodeReferences = AssignReferences(bookmarks, nextObjectId);
+                    // AssignReferences receives the starting value by value. Advance the shared allocator too,
+                    // otherwise a newly-created /Info dictionary can reuse the first bookmark object number.
+                    nextObjectId += CountDescendants(bookmarks);
                     updateObjects[$"obj:{outlineRootReference}"] = new JsonObject
                     {
                         ["value"] = new JsonObject
@@ -725,7 +770,7 @@ public sealed class PdfBookmarkService
         return (objectNumber, generation);
     }
 
-    private static async Task<string> RunQpdfForTextAsync(
+    private async Task<string> RunQpdfForTextAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
@@ -733,34 +778,44 @@ public sealed class PdfBookmarkService
         return output;
     }
 
-    private static async Task<(string Output, string Error)> RunQpdfAsync(
+    private async Task<(string Output, string Error)> RunQpdfAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
         var qpdfPath = ResolveQpdfPath() ??
                        throw new FileNotFoundException("しおり処理に必要なqpdf.exeが見つかりません。");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = qpdfPath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo) ??
-                            throw new InvalidOperationException("qpdfを起動できませんでした。");
-        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-        var output = await outputTask;
-        var error = await errorTask;
-        if (process.ExitCode != 0)
+        var result = await ExternalProcessRunner.RunAsync(
+            qpdfPath, arguments, OperationTimeout, cancellationToken, MaximumQpdfOutputCharacters);
+        if (result.ExitCode != 0)
             throw new InvalidDataException(
-                $"qpdfによるしおり処理に失敗しました（終了コード: {process.ExitCode}）。\n" +
-                string.Join("\n", new[] { error, output }.Where(value => !string.IsNullOrWhiteSpace(value))));
-        return (output, error);
+                $"qpdfによるしおり処理に失敗しました（終了コード: {result.ExitCode}）。\n" +
+                string.Join("\n", new[] { result.StandardError, result.StandardOutput }.Where(value => !string.IsNullOrWhiteSpace(value))));
+        return (result.StandardOutput, result.StandardError);
+    }
+
+    private void EnsureImportFileWithinLimits(string path)
+    {
+        if (MaximumImportBytes <= 0 || MaximumBookmarkCount <= 0 || MaximumBookmarkDepth <= 0 ||
+            MaximumTitleCharacters <= 0)
+            throw new InvalidOperationException("しおり取込上限は正の値で指定してください。");
+        var length = new FileInfo(path).Length;
+        if (length > MaximumImportBytes)
+            throw new InvalidDataException($"しおり交換ファイルが上限 {MaximumImportBytes:N0} バイトを超えています。");
+    }
+
+    private void ValidateBookmarks(IReadOnlyList<PdfBookmark> roots)
+    {
+        var pending = new Stack<(PdfBookmark Bookmark, int Depth)>(roots.Reverse().Select(item => (item, 1)));
+        var count = 0;
+        while (pending.TryPop(out var item))
+        {
+            if (++count > MaximumBookmarkCount)
+                throw new InvalidDataException($"しおり数が上限 {MaximumBookmarkCount:N0} 件を超えています。");
+            if (item.Depth > MaximumBookmarkDepth)
+                throw new InvalidDataException($"しおりの階層が上限 {MaximumBookmarkDepth:N0} を超えています。");
+            if ((item.Bookmark.Title ?? string.Empty).Length > MaximumTitleCharacters)
+                throw new InvalidDataException($"しおりタイトルが上限 {MaximumTitleCharacters:N0} 文字を超えています。");
+            foreach (var child in item.Bookmark.Children.Reverse()) pending.Push((child, item.Depth + 1));
+        }
     }
 }

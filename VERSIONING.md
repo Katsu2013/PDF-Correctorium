@@ -4,11 +4,11 @@
 
 版番号の定義元は[Directory.Build.props](Directory.Build.props)の`ApplicationVersionPrefix`と`DevelopmentRevision`だけとする。各プロジェクトで別々に設定しない。
 
-| 項目 | dev.128の値 | 参照・反映先 |
+| 項目 | dev.129の値 | 参照・反映先 |
 |---|---|---|
-| 製品バージョン | `1.0.0-dev.128` | Version、InformationalVersion、タイトルバー、ヘルプ→バージョン情報、起動ログ、保存プロジェクトのapplicationVersion |
-| 数値の版番号 | `1.0.0.128` | ソリューション内の全プロジェクトのAssemblyVersion・FileVersion、EXE/DLLのファイル情報、生成するWindowsアプリケーションマニフェスト |
-| 配布名 | `PdfCorrectorium-v1.0.0-dev.128-win-x64-日時` | 実際のMSBuild設定から取得。文書の文字列を命名元にしない |
+| 製品バージョン | `1.0.0-dev.129` | Version、InformationalVersion、タイトルバー、ヘルプ→バージョン情報、起動ログ、保存プロジェクトのapplicationVersion |
+| 数値の版番号 | `1.0.0.129` | ソリューション内の全プロジェクトのAssemblyVersion・FileVersion、EXE/DLLのファイル情報、生成するWindowsアプリケーションマニフェスト |
+| 配布名 | `PdfCorrectorium-v1.0.0-dev.129-win-x64-日時` | 実際のMSBuild設定から取得。文書の文字列を命名元にしない |
 
 数値版番号の4番目が開発リビジョンである。`.sln`の`VisualStudioVersion`はソリューションを扱う開発ツールの版であり、アプリの版番号ではない。`app.manifest`内の`1.0.0.0`はテンプレート値であり、ビルド時に中間フォルダーへコピーして数値版番号を書き込み、その生成版をEXEへ埋め込む。
 
@@ -35,7 +35,8 @@ dotnet run --project tests/PdfCorrectorium.ContractTests -c Release --no-build
 
 - [Directory.Build.targets](Directory.Build.targets)は通常のソリューションビルドと発行で版番号の整合性を検査する。版の上書きや不正なリビジョンをエラーにする。
 - [BuildPortable.ps1](tools/BuildPortable.ps1)は、実装状況の現行版の一致、リビジョンの巻戻し、同じリビジョンでのビルド入力変更を検出する。`-BuildLabel`は実際の版と同じ値しか受け付けない。
-- ビルド入力の指紋にはソース、リソース、ビルド設定、配布ツール、同梱qpdfとライセンス類を含め、生成物と変更履歴文書は含めない。発行前後の指紋も一致させる。
+- ビルド入力の指紋にはソース、リソース、ビルド設定、配布ツール、`DEPENDENCIES.lock.json`、ロック対象のローカルNuGetパッケージ、同梱qpdfとライセンス類を含め、生成物と変更履歴文書は含めない。発行前後の指紋も一致させる。
+- `tools/TestDependencyLock.ps1`でリポジトリ内と配布先のPDFium/qpdfをSHA-256照合する。`build-info.json`には主要な管理バイナリーだけでなく、検証したネイティブ依存ファイルも記録する。
 - 発行後に主要EXE/DLLの製品・ファイル・アセンブリ版番号とWindowsマニフェストを検査する。[GetBuildVersion.ps1](tools/GetBuildVersion.ps1)へ`-PublishDirectory`を渡せば再確認できる。
 - `build-info.json`に版番号、生成日時、SDK、入力指紋、主要バイナリーのSHA-256を保存する。取得できる場合のみGitコミットと未コミット変更の有無も記録し、取得不能ならnullとする。
 
@@ -43,7 +44,7 @@ dotnet run --project tests/PdfCorrectorium.ContractTests -c Release --no-build
 
 ## データ形式との区別
 
-アプリの版を進めただけでは、プロジェクト形式を変更しない。dev.128の保存形式は引き続き1.1、必要最小アプリ版は形式1.1へ対応した`1.0.0-dev.123`である。`applicationVersion`だけを実行中の版に追随させる。
+アプリの版を進めただけでは、プロジェクト形式を変更しない。dev.129の保存形式は引き続き1.1、必要最小アプリ版は形式1.1へ対応した`1.0.0-dev.123`である。`applicationVersion`だけを実行中の版に追随させる。
 
 ## dev.123からの是正
 

@@ -18,7 +18,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - **文字領域の整理**：領域の分割・結合や、不要な領域の削除ができます。
 - **検索・一括置換**：同じ読み取り間違いを探し、まとめて修正できます。
 - **校正・確認**：未確認・要再確認などの状態で対象を絞り込み、順番に確認できます。
-- **ページの編集**：ページの追加・削除・並べ替え・回転ができます。
+- **ページの編集**：ページの追加・削除・並べ替え・回転ができ、元に戻す／やり直しにも対応します。
 - **しおりの編集**：しおりの追加・修正・削除や、階層・順序の整理ができます。
 - **文書情報の編集**：タイトル、作者、文書の言語、出力PDFのバージョンなどを変更できます。
 - **作業の保存・PDF出力**：プロジェクトとして保存して編集を再開し、修正結果を別のPDFとして出力できます。
@@ -27,7 +27,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.128`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.132`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -35,14 +35,14 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - 確認状態とPDF出力用の属性
 - 状態による絞り込み、ページをまたぐ対象移動、確認済みにして次へ進む操作、位置・サイズの直接編集を防ぐ専用の「校正・確認」モード
 - OCR文字列、位置・サイズ、文字ごとの送り幅、読み順、確認状態、検索・置換、複数領域編集の「元に戻す／やり直し」
-- ZIP互換の`.pdfocrproj`形式による安全なプロジェクト保存・読み込み・検証
+- ZIP互換の`.pdfocrproj`形式による安全なプロジェクト保存・読み込み・検証（展開件数・容量・圧縮率・埋込PDF整合性の上限検査を含む）
 - SHA-256による元PDFの同一性確認
 - ポータブル版とインストール版それぞれのデータ保存先の解決
 - 構造化された診断ログの基盤
 - PDFとプロジェクトを開くWPFアプリケーション画面
 - 最近開いたPDF・プロジェクトの一覧から再読み込み、表示件数の設定、履歴クリア
-- PDFiumによるローカルでのページ描画と、スクロール可能なプレビュー
-- ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転
+- 再利用可能な別プロセスのPDFiumワーカーによるページ描画・文字抽出・文書情報読込と、スクロール可能なプレビュー
+- ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転、および各ページ構成操作のUndo/Redo。作業PDFは履歴の寿命に合わせて回収
 - プロジェクト外部のPDFと、プロジェクトに埋め込まれたPDFのプレビュー
 - PDFの文字オブジェクトから抽出したOCR文字列の半透明表示（不可視描画モードや透明度ゼロの文字を含む）
 - NDLOCR-Liteの関連ファイル（JSON、XML、TXT、TEI）の自動検出
@@ -61,7 +61,13 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 実装済みの範囲は、古い設計資料に記載された初期の基盤段階より広がっています。Version 1.0に向けた未実装項目や既知の不具合は、[実装状況](IMPLEMENTATION_STATUS.md)と設計資料内の実装状況欄で管理しています。上記の機能一覧は、読み込み・保存・再出力時の完全な情報保持や、Version 1.0の全要件の達成を保証するものではありません。
 
-## 安全性の修正と残る制限（dev.123）
+## 安全性の修正と残る制限（dev.132）
+
+dev.132では、文書情報辞書を持たないPDFへしおりと文書情報を同時追加した際に、両者の内部オブジェクト番号が衝突する不具合を修正しました。
+
+dev.131では、qpdfを12.4.1、PDFiumを154.0.8035へ更新しました。すべてのqpdf経路とPDF出力ワーカーに期限・標準出力量上限・プロセスツリー終了を適用し、PDFiumワーカーを含む外部PDF処理はWindowsジョブでプロセス数とメモリ量を制限します。OCR付随ファイル、しおり交換ファイル、ワーカーのJSON・PNG・通信行、圧縮済みプロジェクトにも上限を設け、XMLのDTDと許可外一時出力先を拒否します。ネイティブ依存物は`DEPENDENCIES.lock.json`のSHA-256と照合し、配布記録にも含めます。dev.130で追加したZIP展開上限、危険なエントリ名・重複・内包PDF整合性検証、一時PDF回収、別プロセス化も引き続き有効です。
+
+Windowsジョブは同一利用者権限で動く処理の停止・資源制限であり、AppContainerや権限縮小を行う完全なOSサンドボックスではありません。悪意ある入力に対する敵対的コーパス／ファジング、資源使用量の画面表示、修復・救出UIは引き続き未実装です。
 
 dev.122の監査で再現した5件を修正しました。文書を切り替える際に保存・破棄・キャンセルを確認し、読み込み失敗時は現在の文書を保持します。意図的に空にした文字列をプロジェクトの保存・再読み込みとPDF出力で保持します。親領域・フィット・出力関連の属性を保持し、校正・確認モードでの文字幅補正を制限し、一括置換した領域を要再確認にします。
 
@@ -69,7 +75,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 **プロジェクトの互換性：** 新しく保存する形式は1.1です。dev.123は形式1.0と1.1を読み込めます。dev.123より前のアプリでは新しい形式1.1のファイルを開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
 
-ページ構成変更の「元に戻す」、外部サービス連携／アプリ内でのOCR実行、ルビ・コメント・タグ・差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
+外部サービス連携／アプリ内でのOCR実行、ルビ・コメント・タグ・差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
 
 ## 最近開いたファイル
 
@@ -105,7 +111,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン128では、ソリューション全体の製品バージョンが`1.0.0-dev.128`、アセンブリ／ファイルバージョンが`1.0.0.128`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン132では、ソリューション全体の製品バージョンが`1.0.0-dev.132`、アセンブリ／ファイルバージョンが`1.0.0.132`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
 変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.1、読み込みに必要な最小版はdev.123のままです。この変更時点の作業フォルダーではGit管理情報を利用できませんでした。ローカルのビルド記録はGit履歴の代わりにはなりません。
 
@@ -169,6 +175,13 @@ dev.123で修正する前の2026-08-30の監査では、文書UI 136項目、フ
 
 常設の`--persistence-test <new-output-directory>`では、文書切り替え・キャンセル・失敗時の保持、プロジェクト保存とPDF出力での空文字、読み込み済み／未表示領域の属性、校正モードの制限、一括処理後の状態、無操作時の自動保存、元PDFを埋め込んだ復旧データを追加検証します。他の診断モードと同様に、新しい出力フォルダーを指定して実行してください。
 
+dev.132の`--page-history-test <new-output-directory>`では、生成したPDFを使ってページ追加・削除・並べ替え・90度回転をUndo/Redoし、作業PDF、OCRページ、選択状態、操作前のOCR履歴、Redo後のプロジェクト保存・再読込に加え、作業PDF回収、PDFiumワーカー分離・資源制限、外部処理の期限・出力量、OCR／しおり取込上限を29項目で検証します。
+
+```powershell
+$pageHistoryOutput = Join-Path $PWD ("outputs/.verification/page-history-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0\PdfCorrectorium.exe" -ArgumentList @("--page-history-test", ('"' + $pageHistoryOutput + '"')) -WindowStyle Hidden -Wait -PassThru
+```
+
 ## ドキュメント
 
 [設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの5点の図版を参照できます。図版には校正・確認画面と文書プロパティ画面も含みます。今後の修復機能は未実装と明記しています。`PDF-Correctorium-Design-Documentation.pdf`は2026-08-09時点の内容のままで、再生成していません。
@@ -206,20 +219,20 @@ This is a development version. Some features, including running new OCR on image
 
 ## Current milestone
 
-The current repository snapshot corresponds to the `v1.0.0-dev.128` development line. It includes:
+The current repository snapshot corresponds to the `v1.0.0-dev.132` development line. It includes:
 
 - C# / .NET 8 / WPF solution structure
 - Core OCR region model with vertical/horizontal writing and independent rotation
 - Immutable original OCR values and editable overlay values
 - Review states and output attributes
 - Dedicated proofreading/review mode with status filters, cross-page target navigation, verify-and-next, and protection from direct geometry edits
-- Undo/redo for OCR text, geometry, character advances, reading order, review state, search/replace, and multi-region edits
-- Safe ZIP-compatible `.pdfocrproj` save/open/validation
+- Undo/redo for OCR text, geometry, character advances, reading order, review state, search/replace, multi-region edits, and page insertion/deletion/reordering/rotation
+- Safe ZIP-compatible `.pdfocrproj` save/open/validation with bounded entries, expansion, compression ratios, JSON, thumbnails, and embedded PDFs
 - Source PDF SHA-256 fingerprinting
 - Portable and installed data-path resolution
 - Structured diagnostic log foundation
 - WPF application shell for opening PDFs and projects
-- Local PDFium page rendering with a scrollable preview
+- Reusable out-of-process PDFium worker for page rendering, text extraction and document-property inspection, with a scrollable preview
 - Page count, asynchronous thumbnail navigation, previous/next controls, page insertion/deletion/reordering, and 90-degree page rotation
 - External and embedded project source-PDF preview support
 - Semi-transparent OCR text overlays extracted from PDF text objects, including invisible render mode and zero-alpha text
@@ -239,7 +252,13 @@ The current repository snapshot corresponds to the `v1.0.0-dev.128` development 
 
 The implemented application is broader than the original foundation milestone described in older design snapshots. Remaining Version 1.0 gaps and known defects are tracked in [Implementation status](IMPLEMENTATION_STATUS.md) and in the implementation-status sections of the design documentation. Features listed above are not a guarantee of complete round-trip preservation or of meeting every Version 1.0 requirement.
 
-## Safety fixes and remaining limitations (dev.123)
+## Safety fixes and remaining limitations (dev.132)
+
+Dev.132 fixes an object-number collision when adding both bookmarks and a new document-information dictionary to a PDF that had no existing `/Info` dictionary.
+
+Dev.131 updates qpdf to 12.4.1 and PDFium to 154.0.8035. Every qpdf path and the PDF-export worker now has a deadline, bounded captured output and whole-process-tree termination. Windows Job Objects cap process count and memory for external PDF processing, including the reusable PDFium worker. NDLOCR companions, bookmark exchange files, worker JSON/PNG/protocol lines and the compressed project archive are bounded; XML DTDs and worker output paths outside the designated temporary root are rejected. `DEPENDENCIES.lock.json` pins native-file SHA-256 values and publication records include the verified native files. Dev.130's ZIP expansion limits, unsafe/duplicate-name rejection, embedded-PDF integrity checks, temporary-file reclamation and process separation remain in force.
+
+Job Objects provide termination and resource containment under the same user account; they are not AppContainer or reduced-privilege isolation. Hostile-input corpora/fuzzing, resource telemetry and repair/rescue UI remain future work.
 
 The five issues reproduced in the dev.122 audit are now addressed: document switching prompts to save/discard/cancel and preserves the current document on failed loads; intentional empty text survives project save/reload and PDF export; parent/fit/output metadata is retained; review-mode width correction is guarded; bulk replacements receive needs-review status.
 
@@ -247,7 +266,7 @@ Autosave runs at the configured interval or after about 30 seconds without input
 
 **Project compatibility:** new saves use format 1.1; versions 1.0 and 1.1 can be read by dev.123. Older application builds cannot open new 1.1 packages. Keep a backup when older-build compatibility is needed. The manifest now records the build version.
 
-Page-structure Undo, external/in-app OCR, ruby/comments/tags/diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
+External/in-app OCR, ruby/comments/tags/diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
 
 ## Recent files
 
@@ -283,7 +302,7 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 128 produces product version `1.0.0-dev.128` and assembly/file version `1.0.0.128` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 132 produces product version `1.0.0-dev.132` and assembly/file version `1.0.0.132` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
 Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format remains 1.1; its minimum reader remains dev.123. Git metadata was unavailable in this working folder at the time of this change; local build records are not a substitute for Git history.
 
@@ -347,6 +366,13 @@ The child-test option `--startup-file-test <new-report-path>` suppresses only wi
 Before the dev.123 fixes, the 2026-08-30 audit re-ran the 136 document-UI, 67 file-launch, 69 review-mode and 13 contract checks: all 285 passed. Separate synthetic-data probes nevertheless reproduced the five now-addressed audit problems, and the legacy smoke test still failed. These counts describe the tested paths, not complete acceptance. See the [test strategy](outputs/PdfCorrectorium-Documentation/docs/11_Test/11-01_TestStrategy.md) for coverage gaps and required regression cases.
 
 The permanent `--persistence-test <new-output-directory>` additionally checks switching/cancel/failure preservation, empty OCR text through project and PDF output, loaded/unvisited region metadata, review restrictions, bulk status, idle autosave and embedded recovery. Run it like the other diagnostic modes, with a new output directory.
+
+The dev.132 `--page-history-test <new-output-directory>` uses generated PDFs to exercise Undo/Redo for page insertion, deletion, reordering and 90-degree rotation. Its 29 checks also cover working-PDF reclamation, PDFium worker isolation/resource limits, external-process deadline/output caps, OCR/bookmark import caps, OCR history continuity, and project save/reload after redo.
+
+```powershell
+$pageHistoryOutput = Join-Path $PWD ("outputs/.verification/page-history-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0\PdfCorrectorium.exe" -ArgumentList @("--page-history-test", ('"' + $pageHistoryOutput + '"')) -WindowStyle Hidden -Wait -PassThru
+```
 
 ## Documentation
 

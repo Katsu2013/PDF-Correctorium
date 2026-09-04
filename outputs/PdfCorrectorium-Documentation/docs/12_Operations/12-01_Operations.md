@@ -1,6 +1,6 @@
 # 12-01 運用・配布
 
-## 現行配布状況（2026-08-30 / dev.124）
+## 現行配布状況（2026-09-04 / dev.132）
 
 Windows 11 x64向けPortable配布物があり、`portable.marker`、PDFium、qpdf、LICENSE、NOTICE、THIRD-PARTY-NOTICES、qpdfライセンスを同梱する。インストーラー、自動更新、SBOM、脆弱性検査結果、`CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、正式なリリース自動化は未整備である。
 
@@ -14,7 +14,7 @@ Windows 11 x64向けPortable配布物があり、`portable.marker`、PDFium、qp
 
 出力先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-<version>-win-x64-<yyyyMMdd-HHmmss>`。版ラベルは共通ビルド設定の評価値から取得し、`IMPLEMENTATION_STATUS.md`の現行版とも一致を確認する。`-BuildLabel`には実際の版と異なる値を指定できない。依存復元が済んだオフライン環境では`-NoRestore`を使う。SDKの前提は[ビルド案内](../../../../README.md#build)を参照する。発行はframework-dependentであり、Portableは設定の配置方式を表す。対象環境には.NET 8 Desktop Runtimeが必要である。
 
-変更したアプリやビルド処理を渡す前に`Directory.Build.props`の`DevelopmentRevision`を進める。dev.124では製品版`1.0.0-dev.124`、全アセンブリ・ファイル版`1.0.0.124`となり、画面、保存マニフェスト、配布フォルダーに反映する。発行時は版番号・ビルド入力の指紋・出力バイナリーを検査し、`build-info.json`を残す。詳細は[必須の版管理ルール](../../../../VERSIONING.md)を参照する。同じソースの再検証ではリビジョンを維持できるが、配布フォルダーは毎回新しくする。
+変更したアプリやビルド処理を渡す前に`Directory.Build.props`の`DevelopmentRevision`を進める。現行dev.132では製品版`1.0.0-dev.132`、全アセンブリ・ファイル版`1.0.0.132`となり、画面、保存マニフェスト、配布フォルダーに反映する。発行時は版番号・ビルド入力の指紋・出力バイナリーを検査し、`build-info.json`を残す。`DEPENDENCIES.lock.json`と`tools/TestDependencyLock.ps1`により、PDFium、qpdfと付属DLLのSHA-256もリポジトリ内・配布先の双方で確認する。詳細は[必須の版管理ルール](../../../../VERSIONING.md)を参照する。同じソースの再検証ではリビジョンを維持できるが、配布フォルダーは毎回新しくする。
 
 dev.124の最終検証に使用した配布先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.124-win-x64-20260830-183553`である。利用者へ結果を渡す際は、版だけでなく実際の日時付きフォルダーも案内する。過去の配布フォルダーは上書きしていない。既存の起動中アプリは切り替わらないため、未保存編集を保存してから旧アプリを閉じ、新しいフォルダーの実行ファイルから起動する。
 
@@ -85,4 +85,4 @@ tests/
 
 ## セキュリティ
 
-脆弱性報告窓口を`SECURITY.md`に記載する。外部OCR、プラグイン、PDF解析は非信頼入力として扱い、タイムアウト、サイズ上限、パス検証、ZIP Slip対策を実装する。
+脆弱性報告窓口を`SECURITY.md`に記載する。外部OCR、プラグイン、PDF解析は非信頼入力として扱う。dev.131ではプロジェクト、OCR、しおり、ワーカー通信／結果へ容量・件数・パス・DTD制限を適用し、全qpdfとPDFium／PDF出力ワーカーへ期限・出力量・プロセスツリー終了・Windowsジョブ制限を実装した。Windowsジョブは同一利用者権限であり、AppContainerや制限トークンではない。将来のOCR・プラグインにも同じ入力検証、期限、資源上限、権限分離方針を適用する。

@@ -1,5 +1,71 @@
 # 11-01 テスト戦略
 
+## dev.132の検証（2026-09-04）
+
+dev.131でqpdf／PDFium更新、Windowsジョブ制限、全外部処理の期限・出力量、OCR／しおり／ワーカー結果／圧縮済みプロジェクトの上限、ネイティブ依存ハッシュ検証を追加した。追加検証で、文書情報辞書を持たないPDFへしおりと文書情報を同時追加した場合の内部オブジェクト番号衝突を発見したため、dev.132で修正し、専用のしおり診断を恒久化した。Releaseソリューションビルドは警告0・エラー0で成功した。
+
+| 検証 | 成功件数 | 主な対象 |
+|---|---:|---|
+| `--recent-files-test` | 76 | 最近開いたファイルと設定管理の回帰 |
+| `--settings-test` | 79 | 設定移出入・配置プリセット・Undo保持の回帰 |
+| `--keyboard-test` | 3479 | 日英アクセスキー、Tab/F6、ツールチップ、既存ショートカット |
+| `--document-ui-test` | 139 | 未読込制限、倍率・共通部品、版表示 |
+| `--persistence-test` | 38 | 文書切替、保存・復旧、領域属性・空文字 |
+| `--review-mode-test` | 69 | 校正・確認と編集制限 |
+| `--file-launch-tests` | 80 | 新規プロセス起動、失敗処理、関連付けアイコン、最近開いたファイル |
+| `--page-history-test` | 29 | ページUndo/Redo、一時PDF回収、PDFiumワーカー分離／ジョブ制限、外部処理の期限／出力量、OCR／しおり取込上限 |
+| 契約テスト | 23 | 既存契約、圧縮済みZIP容量、ドライブ指定エントリを含むパッケージ検証 |
+| 版・依存管理 | 18 | 版整合、リビジョン再利用拒否、管理バイナリー5件、ネイティブ依存15件のハッシュ照合 |
+
+合計4030件が成功した。配布フォルダー`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.132-win-x64-20260904-194232`でもページ履歴29件が成功し、専用のしおり診断とスモーク起動はいずれも終了コード0だった。製品版`1.0.0-dev.132`、数値版`1.0.0.132`、入力指紋`4396D8E5432BED8EB7057FF53BCD79713A410752185273F0364B554501835F33`は、発行後のリポジトリおよび`build-info.json`と一致する。版検証は5件の管理／アプリケーションバイナリーと、ロックした15件のネイティブ依存ファイルを照合した。
+
+結果は`outputs/.verification/final-dev132-20260904-193857546`、`outputs/.verification/bookmark-dev132-20260904-193837749`、`outputs/.verification/versioning-dev132-publish-20260904-194300504`、`outputs/.verification/packaged-dev132-20260904-194300504`、`outputs/.verification/packaged-dev132-final-20260904-194605469`に保持する。今回は画面配置を変更していないため画面キャプチャは維持し、アーキテクチャのMermaid図へWindowsジョブと取込制限を追記した。診断は合成入力によるもので、敵対的PDF／ZIPの網羅、ファジング、AppContainerや制限トークンの保証ではない。dev.131の`...-192741`は依存パス検査で中断した未認証フォルダー、`...-192928`は追加不具合の修正前に認証した中間フォルダーであり、いずれも配布対象外とする。
+
+## dev.130の検証（2026-09-04）
+
+プロジェクトパッケージの読込上限、内包PDFの完全性確認、ページ編集用PDFの到達可能性に基づく回収、qpdfの期限管理、PDFium処理の別プロセス化を追加した。リポジトリ直下のReleaseソリューションビルドは警告0・エラー0で成功した。
+
+| 検証 | 成功件数 | 主な対象 |
+|---|---:|---|
+| `--recent-files-test` | 76 | 最近開いたファイルと設定管理の回帰 |
+| `--settings-test` | 79 | 設定移出入・配置プリセット・Undo保持の回帰 |
+| `--keyboard-test` | 3479 | 日英アクセスキー、Tab/F6、ツールチップ、既存ショートカット |
+| `--document-ui-test` | 139 | 未読込制限、倍率・共通部品、版表示 |
+| `--persistence-test` | 38 | 文書切替、保存・復旧、領域属性・空文字 |
+| `--review-mode-test` | 69 | 校正・確認と編集制限 |
+| `--file-launch-tests` | 80 | 新規プロセス起動、失敗処理、関連付けアイコン、最近開いたファイル |
+| `--page-history-test` | 25 | ページ操作Undo/Redo、作業PDF回収、PDFiumワーカー分離、外部処理の期限切れ終了、終了時の一時資源解放 |
+| 契約テスト | 21 | 既存契約に加え、JSON・エントリ件数・内包PDFサイズ・SHA-256形式・キャッシュ再検証 |
+
+`tools/TestVersioning.ps1 -PublishDirectory ...`の18件を含む合計4024件が成功した。新しい配布フォルダー`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.130-win-x64-20260904-131308`でも`--page-history-test`の25件が成功し、`--smoke-test`は終了コード0だった。`GetBuildVersion.ps1 -PublishDirectory`で製品版`1.0.0-dev.130`、数値版`1.0.0.130`と5つの主要バイナリーを確認した。SDKは10.0.400、入力指紋は`F337CD741C45E5560D717CCAE7B1306186896DE7AE32AAB95106196CBFF21E83`で、発行後のソースと`build-info.json`の記録が一致する。
+
+結果は`outputs/.verification/final-dev130-20260904-130707418`、`outputs/.verification/packaged-dev130-page-history-20260904-131351333`、`outputs/.verification/versioning-20260904-131326107`に保持する。診断完了後、画面プロセス、PDFiumワーカー、ページ編集用PDFおよびネイティブ処理の一時ファイルが残っていないことも確認した。Git管理情報は利用できず、コミット・push・タグ・リリースは実施していない。
+
+今回は画面レイアウトを変更していない。したがって画面ワイヤーフレームは維持し、処理境界の変更をアーキテクチャ図（Mermaid）と本文、プロジェクト形式、PDF仕様、非機能要件、運用、ロードマップへ反映した。自動診断は合成PDFと診断用遅延プロセスを用いるため、実際の巨大・破損・敵対的PDFすべてに対する耐性やOS強制終了時の回収を保証するものではない。
+
+## dev.129の検証（2026-09-01）
+
+ページ追加・削除・並べ替え・90度回転をOCR編集と共通のUndo/Redo履歴へ統合した。Releaseソリューションビルドは警告0・エラー0。次の新規配布フォルダーを発行し、配布物でもページ履歴診断とスモークテストを再実行した。
+
+`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.129-win-x64-20260901-233021`
+
+| 検証 | 成功件数 | 主な対象 |
+|---|---:|---|
+| `--page-history-test` | 21 | 追加・削除・並べ替え・90度回転の前後PDF、ページ数、OCRページ回転・寸法、表示ページ・複数ページ選択、ページ移動後のOCR領域、操作前OCR履歴の参照連続性、Redo枝破棄、qpdf用短縮パス、Redo後の内包保存・再読込 |
+| `--recent-files-test` | 76 | 最近開いたファイルと設定管理の回帰 |
+| `--settings-test` | 79 | 設定移出入・配置プリセット・Undo保持の回帰 |
+| `--keyboard-test` | 3479 | 日英アクセスキー、Tab/F6、ツールチップ、既存ショートカット |
+| `--document-ui-test` | 139 | 未読込制限、倍率・共通部品、版表示 |
+| `--persistence-test` | 38 | 文書切替、保存・復旧、領域属性・空文字 |
+| `--review-mode-test` | 69 | 校正・確認と編集制限 |
+| `--file-launch-tests` | 80 | 新規プロセス起動、失敗処理、関連付けアイコン、最近開いたファイル |
+| 契約テスト | 16 | プロジェクト形式・版番号・既存契約 |
+| `TestVersioning.ps1 -PublishDirectory ...` | 18 | 版番号・配布ラベル・入力指紋・実EXE/DLL・Windowsマニフェスト |
+
+合計4015件が成功した。配布物の`--page-history-test`も21件すべて成功し、`--smoke-test`は終了コード0だった。`GetBuildVersion.ps1 -PublishDirectory`で製品版`1.0.0-dev.129`、数値版`1.0.0.129`を確認した。SDK 10.0.400、入力指紋`0A994537D19D6AB985617B269A501A2AADE2CB74E74053A91555A617C8522BEC`で、`build-info.json`のソース・主要バイナリーハッシュと一致する。
+
+結果は`outputs/.verification/final-dev129-20260901-232932033`、`outputs/.verification/packaged-dev129-page-history-20260901-233040274`、`outputs/.verification/versioning-20260901-233436071`に保持する。ページ削除のYes/Noとファイル選択は診断用の非対話経路を使用し、実際のOSダイアログを物理入力で操作していない。今回は既存画面の配置・外観を変更していないため図版を更新せず、要求・操作フロー・画面仕様・アーキテクチャ・データモデル・ロードマップの動作記述を更新した。Git管理情報は利用できず、コミット・push・タグ・リリースは実施していない。
+
 ## dev.128の検証（2026-09-01）
 
 最近開いたファイル・一覧からの再読込・設定での件数変更とクリアを追加した。Releaseソリューションビルドは警告0・エラー0。次の新規配布フォルダーでアプリ診断を実行した。
@@ -143,7 +209,7 @@
 
 `--smoke-test`は設定形式の期待値10と現行11の不一致で終了コード-1となり、この監査時点では失敗していた（dev.123で修正）。285件の成功にスモークテストを含めてはならない。また、独立した合成PDF/プロジェクトの再現確認で下記5件の不具合が再現した。監査時点の成功件数は保存の完全性や全モード経路の安全性を保証しない。
 
-Appの診断モードは契約テストとは別に実行する。通常のソリューションビルドだけでは実行されず、統一テストランナーによる全診断の自動実行は未整備である。ViewModel→保存モデルの全属性往復、主要PDF出力、ページ構造操作、UIワークフローの網羅は未完了。当時の契約テスト13件にはFR要求IDが未適用だった。dev.123で追加した2件にはFR識別子を含めたが、全件への展開は未完了。
+Appの診断モードは契約テストとは別に実行する。通常のソリューションビルドだけでは実行されず、統一テストランナーによる全診断の自動実行は未整備である。dev.129でページ構造4操作の往復を常設化し、dev.130で作業PDF回収、PDFiumワーカー分離、外部処理の期限切れ終了を追加したが、多様な実文書・長時間履歴・異常終了を含む全組み合わせ、敵対的PDF/ZIPの網羅、ViewModel→保存モデルの全属性往復、主要PDF出力、UIワークフローの網羅は未完了。当時の契約テスト13件にはFR要求IDが未適用だった。dev.123で追加した2件にはFR識別子を含めたが、全件への展開は未完了。
 
 ### 実行方法
 
@@ -151,7 +217,7 @@ Appの診断モードは契約テストとは別に実行する。通常のソ�
 
 ```powershell
 $diagnosticExe = Join-Path $PWD 'src/PdfCorrectorium.App/bin/Release/net8.0-windows7.0/PdfCorrectorium.exe'
-foreach ($diagnosticMode in @('--document-ui-test', '--file-launch-tests', '--review-mode-test', '--persistence-test')) {
+foreach ($diagnosticMode in @('--document-ui-test', '--file-launch-tests', '--review-mode-test', '--persistence-test', '--page-history-test')) {
     $diagnosticName = $diagnosticMode.TrimStart('-')
     $diagnosticOutput = Join-Path $PWD ('outputs/.verification/' + $diagnosticName + '-' + (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
     $diagnosticProcess = Start-Process -FilePath $diagnosticExe -ArgumentList @($diagnosticMode, ('"' + $diagnosticOutput + '"')) -WindowStyle Hidden -Wait -PassThru
@@ -177,7 +243,7 @@ foreach ($diagnosticMode in @('--document-ui-test', '--file-launch-tests', '--re
 
 分析画面には補正の実行確認があるため、4件目は「確認なしで変更される」という問題ではない。レビューの通常文字修正がModifiedになる仕様と、一括置換に要求されるNeedsReviewは区別して検証する。
 
-以下のテスト層と品質ゲートは目標戦略であり、現時点の全項目合格を表すものではない。既知問題の一覧は[実装状況](../../../../IMPLEMENTATION_STATUS.md#known-implementation-defects)を参照する。
+以下のテスト層と品質ゲートは目標戦略であり、現時点の全項目合格を表すものではない。既知問題と残件は[実装状況](../../../../IMPLEMENTATION_STATUS.md)を参照する。
 
 ## 1. テスト層
 

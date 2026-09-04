@@ -108,6 +108,10 @@ public sealed record OcrKeywordWidthAnalysisResult(
 public sealed class OcrQualityAnalyzer
 {
     /// <summary>同程度の幅・高さを持つ領域群の中央値から文字数だけ外れた候補を返します。</summary>
+    /// <remarks>
+    /// 書字方向と領域寸法が近い領域だけをピアとし、中央値を期待値に使います。
+    /// そのため、見出しと本文など異なる用途の領域が同じ文書に混在していても、比較対象を不用意に混ぜません。
+    /// </remarks>
     public IReadOnlyList<OcrCharacterCountAnomaly> FindCharacterCountAnomalies(
         IReadOnlyList<OcrQualitySample> samples,
         OcrCharacterCountAnalysisOptions options)
@@ -146,6 +150,7 @@ public sealed class OcrQualityAnalyzer
     }
 
     /// <summary>同じキーワードの出現幅を行の太さで正規化し、中央値から外れた候補を返します。</summary>
+    /// <remarks>横書きと縦書きは同じキーワードでも文字送りの基準軸が異なるため、別々の母集団で幅を比較します。</remarks>
     public OcrKeywordWidthAnalysisResult AnalyzeKeywordWidths(
         IReadOnlyList<OcrQualitySample> samples,
         OcrKeywordWidthAnalysisOptions options)

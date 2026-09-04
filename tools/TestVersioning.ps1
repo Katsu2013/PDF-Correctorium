@@ -75,7 +75,9 @@ try {
     if ($PublishDirectory) {
         Check 'Published binaries and the embedded Windows manifest match the current revision.' {
             $verified = & (Join-Path $PSScriptRoot 'GetBuildVersion.ps1') -PublishDirectory $PublishDirectory
-            if ($verified.Binaries.Count -ne 5) { throw 'Expected five verified binaries.' }
+            $lock = Get-Content -LiteralPath (Join-Path $repositoryRoot 'DEPENDENCIES.lock.json') -Raw | ConvertFrom-Json
+            $expected = 5 + @($lock.dependencies.publishFiles).Count
+            if ($verified.Binaries.Count -ne $expected) { throw "Expected $expected verified managed and native binaries." }
         }
     }
     $checks | Set-Content -LiteralPath (Join-Path $OutputDirectory 'checks.txt') -Encoding utf8

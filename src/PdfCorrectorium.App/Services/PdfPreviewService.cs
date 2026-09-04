@@ -103,7 +103,7 @@ public sealed class PdfPreviewService
         int pageNumber,
         int targetWidth = 1200,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => RenderPage(pdfPath, pageNumber, targetWidth, cancellationToken), cancellationToken);
+        PdfNativeWorkerClient.Shared.RenderPageAsync(pdfPath, pageNumber, targetWidth, cancellationToken);
 
     /// <summary>
     /// 指定ページに含まれる文字を、PDFページ座標の境界付きで読み取ります。
@@ -116,9 +116,9 @@ public sealed class PdfPreviewService
         string pdfPath,
         int pageNumber,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => ReadCharacterBoxes(pdfPath, pageNumber, cancellationToken), cancellationToken);
+        PdfNativeWorkerClient.Shared.ReadCharacterBoxesAsync(pdfPath, pageNumber, cancellationToken);
 
-    private static IReadOnlyList<PdfCharacterBox> ReadCharacterBoxes(
+    internal static IReadOnlyList<PdfCharacterBox> ReadCharacterBoxesInProcess(
         string pdfPath,
         int pageNumber,
         CancellationToken cancellationToken)
@@ -191,7 +191,7 @@ public sealed class PdfPreviewService
         }
     }
 
-    private static PdfPreviewResult RenderPage(
+    internal static PdfPreviewResult RenderPageInProcess(
         string pdfPath,
         int pageNumber,
         int targetWidth,
