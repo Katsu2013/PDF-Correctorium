@@ -8,5 +8,6 @@
 | [ADR-0004](ADR-0004-License.md) | Accepted | Apache License 2.0 |
 | [ADR-0005](ADR-0005-Page-Regeneration.md) | Accepted | 変更ページ再生成を既定 |
 | [ADR-0006](ADR-0006-Plugin-Packaging.md) | Proposed | `.pdfocrplugin`、NuGet直接導入なし |
+| [ADR-0007](ADR-0007-Logical-Page-Composition.md) | Accepted | ページ削除・並べ替え・回転は論理モデルを正本とする |
 
 ADRは採用後に書き換えず、変更する場合は新しいADRで置換する。

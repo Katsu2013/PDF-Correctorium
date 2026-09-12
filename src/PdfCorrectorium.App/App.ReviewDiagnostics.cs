@@ -6,8 +6,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.App.Services;
+using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Core.Geometry;
 using PdfCorrectorium.ProjectFormat;
@@ -76,22 +76,30 @@ public partial class App
                     };
                     return new OcrTextRegion
                     {
-                        PageId = pageId, OriginalText = entry.Text,
-                        OriginalGeometry = geometry, EditedGeometry = geometry,
-                        ReviewStatus = entry.Status, IsDeleted = entry.Deleted,
+                        PageId = pageId,
+                        OriginalText = entry.Text,
+                        OriginalGeometry = geometry,
+                        EditedGeometry = geometry,
+                        ReviewStatus = entry.Status,
+                        IsDeleted = entry.Deleted,
                         HasExplicitWritingMode = true,
                     };
                 }).ToArray();
                 return new OcrPage
                 {
-                    Id = pageId, PageNumber = pageNumber, WidthPoints = 300, HeightPoints = 400,
-                    TextRegions = regions.AsEnumerable().Reverse().ToArray(), ReadingOrder = regions.Select(region => region.Id).ToArray(),
+                    Id = pageId,
+                    PageNumber = pageNumber,
+                    WidthPoints = 300,
+                    HeightPoints = 400,
+                    TextRegions = regions.AsEnumerable().Reverse().ToArray(),
+                    ReadingOrder = regions.Select(region => region.Id).ToArray(),
                 };
             }
             var projectPath = Path.Combine(directory, "review-project.pdfocrproj");
             var project = new PdfCorrectoriumProject
             {
-                Name = "校正テスト", SourcePdf = await package.CreateSourceReferenceAsync(pdfPath, directory),
+                Name = "校正テスト",
+                SourcePdf = await package.CreateSourceReferenceAsync(pdfPath, directory),
                 Pages =
                 [
                     Page(1, ("本文の誤字を確認します", ReviewStatus.Unreviewed, false, false),

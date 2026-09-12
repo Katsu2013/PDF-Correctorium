@@ -1,9 +1,9 @@
 using System.IO.Compression;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using PdfCorrectorium.Core.Analysis;
 using PdfCorrectorium.Core;
-using System.Reflection;
+using PdfCorrectorium.Core.Analysis;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Core.Geometry;
 using PdfCorrectorium.Infrastructure;
@@ -17,8 +17,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("FR-1000 package version gates reject unsupported formats", PackageVersionGateAsync),
     ("Build revision matches every application assembly and manifest", BuildVersionAsync),
     ("Project package round-trips and validates", ProjectRoundTripAsync),
+    ("Project format 1.4 supports external relative PDF paths", ExternalRelativeSourceAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
-    ("Project package preserves compressed page thumbnails", ProjectThumbnailCacheAsync),
+    ("Project format 1.4 omits regenerable duplicate caches", ProjectThumbnailCacheAsync),
     ("Project package rejects excessive JSON entries", ProjectJsonLimitAsync),
     ("Project package rejects excessive entry counts", ProjectEntryCountLimitAsync),
     ("Project package rejects excessive archive files", ProjectArchiveSizeLimitAsync),
@@ -26,6 +27,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Project package rejects embedded PDF size mismatches", EmbeddedPdfSizeLimitAsync),
     ("Project package rejects unsafe source fingerprints", UnsafeSourceFingerprintAsync),
     ("Embedded source cache is rehashed before reuse", EmbeddedSourceCacheIntegrityAsync),
+    ("Embedded source cache evicts least-recently-used PDFs", MaterializedSourceCacheRetentionAsync),
+    ("Backup and recovery copies obey bounded retention", BackupRetentionAsync),
+    ("Unreferenced project assets are reclaimed safely", ProjectAssetCleanupAsync),
     ("Legacy PdfOcrEditor project packages remain readable", LegacyProjectFormatAsync),
     ("Project validator rejects a missing manifest", MissingManifestAsync),
     ("Source fingerprint detects source changes", SourceFingerprintAsync),
@@ -35,6 +39,49 @@ var tests = new (string Name, Func<Task> Run)[]
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
 };
+
+static async Task ExternalRelativeSourceAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var sourceDirectory = Path.Combine(directory, "source");
+        var projectDirectory = Path.Combine(directory, "projects");
+        Directory.CreateDirectory(sourceDirectory);
+        Directory.CreateDirectory(projectDirectory);
+        var pdf = Path.Combine(sourceDirectory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\nexternal relative source\n%%EOF");
+        var packages = new ProjectPackageService();
+        var source = await packages.CreateSourceReferenceAsync(pdf, projectDirectory);
+        True(source.RelativePath?.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) == true,
+            "The fixture must use a parent-relative path.");
+        var projectPath = Path.Combine(projectDirectory, "external.pdfocrproj");
+        await packages.SaveAsync(projectPath, new PdfCorrectoriumProject
+        {
+            PdfStorageMode = ProjectPdfStorageMode.Relative,
+            SourcePdf = source,
+        });
+        True((await packages.ValidateAsync(projectPath)).IsValid,
+            "Format 1.4 must accept a normalized parent-relative source path.");
+        Equal(Path.GetFullPath(pdf), Path.GetFullPath(packages.ResolveSourcePath((await packages.OpenAsync(projectPath)).SourcePdf, projectDirectory)),
+            "The parent-relative source must resolve to the original PDF.");
+
+        using (var archive = ZipFile.Open(projectPath, ZipArchiveMode.Update))
+        {
+            var entry = archive.GetEntry("manifest.json")!;
+            JsonObject manifest;
+            using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
+            manifest["formatVersion"] = "1.2";
+            manifest["minimumApplicationVersion"] = "1.0.0-dev.133";
+            entry.Delete();
+            await using var output = archive.CreateEntry("manifest.json").Open();
+            await JsonSerializer.SerializeAsync(output, manifest);
+        }
+        True(!(await packages.ValidateAsync(projectPath)).IsValid,
+            "Format 1.2 must retain its same-tree relative-path contract.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
 
 static async Task ProjectArchiveSizeLimitAsync()
 {
@@ -111,7 +158,7 @@ static async Task ProjectEntryCountLimitAsync()
         }
         var limited = new ProjectPackageService
         {
-            Limits = new ProjectPackageLimits { MaximumEntryCount = 4 },
+            Limits = new ProjectPackageLimits { MaximumEntryCount = 3 },
         };
         True(!(await limited.ValidateAsync(path)).IsValid, "Packages above the entry-count limit must be rejected.");
     }
@@ -154,13 +201,12 @@ static async Task UnsafeSourceFingerprintAsync()
             new PdfCorrectoriumProject { SourcePdf = await packages.CreateSourceReferenceAsync(pdf) }, embedSourcePdf: true);
         using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
         {
-            foreach (var entryName in new[] { "project.json", "source/source-reference.json" })
+            foreach (var entryName in new[] { "project.json" })
             {
                 var entry = archive.GetEntry(entryName)!;
                 JsonNode root;
                 using (var input = entry.Open()) root = (await JsonNode.ParseAsync(input))!;
                 if (entryName == "project.json") root["sourcePdf"]!["sha256"] = "../outside";
-                else root["sha256"] = "../outside";
                 entry.Delete();
                 await using var output = archive.CreateEntry(entryName).Open();
                 await JsonSerializer.SerializeAsync(output, root);
@@ -234,8 +280,9 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.1", ProjectManifest.CurrentVersion, "Application revisions do not automatically change the data format.");
-    Equal("1.0.0-dev.123", new ProjectManifest().MinimumApplicationVersion, "The minimum reader stays at the first compatible build.");
+    Equal("1.4", ProjectManifest.CurrentVersion, "Logical page sequences require format 1.4.");
+    Equal("1.0.0-dev.143", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.4 must name the first compatible reader.");
+    Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
 
@@ -288,7 +335,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.1", manifest["formatVersion"]!.GetValue<string>(), "New containers require an empty-edit aware reader.");
+            Equal("1.4", manifest["formatVersion"]!.GetValue<string>(), "New containers require logical page-sequence support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();
@@ -331,6 +378,31 @@ static Task ViewerSettingsMappingAsync()
     var leftToRightWithoutCover = leftToRightWithCover with { ShowCoverSeparately = false };
     Equal("/TwoPageLeft", PdfViewerSettingsMapping.GetPageLayoutName(leftToRightWithoutCover),
         "Disabling the separate cover must invert the first facing-page slot for left-to-right documents.");
+
+    var continuousFacing = leftToRightWithCover with { PageMode = InitialPageMode.ContinuousFacingPages };
+    Equal("/TwoColumnRight", PdfViewerSettingsMapping.GetPageLayoutName(continuousFacing),
+        "Continuous facing-page output must retain cover and binding placement in TwoColumn layout.");
+    Equal(continuousFacing, PdfViewerSettingsMapping.FromCatalogNames("/TwoColumnRight", "/L2R"),
+        "TwoColumn PDF catalog values must round-trip to continuous facing-page settings.");
+    Equal(rightToLeftWithoutCover with { PageMode = InitialPageMode.ContinuousFacingPages },
+        PdfViewerSettingsMapping.FromCatalogNames("/TwoColumnRight", "/R2L"),
+        "The same odd-page side must recover the correct cover behavior for right-to-left documents.");
+    Equal(new ViewerSettings
+    {
+        BindingDirection = BindingDirection.LeftToRight,
+        PageMode = InitialPageMode.Continuous,
+        ShowCoverSeparately = true,
+    },
+        PdfViewerSettingsMapping.FromCatalogNames("/OneColumn", null),
+        "OneColumn and a missing Direction must use continuous single-page layout and PDF's L2R default.");
+    Equal(new ViewerSettings
+    {
+        BindingDirection = BindingDirection.LeftToRight,
+        PageMode = InitialPageMode.SinglePage,
+        ShowCoverSeparately = true,
+    },
+        PdfViewerSettingsMapping.FromCatalogNames(null, null),
+        "Missing PDF catalog view hints must use the PDF SinglePage and L2R defaults.");
 
     return Task.CompletedTask;
 }
@@ -427,10 +499,13 @@ static async Task ProjectRoundTripAsync()
         await File.WriteAllBytesAsync(pdf, "%PDF-1.4\n%%EOF"u8.ToArray());
         var package = new ProjectPackageService();
         var source = await package.CreateSourceReferenceAsync(pdf, directory);
+        var pageId = Guid.NewGuid();
+        var tag = new ProjectTag { Name = "要確認", ColorHex = "#D32F2F" };
         var project = new PdfCorrectoriumProject
         {
             Name = "book",
             SourcePdf = source,
+            PdfStorageMode = ProjectPdfStorageMode.Relative,
             OutputPdfVersion = PdfOutputVersion.Pdf15,
             DocumentLanguage = "ja-JP",
             DocumentMetadata = new PdfDocumentMetadata
@@ -446,6 +521,7 @@ static async Task ProjectRoundTripAsync()
             [
                 new OcrPage
                 {
+                    Id = pageId,
                     PageNumber = 1,
                     WidthPoints = 595,
                     HeightPoints = 842,
@@ -462,6 +538,26 @@ static async Task ProjectRoundTripAsync()
                             },
                         ],
                     },
+                },
+            ],
+            Tags = [tag],
+            Comments =
+            [
+                new ProjectComment
+                {
+                    Target = new ProjectTargetReference { Kind = ProjectTargetKind.Page, PageId = pageId },
+                    Body = "図版を確認",
+                    TagIds = [tag.Id],
+                },
+            ],
+            InternalLinks =
+            [
+                new PdfInternalLink
+                {
+                    SourcePageId = pageId,
+                    SourceBounds = new PdfRectangle(new PdfPoint(10, 20), new PdfSize(80, 18)),
+                    DestinationPageId = pageId,
+                    Description = "先頭へ",
                 },
             ],
             BookmarksInitialized = true,
@@ -486,6 +582,8 @@ static async Task ProjectRoundTripAsync()
         var reopened = await package.OpenAsync(path);
         Equal(project.ProjectId, reopened.ProjectId, "Project ID must round-trip.");
         Equal(source.Sha256, reopened.SourcePdf.Sha256, "Source hash must round-trip.");
+        Equal(ProjectPdfStorageMode.Relative, reopened.PdfStorageMode, "Relative storage mode must round-trip.");
+        True(string.IsNullOrWhiteSpace(reopened.SourcePdf.AbsolutePathHint), "Current packages must not persist an absolute path hint.");
         Equal(PdfOutputVersion.Pdf15, reopened.OutputPdfVersion, "Output PDF version must round-trip.");
         Equal("ja-JP", reopened.DocumentLanguage, "Document language must round-trip.");
         Equal("校正対象文書", reopened.DocumentMetadata?.Title, "Document title must round-trip.");
@@ -498,6 +596,11 @@ static async Task ProjectRoundTripAsync()
         True(reopened.BookmarksModified, "Bookmark modification state must round-trip.");
         Equal("第1章", reopened.Bookmarks.Single().Title, "Bookmark title must round-trip.");
         Equal("第1節", reopened.Bookmarks.Single().Children.Single().Title, "Bookmark hierarchy must round-trip.");
+        Equal("図版を確認", reopened.Comments.Single().Body, "Comments must round-trip.");
+        Equal("要確認", reopened.Tags.Single().Name, "Tags must round-trip.");
+        Equal("先頭へ", reopened.InternalLinks.Single().Description, "Internal links must round-trip.");
+        Equal(pageId, reopened.PageSequence.Single().PageId, "The logical page ID must round-trip.");
+        Equal(1, reopened.PageSequence.Single().SourcePageNumber, "The logical page must retain its physical source page.");
         var keepRegion = reopened.Pages.Single().ImageOptimization!.KeepRegions.Single();
         Equal(0.1, keepRegion.LeftRatio, "Image optimization keep-region X must round-trip.");
         Equal(0.4, keepRegion.HeightRatio, "Image optimization keep-region height must round-trip.");
@@ -569,14 +672,18 @@ static async Task ProjectThumbnailCacheAsync()
             SourcePdf = await package.CreateSourceReferenceAsync(pdf, directory),
             Pages = [new OcrPage { PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
         };
-        var expected = new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 };
         var path = Path.Combine(directory, "thumbnail-cache.pdfocrproj");
 
-        await package.SaveAsync(path, project, false, new Dictionary<int, byte[]> { [1] = expected });
+        await package.SaveAsync(path, project, false, new Dictionary<int, byte[]> { [1] = [0xFF, 0xD8, 0xFF, 0xD9] });
         var reopened = await package.ReadThumbnailCacheAsync(path);
-
-        True(reopened.TryGetValue(1, out var actual), "The saved thumbnail must be present in the package.");
-        True(expected.SequenceEqual(actual!), "The thumbnail bytes must round-trip unchanged.");
+        True(reopened.Count == 0, "Regenerable thumbnails must not be persisted in a current package.");
+        using var archive = ZipFile.OpenRead(path);
+        True(archive.GetEntry("source/source-reference.json") is null,
+            "The source reference must have project.json as its single source of truth.");
+        True(!archive.Entries.Any(entry => entry.FullName.StartsWith("ocr/pages/", StringComparison.OrdinalIgnoreCase)),
+            "OCR pages must not be duplicated outside project.json.");
+        True(!archive.Entries.Any(entry => entry.FullName.StartsWith("thumbnails/", StringComparison.OrdinalIgnoreCase)),
+            "Regenerable thumbnails must not consume project storage.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }
@@ -615,12 +722,104 @@ static async Task LegacyProjectFormatAsync()
             var legacyEntry = archive.CreateEntry("manifest.json", CompressionLevel.Optimal);
             await using var output = legacyEntry.Open();
             await JsonSerializer.SerializeAsync(output, manifest);
+
+            var sourceEntry = archive.CreateEntry("source/source-reference.json", CompressionLevel.Optimal);
+            await using var sourceOutput = sourceEntry.Open();
+            await JsonSerializer.SerializeAsync(sourceOutput, source with { AbsolutePathHint = null });
         }
 
         var validation = await package.ValidateAsync(path);
         True(validation.IsValid, "A project saved with the former application identifier must remain valid.");
         var reopened = await package.OpenAsync(path);
         Equal(project.ProjectId, reopened.ProjectId, "A legacy project must open without changing its identity.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task MaterializedSourceCacheRetentionAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var cache = Path.Combine(directory, "cache");
+        var package = new ProjectPackageService
+        {
+            MaterializedSourceCacheFileLimit = 2,
+            MaterializedSourceCacheByteLimit = 1024 * 1024,
+        };
+        var materialized = new List<string>();
+        for (var index = 0; index < 3; index++)
+        {
+            var pdf = Path.Combine(directory, $"source-{index}.pdf");
+            await File.WriteAllTextAsync(pdf, $"%PDF-1.4\ncache-{index}\n%%EOF");
+            var source = await package.CreateSourceReferenceAsync(pdf);
+            var projectPath = Path.Combine(directory, $"embedded-{index}.pdfocrproj");
+            await package.SaveAsync(projectPath, new PdfCorrectoriumProject { SourcePdf = source }, embedSourcePdf: true);
+            materialized.Add(await package.MaterializeEmbeddedSourceAsync(
+                projectPath,
+                source with { IsEmbedded = true },
+                cache));
+            File.SetLastAccessTimeUtc(materialized[^1], DateTime.UtcNow.AddMinutes(-10 + index));
+        }
+
+        Equal(2, Directory.EnumerateFiles(cache, "*.pdf").Count(), "The cache must retain no more than its file limit.");
+        True(!File.Exists(materialized[0]), "The least-recently-used materialization must be reclaimed first.");
+        True(File.Exists(materialized[2]), "The currently requested materialization must always be retained.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task BackupRetentionAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\nbackup retention\n%%EOF");
+        var package = new ProjectPackageService { BackupGenerationCount = 10, BackupByteLimit = 1 };
+        var projectPath = Path.Combine(directory, "bounded.pdfocrproj");
+        var project = new PdfCorrectoriumProject { SourcePdf = await package.CreateSourceReferenceAsync(pdf, directory) };
+        await package.SaveAsync(projectPath, project);
+        for (var index = 0; index < 3; index++)
+            await package.SaveAsync(projectPath, project with { Name = $"revision-{index}" });
+        Equal(1, Directory.EnumerateFiles(directory, "bounded.backup-*.pdfocrproj").Count(),
+            "The newest backup must be retained even when it exceeds the byte budget.");
+        True(!File.Exists(projectPath + ".bak"),
+            "A fixed-name backup must not duplicate the retained versioned backup.");
+
+        for (var index = 0; index < 2; index++)
+        {
+            await File.WriteAllTextAsync(projectPath, $"damaged-{index}");
+            True(await package.RestoreLatestValidBackupAsync(projectPath) is not null, "A valid backup must remain recoverable.");
+        }
+        Equal(1, Directory.EnumerateFiles(directory, "bounded.pdfocrproj.pre-recovery-*").Count(),
+            "Only the newest pre-recovery copy must be retained.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task ProjectAssetCleanupAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var package = new ProjectPackageService();
+        var projectPath = Path.Combine(directory, "assets.pdfocrproj");
+        var assetsDirectory = Path.Combine(directory, "assets.assets");
+        Directory.CreateDirectory(assetsDirectory);
+        var sourcePdf = Path.Combine(assetsDirectory, "source.pdf");
+        await File.WriteAllTextAsync(sourcePdf, "%PDF-1.4\nmanaged asset\n%%EOF");
+        var source = await package.CreateSourceReferenceAsync(sourcePdf, directory);
+        var managedPdf = Path.Combine(assetsDirectory, source.Sha256 + ".pdf");
+        File.Move(sourcePdf, managedPdf);
+        source = await package.CreateSourceReferenceAsync(managedPdf, directory);
+        await package.SaveAsync(projectPath, new PdfCorrectoriumProject { SourcePdf = source });
+        var staleAsset = Path.Combine(assetsDirectory, new string('b', 64) + ".pdf");
+        await File.WriteAllTextAsync(staleAsset, "%PDF-1.4\nstale\n%%EOF");
+
+        Equal(1, await package.CleanupUnreferencedAssetsAsync(projectPath), "Exactly one unreferenced managed asset must be removed.");
+        True(File.Exists(managedPdf), "The PDF referenced by the project must be preserved.");
+        True(!File.Exists(staleAsset), "An unreferenced content-addressed asset must be removed.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }

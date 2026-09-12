@@ -37,11 +37,36 @@ internal sealed class PageWorkingFileStore : IDisposable
         ? 0
         : Directory.EnumerateFiles(_sessionDirectory, "*.pdf", SearchOption.TopDirectoryOnly).Count();
 
+    internal long TotalBytes => _disposed || !Directory.Exists(_sessionDirectory)
+        ? 0
+        : Directory.EnumerateFiles(_sessionDirectory, "*.pdf", SearchOption.TopDirectoryOnly)
+            .Sum(path => GetLengthOrZero(path));
+
     public bool Owns(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
         var fullPath = Path.GetFullPath(path);
         return string.Equals(Path.GetDirectoryName(fullPath), _sessionDirectory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>現在のセッションが所有するファイルの、容量制限判定用スナップショットを返します。</summary>
+    internal PageWorkingFileResource? Inspect(string? path)
+    {
+        if (!Owns(path)) return null;
+        var fullPath = Path.GetFullPath(path!);
+        try
+        {
+            var file = new FileInfo(fullPath);
+            return new PageWorkingFileResource(fullPath, file.Exists, file.Exists ? file.Length : 0);
+        }
+        catch (IOException)
+        {
+            return new PageWorkingFileResource(fullPath, false, 0);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new PageWorkingFileResource(fullPath, false, 0);
+        }
     }
 
     public void DeleteUnreferenced(IEnumerable<string> retainedPaths)
@@ -68,9 +93,24 @@ internal sealed class PageWorkingFileStore : IDisposable
         foreach (var directory in Directory.EnumerateDirectories(_rootDirectory))
         {
             var lockPath = Path.Combine(directory, "session.lock");
+            if (!File.Exists(lockPath))
+            {
+                // Another process may have created the directory immediately
+                // before creating its lock file. Only reclaim an incomplete
+                // directory after a generous grace period, never while it may
+                // still be in the constructor's creation window.
+                try
+                {
+                    if (Directory.GetCreationTimeUtc(directory) < DateTime.UtcNow.AddMinutes(-5))
+                        TryDeleteDirectory(directory);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                continue;
+            }
             try
             {
-                using var abandonedLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                using var abandonedLock = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
                 abandonedLock.Dispose();
                 TryDeleteDirectory(directory);
             }
@@ -89,6 +129,13 @@ internal sealed class PageWorkingFileStore : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 
+    private static long GetLengthOrZero(string path)
+    {
+        try { return new FileInfo(path).Length; }
+        catch (IOException) { return 0; }
+        catch (UnauthorizedAccessException) { return 0; }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
@@ -96,3 +143,5 @@ internal sealed class PageWorkingFileStore : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 }
+
+internal readonly record struct PageWorkingFileResource(string Path, bool IsAvailable, long Length);

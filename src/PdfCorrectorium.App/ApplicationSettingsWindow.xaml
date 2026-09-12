@@ -37,6 +37,36 @@
                             <Slider x:Name="ToolbarButtonSizeSlider" Grid.Column="1" Minimum="28" Maximum="64" TickFrequency="2" IsSnapToTickEnabled="True" AutomationProperties.AccessKey="Alt+Z"/>
                             <TextBlock Grid.Column="2" Text="{Binding ElementName=ToolbarButtonSizeSlider, Path=Value, StringFormat={}{0:0}px}" VerticalAlignment="Center" TextAlignment="Right" />
                         </Grid>
+                        <Separator Margin="0,18,0,16" />
+                        <TextBlock Text="見開き表示" FontSize="15" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Label Content="スクロール方式(_2)" VerticalAlignment="Center" Padding="0"
+                                   Target="{Binding ElementName=DocumentPageFlowModeComboBox}" />
+                            <ComboBox x:Name="DocumentPageFlowModeComboBox" Grid.Column="1" SelectedValuePath="Tag"
+                                      AutomationProperties.AccessKey="Alt+2">
+                                <ComboBoxItem Content="ページ切り替え" Tag="PageByPage" />
+                                <ComboBoxItem Content="連続スクロール" Tag="Continuous" />
+                            </ComboBox>
+                        </Grid>
+                        <CheckBox x:Name="FacingPagesShowCoverSeparatelyCheckBox"
+                                  Content="表紙（1ページ目）を単独表示する(_1)" Margin="0,10,0,0"
+                                  AutomationProperties.AccessKey="Alt+1" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Label Content="綴じ方向(_J)" VerticalAlignment="Center" Padding="0"
+                                   Target="{Binding ElementName=FacingPagesBindingDirectionComboBox}" />
+                            <ComboBox x:Name="FacingPagesBindingDirectionComboBox" Grid.Column="1" SelectedValuePath="Tag"
+                                      AutomationProperties.AccessKey="Alt+J">
+                                <ComboBoxItem Content="左綴じ" Tag="LeftBinding" />
+                                <ComboBoxItem Content="右綴じ" Tag="RightBinding" />
+                            </ComboBox>
+                        </Grid>
+                        <TextBlock Text="左綴じでは若いページを左、右綴じでは若いページを右へ配置します。表紙を単独表示すると、1ページ目は綴じ方向に応じて片側だけに表示されます。"
+                                   Foreground="#667085" TextWrapping="Wrap" Margin="22,6,0,0" />
+
+                        <Separator Margin="0,18,0,16" />
+                        <TextBlock Text="パネル表示" FontSize="15" FontWeight="SemiBold" />
                         <CheckBox x:Name="ShowPropertyHelpTextCheckBox"
  Content="プロパティ領域に詳しい説明を表示する(_H)"
                                   Margin="0,12,0,0" AutomationProperties.AccessKey="Alt+H"/>
@@ -324,7 +354,7 @@
                         <TextBlock x:Name="ManagementStatusTextBlock" TextWrapping="Wrap" Margin="0,14,0,0" AutomationProperties.LiveSetting="Polite" />
                         <Expander Header="保存先(_F)" Margin="0,14,0,0" AutomationProperties.AccessKey="Alt+F" KeyboardNavigation.TabIndex="9">
                             <StackPanel Margin="4,8,4,0">
-                                <TextBlock Text="現在の動作モード" FontWeight="SemiBold" />
+                                <TextBlock Text="アプリデータ保存モード" FontWeight="SemiBold" />
                                 <TextBlock x:Name="StorageModeTextBlock" Margin="0,4,0,10" />
                                 <TextBlock Text="設定ファイル" FontWeight="SemiBold" />
                                 <TextBox x:Name="SettingsPathTextBox" IsReadOnly="True" TextWrapping="Wrap" Margin="0,4,0,0" IsTabStop="False" />

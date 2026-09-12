@@ -77,8 +77,8 @@ public partial class DocumentPropertiesWindow : Window, INotifyPropertyChanged
     /// <summary>OCR文字情報を取り込んだデータソースの説明です。</summary>
     public string OcrDataSourceText => _viewModel.OcrDataSourceText;
 
-    /// <summary>設定やキャッシュを保存する現在の動作モードです。</summary>
-    public string StorageModeText => _viewModel.StorageModeText;
+    /// <summary>現在のプロジェクトが元PDFを保持する方法です。</summary>
+    public string ProjectStorageModeText => _viewModel.ProjectStorageModeText;
 
     /// <summary>PDF本体から読み取った文書情報です。</summary>
     public PdfDocumentPropertiesInfo PdfProperties

@@ -50,53 +50,53 @@ public partial class App
 
         // Isolate size variants from the real application's persisted preferences.
         foreach (var size in new[] { 28d, 36d, 64d })
-        foreach (var showText in new[] { false, true })
-        {
-            var expectedSize = Math.Max(24, size - 4);
-            var expectedIconSize = Math.Clamp(size - 16, 14, 36);
-            var panel = new StackPanel { Orientation = Orientation.Horizontal };
-            var host = new Window
+            foreach (var showText in new[] { false, true })
             {
-                DataContext = new { CompactToolbarButtonSize = expectedSize, ToolbarIconSize = expectedIconSize, ShowToolbarText = showText },
-                Content = panel,
-            };
-            try
-            {
-                foreach (var toggle in new[] { false, true })
+                var expectedSize = Math.Max(24, size - 4);
+                var expectedIconSize = Math.Clamp(size - 16, 14, 36);
+                var panel = new StackPanel { Orientation = Orientation.Horizontal };
+                var host = new Window
                 {
-                    ButtonBase sample = toggle ? new ToggleButton() : new Button();
-                    sample.Style = (Style)window.FindResource(toggle ? "ToolbarIconToggleStyle" : "ToolbarIconButtonStyle");
-                    var icon = new Viewbox
+                    DataContext = new { CompactToolbarButtonSize = expectedSize, ToolbarIconSize = expectedIconSize, ShowToolbarText = showText },
+                    Content = panel,
+                };
+                try
+                {
+                    foreach (var toggle in new[] { false, true })
                     {
-                        Style = (Style)window.FindResource("ToolbarIconViewboxStyle"),
-                        Child = new Border { Width = 24, Height = 24, Background = Brushes.Black },
-                    };
-                    var label = new TextBlock { Text = "ツールバー操作", Style = (Style)window.FindResource("ToolbarLabelStyle") };
-                    var content = new StackPanel { Orientation = Orientation.Horizontal };
-                    content.Children.Add(icon);
-                    content.Children.Add(label);
-                    sample.Content = content;
-                    panel.Children.Add(sample);
+                        ButtonBase sample = toggle ? new ToggleButton() : new Button();
+                        sample.Style = (Style)window.FindResource(toggle ? "ToolbarIconToggleStyle" : "ToolbarIconButtonStyle");
+                        var icon = new Viewbox
+                        {
+                            Style = (Style)window.FindResource("ToolbarIconViewboxStyle"),
+                            Child = new Border { Width = 24, Height = 24, Background = Brushes.Black },
+                        };
+                        var label = new TextBlock { Text = "ツールバー操作", Style = (Style)window.FindResource("ToolbarLabelStyle") };
+                        var content = new StackPanel { Orientation = Orientation.Horizontal };
+                        content.Children.Add(icon);
+                        content.Children.Add(label);
+                        sample.Content = content;
+                        panel.Children.Add(sample);
+                    }
+                    await layoutAsync();
+                    panel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    panel.Arrange(new Rect(panel.DesiredSize));
+                    panel.UpdateLayout();
+                    foreach (var sample in panel.Children.OfType<ButtonBase>())
+                    {
+                        var content = (StackPanel)sample.Content;
+                        var icon = (Viewbox)content.Children[0];
+                        var label = (TextBlock)content.Children[1];
+                        check(sample.ActualHeight == expectedSize && sample.ActualWidth >= expectedSize &&
+                              (showText || sample.ActualWidth == expectedSize) &&
+                              icon.ActualWidth == expectedIconSize && icon.ActualHeight == expectedIconSize &&
+                              label.Visibility == (showText ? Visibility.Visible : Visibility.Collapsed) &&
+                              content.DesiredSize.Width <= sample.ActualWidth - 6 + 0.01 &&
+                              content.DesiredSize.Height <= sample.ActualHeight - 6 + 0.01,
+                            $"{sample.GetType().Name} at size {size}, labels={showText}: unchanged icon fits the compact button without clipping.");
+                    }
                 }
-                await layoutAsync();
-                panel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                panel.Arrange(new Rect(panel.DesiredSize));
-                panel.UpdateLayout();
-                foreach (var sample in panel.Children.OfType<ButtonBase>())
-                {
-                    var content = (StackPanel)sample.Content;
-                    var icon = (Viewbox)content.Children[0];
-                    var label = (TextBlock)content.Children[1];
-                    check(sample.ActualHeight == expectedSize && sample.ActualWidth >= expectedSize &&
-                          (showText || sample.ActualWidth == expectedSize) &&
-                          icon.ActualWidth == expectedIconSize && icon.ActualHeight == expectedIconSize &&
-                          label.Visibility == (showText ? Visibility.Visible : Visibility.Collapsed) &&
-                          content.DesiredSize.Width <= sample.ActualWidth - 6 + 0.01 &&
-                          content.DesiredSize.Height <= sample.ActualHeight - 6 + 0.01,
-                        $"{sample.GetType().Name} at size {size}, labels={showText}: unchanged icon fits the compact button without clipping.");
-                }
+                finally { host.Close(); }
             }
-            finally { host.Close(); }
-        }
     }
 }

@@ -106,6 +106,17 @@ public sealed class PdfPreviewService
         PdfNativeWorkerClient.Shared.RenderPageAsync(pdfPath, pageNumber, targetWidth, cancellationToken);
 
     /// <summary>
+    /// 表示範囲周辺やサムネイルなど、取り消し可能な先読みとしてページを描画します。
+    /// 明示的なページ移動を待たせないよう、対話操作とは別のPDFワーカーを使用します。
+    /// </summary>
+    internal Task<PdfPreviewResult> RenderBackgroundPageAsync(
+        string pdfPath,
+        int pageNumber,
+        int targetWidth = 1200,
+        CancellationToken cancellationToken = default) =>
+        PdfNativeWorkerClient.Background.RenderPageAsync(pdfPath, pageNumber, targetWidth, cancellationToken);
+
+    /// <summary>
     /// 指定ページに含まれる文字を、PDFページ座標の境界付きで読み取ります。
     /// </summary>
     /// <param name="pdfPath">読み取るPDFファイルのパス。</param>
@@ -169,7 +180,8 @@ public sealed class PdfPreviewService
                         continue;
 
                     var alpha = 255u;
-                    NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha);
+                    if (NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha) == 0)
+                        alpha = 255;
                     result.Add(new PdfCharacterBox(
                         char.ConvertFromUtf32((int)unicode),
                         left,
@@ -329,7 +341,8 @@ public sealed class PdfPreviewService
             if (!groups.TryGetValue(textObject, out var builder))
             {
                 var alpha = 255u;
-                NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha);
+                if (NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha) == 0)
+                    alpha = 255;
                 var rotation = GetObjectRotation(textObject);
                 builder = new CharacterRegionBuilder(NativeMethods.FPDFTextObj_GetTextRenderMode(textObject) == 3 || alpha <= 5, rotation);
                 groups[textObject] = builder;
@@ -463,7 +476,8 @@ public sealed class PdfPreviewService
 
             var renderMode = NativeMethods.FPDFTextObj_GetTextRenderMode(pageObject);
             var alpha = 255u;
-            NativeMethods.FPDFPageObj_GetFillColor(pageObject, out _, out _, out _, out alpha);
+            if (NativeMethods.FPDFPageObj_GetFillColor(pageObject, out _, out _, out _, out alpha) == 0)
+                alpha = 255;
             regions.Add(new PdfTextOverlayRegion(
                 text,
                 left / pageWidth * pixelWidth,

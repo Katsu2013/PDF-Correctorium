@@ -79,7 +79,6 @@ internal sealed class LengthLimitedWriteStream(Stream inner, long maximumBytes) 
 
     public override async ValueTask DisposeAsync()
     {
-        await inner.DisposeAsync().ConfigureAwait(false);
-        GC.SuppressFinalize(this);
+        await base.DisposeAsync().ConfigureAwait(false);
     }
 }

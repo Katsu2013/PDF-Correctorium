@@ -48,14 +48,15 @@ public partial class App
             await viewModel.ReorderSelectedPagesAsync(1);
             Check(viewModel.PageItems.Count == 2 && viewModel.SelectedPage?.PageNumber == 2,
                 "Reorder keeps two pages and selects the moved page at its new position.");
-            Check(viewModel.ResolvedPdfPathForDiagnostics != beforeReorderPath && viewModel.UndoCommand.CanExecute(null),
-                "Reorder creates a working PDF and one undoable page-history entry.");
+            Check(viewModel.ResolvedPdfPathForDiagnostics == beforeReorderPath &&
+                  viewModel.PageWorkingFileCountForDiagnostics == 0 && viewModel.UndoCommand.CanExecute(null),
+                "Reorder stores a logical page sequence without creating a working PDF.");
             Check(viewModel.OverlayItems.Any(region => region.Id == markerId && region.Text == "page-one-marker"),
                 "Reorder carries the edited OCR region to its new page number.");
 
             await viewModel.UndoForDiagnosticsAsync();
             Check(viewModel.ResolvedPdfPathForDiagnostics == beforeReorderPath && viewModel.SelectedPage?.PageNumber == 1,
-                "Undo reorder restores the prior PDF and current page.");
+                "Undo reorder restores the logical order while retaining the immutable source PDF.");
             Check(viewModel.OverlayItems.Contains(marker) && marker.Text == "page-one-marker",
                 "Undo reorder restores the same OCR model referenced by older OCR history.");
             await viewModel.UndoForDiagnosticsAsync();
@@ -74,17 +75,33 @@ public partial class App
             var originalWidth = viewModel.ProjectForDiagnostics!.Pages.FirstOrDefault()?.WidthPoints ?? 300;
             await viewModel.RotateSelectedPagesForDiagnosticsAsync(90);
             var rotatedPath = viewModel.ResolvedPdfPathForDiagnostics;
-            Check(rotatedPath != rotationSourcePath && viewModel.ProjectForDiagnostics!.Pages[0].RotationDegrees == 90,
-                "Rotate creates a working PDF and rotates OCR page geometry.");
+            Check(rotatedPath == rotationSourcePath &&
+                  viewModel.ProjectForDiagnostics!.PageSequence[0].RotationDegrees == 90 &&
+                  viewModel.ProjectForDiagnostics.Pages[0].RotationDegrees == 90 &&
+                  viewModel.PageWorkingFileCountForDiagnostics == 0,
+                "Rotate stores logical rotation and transformed OCR geometry without creating a working PDF.");
             await viewModel.UndoForDiagnosticsAsync();
             Check(viewModel.ResolvedPdfPathForDiagnostics == rotationSourcePath &&
-                  viewModel.ProjectForDiagnostics!.Pages[0].RotationDegrees == 0 &&
+                  viewModel.ProjectForDiagnostics!.PageSequence[0].RotationDegrees == 0 &&
+                  viewModel.ProjectForDiagnostics.Pages[0].RotationDegrees == 0 &&
                   Math.Abs(viewModel.ProjectForDiagnostics.Pages[0].WidthPoints - originalWidth) < 0.01,
                 "Undo rotate restores the source PDF and OCR page geometry.");
             await viewModel.RedoForDiagnosticsAsync();
             Check(viewModel.ResolvedPdfPathForDiagnostics == rotatedPath &&
-                  viewModel.ProjectForDiagnostics!.Pages[0].RotationDegrees == 90,
-                "Redo rotate restores the rotated PDF and OCR page geometry.");
+                  viewModel.ProjectForDiagnostics!.PageSequence[0].RotationDegrees == 90 &&
+                  viewModel.ProjectForDiagnostics.Pages[0].RotationDegrees == 90,
+                "Redo rotate restores logical rotation and OCR page geometry.");
+            var logicalExport = Path.Combine(directory, "logical-rotation-export.pdf");
+            await viewModel.ExportPdfForDiagnosticsAsync(logicalExport);
+            var exportedPreview = await new PdfPreviewService().RenderPageAsync(logicalExport, 1, 240);
+            var qpdf = PdfBookmarkService.ResolveQpdfPath()
+                       ?? throw new FileNotFoundException("qpdf was not found for logical-page verification.");
+            var exportedStructure = await ExternalProcessRunner.RunAsync(
+                qpdf,
+                ["--json", logicalExport, "-"],
+                TimeSpan.FromSeconds(10));
+            Check(exportedPreview.PageCount == 2 && exportedStructure.StandardOutput.Contains("\"/Rotate\": 90", StringComparison.Ordinal),
+                "Final export materializes logical page rotation exactly once.");
 
             // 追加と削除のページ数、選択状態、作業PDF切替を往復します。
             await viewModel.LoadPdfForDiagnosticsAsync(basePdf);
@@ -115,10 +132,10 @@ public partial class App
             Check(viewModel.PageItems.Count == 1, "Delete removes the selected page without modifying the source PDF.");
             await viewModel.UndoForDiagnosticsAsync();
             Check(viewModel.PageItems.Count == 2 && viewModel.ResolvedPdfPathForDiagnostics == deleteSourcePath,
-                "Undo delete restores the removed page and source PDF.");
+                "Undo delete restores the removed logical page and retains the source PDF.");
             await viewModel.RedoForDiagnosticsAsync();
             Check(viewModel.PageItems.Count == 1 && viewModel.ResolvedPdfPathForDiagnostics == deletedWorkingPath,
-                "Redo delete restores the one-page working PDF.");
+                "Redo delete restores the one-page logical sequence without replacing the source PDF.");
 
             // Undo後の新規編集は通常どおりRedo枝を破棄します。
             await viewModel.UndoForDiagnosticsAsync();
@@ -126,8 +143,8 @@ public partial class App
             var replacementMarker = viewModel.AddManualOcrRegion(new Rect(40, 50, 80, 20));
             Check(replacementMarker is not null && !viewModel.RedoCommand.CanExecute(null) && viewModel.RedoCountForDiagnostics == 0,
                 "A new OCR edit after undo clears the obsolete page redo branch.");
-            Check(!File.Exists(deletedWorkingPath) && viewModel.PageWorkingFileCountForDiagnostics == 0,
-                "Working PDFs are deleted when their page-history branch is no longer reachable.");
+            Check(File.Exists(deletedWorkingPath) && viewModel.PageWorkingFileCountForDiagnostics == 0,
+                "Discarding a logical redo branch does not create or delete the immutable source PDF.");
 
             var timeoutObserved = false;
             try
@@ -167,6 +184,62 @@ public partial class App
             try { await new PdfBookmarkService { MaximumImportBytes = 32 }.ImportAsync(oversizedBookmarks); }
             catch (InvalidDataException) { bookmarkLimitObserved = true; }
             Check(bookmarkLimitObserved, "Oversized bookmark exchange files are rejected before parsing.");
+
+            // 回転は差分履歴だけを積み、PDFファイル数と容量を一切増やさないことを確認します。
+            await viewModel.LoadPdfForDiagnosticsAsync(basePdf);
+            viewModel.SetPageSelection([viewModel.PageItems[0]]);
+            for (var index = 0; index < PageHistoryRetentionPolicy.DefaultMaximumWorkingFileCount + 1; index++)
+                await viewModel.RotateSelectedPagesForDiagnosticsAsync(90);
+            Check(viewModel.PageWorkingFileCountForDiagnostics == 0,
+                "Repeated logical rotations create no working PDFs.");
+            Check(viewModel.PageWorkingFileBytesForDiagnostics == 0,
+                "Repeated logical rotations consume no working-PDF bytes.");
+            Check(viewModel.UndoCountForDiagnostics == PageHistoryRetentionPolicy.DefaultMaximumWorkingFileCount + 1,
+                "Logical page histories remain available because they do not consume the working-PDF budget.");
+
+            // 複数プロセス／複数画面が同じ作業ルートを同時初期化しても、作成途中の
+            // セッションを放棄済みと誤認して削除しないことを回帰検証します。
+            var concurrentWorkspace = Path.Combine(directory, "concurrent-session-workspace");
+            await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Task.Run(() =>
+            {
+                using var store = new PageWorkingFileStore(concurrentWorkspace);
+                store.CreatePath();
+            })));
+            Check(!Directory.EnumerateDirectories(Path.Combine(concurrentWorkspace, "page-edits")).Any(),
+                "Concurrent working-file sessions initialize and dispose without racing over session locks.");
+
+            // ページ履歴の容量制限は、途中を抜かず新しい側の連続した履歴だけを残します。
+            var retentionWorkspace = Path.Combine(directory, "retention-workspace");
+            using (var retentionStore = new PageWorkingFileStore(retentionWorkspace))
+            {
+                var oldestPath = retentionStore.CreatePath();
+                var middlePath = retentionStore.CreatePath();
+                var currentPath = retentionStore.CreatePath();
+                await File.WriteAllBytesAsync(oldestPath, new byte[40]);
+                await File.WriteAllBytesAsync(middlePath, new byte[40]);
+                await File.WriteAllBytesAsync(currentPath, new byte[40]);
+
+                var policy = new PageHistoryRetentionPolicy(retentionStore, maximumWorkingFileCount: 2, maximumWorkingBytes: 100);
+                string?[][] newestFirst = [[middlePath, currentPath], [], [oldestPath, middlePath]];
+                var decision = policy.Evaluate(newestFirst, 100, [currentPath], entry => entry);
+                Check(decision.RetainedEntryCount == 2 && decision.StorageLimitReached,
+                    "Page-history storage limits retain only the newest contiguous history prefix.");
+                Check(decision.RetainedWorkingFileCount == 2 && decision.RetainedWorkingBytes == 80,
+                    "Shared working PDFs are counted once against both file and byte limits.");
+
+                var countDecision = policy.Evaluate(newestFirst, 1, [currentPath], entry => entry);
+                Check(countDecision.RetainedEntryCount == 1 && countDecision.CountLimitReached,
+                    "The ordinary Undo entry limit and the page-working-file limits are enforced together.");
+
+                var missingPath = retentionStore.CreatePath();
+                var missingDecision = policy.Evaluate<string?[]>([[missingPath]], 100, [currentPath], entry => entry);
+                Check(missingDecision.RetainedEntryCount == 0 && missingDecision.StorageLimitReached,
+                    "A history boundary with a missing owned PDF is discarded before it can break Undo.");
+
+                retentionStore.DeleteUnreferenced([middlePath, currentPath]);
+                Check(!File.Exists(oldestPath) && retentionStore.FileCount == 2,
+                    "Working PDFs outside the retained history prefix are reclaimed immediately.");
+            }
 
             viewModel.ReleaseTransientResources();
             Check(viewModel.PageWorkingFileCountForDiagnostics == 0,

@@ -1,5 +1,5 @@
-using System.IO;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -579,6 +579,8 @@ public sealed class PdfExportService
                     project.OutputPdfVersion,
                     project.DocumentLanguage,
                     project.BookmarksModified,
+                    project.InternalLinks,
+                    project.Pages,
                     cancellationToken)
                 .GetAwaiter()
                 .GetResult();
@@ -703,6 +705,7 @@ public sealed class PdfExportService
         }
 
         var qdfPath = pdfPath + ".spacing-qdf";
+        var patchedQdfPath = pdfPath + ".spacing-patched-qdf";
         var adjustedPath = pdfPath + ".spacing-adjusted";
         try
         {
@@ -717,20 +720,19 @@ public sealed class PdfExportService
                 qdfPath,
                 cancellationToken);
 
-            var qdfBytes = File.ReadAllBytes(qdfPath);
-            var replacements = new List<(int Start, int Length, byte[] Value)>();
+            var replacements = new List<(long Start, int Length, byte[] Value)>();
             var adjustedMarks = new HashSet<string>(StringComparer.Ordinal);
             // QDF全体を行ごとに先頭から検索すると、行数×PDF容量の走査になります。
             // PdfCorrectoriumが付けたマークを一度だけ走査して索引化します。
             var markerPositions = FindTextSpacingMarkerPositions(
-                qdfBytes,
+                qdfPath,
                 measurements.Select(measurement => measurement.Request.MarkName));
             for (var measurementIndex = 0; measurementIndex < measurements.Count; measurementIndex++)
             {
                 var measurement = measurements[measurementIndex];
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!markerPositions.TryGetValue(measurement.Request.MarkName, out var markerIndex) ||
-                    !TryCreateTextSpacingReplacement(qdfBytes, measurement, markerIndex, out var replacement))
+                    !TryCreateTextSpacingReplacement(qdfPath, measurement, markerIndex, out var replacement))
                 {
                     warnings.Add(
                         $"{measurement.Request.PageNumber}ページ: 「{Abbreviate(measurement.Request.Text)}」の文字送りをPDF命令へ反映できませんでした。");
@@ -750,8 +752,7 @@ public sealed class PdfExportService
             }
 
             if (replacements.Count == 0) return;
-            qdfBytes = ApplyByteReplacements(qdfBytes, replacements);
-            File.WriteAllBytes(qdfPath, qdfBytes);
+            ApplyByteReplacements(qdfPath, patchedQdfPath, replacements, cancellationToken);
 
             progress?.Report(new PdfExportProgress(
                 "spacing",
@@ -760,7 +761,7 @@ public sealed class PdfExportService
                 "文字送り反映後のPDFを再構成しています..."));
             RunQpdf(
                 qpdfPath,
-                ["--object-streams=generate", "--recompress-flate", qdfPath, adjustedPath],
+                ["--object-streams=generate", "--recompress-flate", patchedQdfPath, adjustedPath],
                 adjustedPath,
                 cancellationToken);
             File.Move(adjustedPath, pdfPath, true);
@@ -783,6 +784,7 @@ public sealed class PdfExportService
         finally
         {
             if (File.Exists(qdfPath)) File.Delete(qdfPath);
+            if (File.Exists(patchedQdfPath)) File.Delete(patchedQdfPath);
             if (File.Exists(adjustedPath)) File.Delete(adjustedPath);
         }
     }
@@ -836,6 +838,139 @@ public sealed class PdfExportService
         var remainingLength = source.Length - sourceOffset;
         Buffer.BlockCopy(source, sourceOffset, result, destinationOffset, remainingLength);
         return result;
+    }
+
+    /// <summary>置換箇所以外をストリームでコピーし、QDF全体をメモリへ載せずに更新します。</summary>
+    private static void ApplyByteReplacements(
+        string sourcePath,
+        string destinationPath,
+        IReadOnlyCollection<(long Start, int Length, byte[] Value)> replacements,
+        CancellationToken cancellationToken)
+    {
+        var ordered = replacements.OrderBy(item => item.Start).ToArray();
+        var sourceLength = new FileInfo(sourcePath).Length;
+        long previousEnd = 0;
+        foreach (var replacement in ordered)
+        {
+            if (replacement.Start < previousEnd || replacement.Start < 0 || replacement.Length < 0 ||
+                replacement.Start > sourceLength - replacement.Length)
+                throw new InvalidDataException("文字送り補正の置換範囲が重複しているか、PDFデータの範囲外です。");
+            previousEnd = replacement.Start + replacement.Length;
+        }
+
+        using var input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.SequentialScan);
+        using var output = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, FileOptions.SequentialScan);
+        long sourceOffset = 0;
+        foreach (var replacement in ordered)
+        {
+            CopyRange(input, output, replacement.Start - sourceOffset, cancellationToken);
+            input.Seek(replacement.Length, SeekOrigin.Current);
+            output.Write(replacement.Value);
+            sourceOffset = replacement.Start + replacement.Length;
+        }
+        CopyRange(input, output, sourceLength - sourceOffset, cancellationToken);
+    }
+
+    private static void CopyRange(Stream input, Stream output, long byteCount, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1024 * 1024];
+        while (byteCount > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var requested = (int)Math.Min(buffer.Length, byteCount);
+            var read = input.Read(buffer, 0, requested);
+            if (read <= 0) throw new EndOfStreamException("文字送り補正中にQDFデータが途中で終了しました。");
+            output.Write(buffer, 0, read);
+            byteCount -= read;
+        }
+    }
+
+    /// <summary>ファイルを一度だけ順次走査して、対象マークの64ビット位置を索引化します。</summary>
+    private static Dictionary<string, long> FindTextSpacingMarkerPositions(
+        string qdfPath,
+        IEnumerable<string> markNames)
+    {
+        var requestedMarks = markNames.ToHashSet(StringComparer.Ordinal);
+        var result = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (requestedMarks.Count == 0) return result;
+
+        const int carryCapacity = 512;
+        var prefix = Encoding.ASCII.GetBytes("/PCO_");
+        var buffer = new byte[1024 * 1024 + carryCapacity];
+        var carry = 0;
+        long consumed = 0;
+        using var stream = new FileStream(qdfPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.SequentialScan);
+        while (true)
+        {
+            var read = stream.Read(buffer, carry, buffer.Length - carry);
+            if (read == 0) break;
+            var length = carry + read;
+            var searchOffset = 0;
+            while (searchOffset < length)
+            {
+                var markerIndex = IndexOf(buffer, length, prefix, searchOffset);
+                if (markerIndex < 0) break;
+                var nameStart = markerIndex + 1;
+                var nameEnd = nameStart;
+                while (nameEnd < length && IsPdfCorrectoriumMarkNameByte(buffer[nameEnd])) nameEnd++;
+                if (nameEnd < length)
+                {
+                    var markName = Encoding.ASCII.GetString(buffer, nameStart, nameEnd - nameStart);
+                    if (requestedMarks.Contains(markName))
+                        result.TryAdd(markName, consumed - carry + markerIndex);
+                }
+                searchOffset = Math.Max(nameEnd, markerIndex + prefix.Length);
+            }
+            if (result.Count == requestedMarks.Count) break;
+
+            carry = Math.Min(carryCapacity, length);
+            Buffer.BlockCopy(buffer, length - carry, buffer, 0, carry);
+            consumed += read;
+        }
+        return result;
+    }
+
+    private static int IndexOf(byte[] source, int sourceLength, byte[] value, int startIndex)
+    {
+        for (var index = Math.Max(0, startIndex); index <= sourceLength - value.Length; index++)
+        {
+            var matches = true;
+            for (var valueIndex = 0; valueIndex < value.Length; valueIndex++)
+            {
+                if (source[index + valueIndex] == value[valueIndex]) continue;
+                matches = false;
+                break;
+            }
+            if (matches) return index;
+        }
+        return -1;
+    }
+
+    /// <summary>対象マーク後の最大64 KiBだけを読み、置換位置をファイル全体の位置へ変換します。</summary>
+    private static bool TryCreateTextSpacingReplacement(
+        string qdfPath,
+        MeasuredTextSpacing measurement,
+        long markerIndex,
+        out (long Start, int Length, byte[] Value) replacement)
+    {
+        replacement = default;
+        const int maximumBlockBytes = 65536 + 256;
+        var remaining = new FileInfo(qdfPath).Length - markerIndex;
+        if (markerIndex < 0 || remaining <= 0) return false;
+        var block = new byte[(int)Math.Min(maximumBlockBytes, remaining)];
+        using var stream = new FileStream(qdfPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.RandomAccess);
+        stream.Seek(markerIndex, SeekOrigin.Begin);
+        var totalRead = 0;
+        while (totalRead < block.Length)
+        {
+            var read = stream.Read(block, totalRead, block.Length - totalRead);
+            if (read == 0) break;
+            totalRead += read;
+        }
+        if (totalRead != block.Length) Array.Resize(ref block, totalRead);
+        if (!TryCreateTextSpacingReplacement(block, measurement, 0, out var local)) return false;
+        replacement = (markerIndex + local.Start, local.Length, local.Value);
+        return true;
     }
 
     /// <summary>
@@ -1034,7 +1169,8 @@ public sealed class PdfExportService
         {
             var mark = NativeMethods.FPDFPageObj_GetMark(pageObject, index);
             if (mark == IntPtr.Zero) continue;
-            NativeMethods.FPDFPageObjMark_GetName(mark, IntPtr.Zero, 0, out var requiredBytes);
+            if (NativeMethods.FPDFPageObjMark_GetName(mark, IntPtr.Zero, 0, out var requiredBytes) == 0)
+                continue;
             if (requiredBytes < 2 || requiredBytes > 4096) continue;
             var buffer = Marshal.AllocHGlobal((int)requiredBytes);
             try
@@ -2023,15 +2159,15 @@ public sealed class PdfExportService
         var buckets = new Dictionary<int, BackgroundBucket>();
         var sampleCount = 0;
         for (var y = 0; y < height; y += step)
-        for (var x = 0; x < width; x += step)
-        {
-            if (x >= borderX && x < width - borderX && y >= borderY && y < height - borderY) continue;
-            var color = ReadPixel(pixels, y * stride + x * bytesPerPixel, format);
-            var key = ((color.Red >> 4) << 8) | ((color.Green >> 4) << 4) | (color.Blue >> 4);
-            buckets.TryGetValue(key, out var bucket);
-            buckets[key] = bucket.Add(color);
-            sampleCount++;
-        }
+            for (var x = 0; x < width; x += step)
+            {
+                if (x >= borderX && x < width - borderX && y >= borderY && y < height - borderY) continue;
+                var color = ReadPixel(pixels, y * stride + x * bytesPerPixel, format);
+                var key = ((color.Red >> 4) << 8) | ((color.Green >> 4) << 4) | (color.Blue >> 4);
+                buckets.TryGetValue(key, out var bucket);
+                buckets[key] = bucket.Add(color);
+                sampleCount++;
+            }
         if (sampleCount == 0 || buckets.Count == 0) return false;
         var dominant = buckets.Values.OrderByDescending(value => value.Count).First();
         if (dominant.Count / (double)sampleCount < 0.35d) return false;
@@ -2990,7 +3126,8 @@ public sealed class PdfExportService
                 }
                 finally { Marshal.FreeHGlobal(unicode); }
 
-                NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, 3);
+                if (NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, 3) == 0)
+                    continue;
                 if (NativeMethods.FPDFPageObj_GetBounds(textObject, out var left, out var bottom, out var right, out var top) == 0 ||
                     right <= left || top <= bottom)
                     continue;
@@ -3070,7 +3207,8 @@ public sealed class PdfExportService
                 }
                 finally { Marshal.FreeHGlobal(unicode); }
 
-                NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, 3);
+                if (NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, 3) == 0)
+                    return false;
                 if (NativeMethods.FPDFPageObj_GetBounds(textObject, out var left, out var bottom, out var right, out var top) == 0 ||
                     right <= left || top <= bottom)
                     return false;
@@ -3289,6 +3427,46 @@ public sealed class PdfExportService
             replacementText.Contains("ActualText", StringComparison.Ordinal))
             return false;
 
+        // 実運用で使うファイルストリーム経路も、走査バッファ境界をまたぐマークを
+        // 検出し、元ファイル全体をメモリへ載せずに置換できることを確認します。
+        var streamingSource = Path.Combine(Path.GetTempPath(), $"PdfCorrectorium-spacing-{Guid.NewGuid():N}.qdf");
+        var streamingOutput = streamingSource + ".patched";
+        try
+        {
+            using (var stream = new FileStream(streamingSource, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.SetLength(1024 * 1024 + 509);
+                stream.Position = stream.Length;
+                stream.Write(qdfBytes);
+            }
+
+            var positions = FindTextSpacingMarkerPositions(streamingSource, [request.MarkName]);
+            if (!positions.TryGetValue(request.MarkName, out var markerPosition) ||
+                !TryCreateTextSpacingReplacement(streamingSource, measurement, markerPosition, out var streamingReplacement))
+                return false;
+            ApplyByteReplacements(
+                streamingSource,
+                streamingOutput,
+                [streamingReplacement],
+                CancellationToken.None);
+            var tailLength = Math.Min(512, (int)new FileInfo(streamingOutput).Length);
+            var tail = new byte[tailLength];
+            using (var stream = new FileStream(streamingOutput, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                stream.Seek(-tailLength, SeekOrigin.End);
+                stream.ReadExactly(tail);
+            }
+            var streamingText = Encoding.ASCII.GetString(tail);
+            if (!streamingText.Contains("120 Tz <41> Tj", StringComparison.Ordinal) ||
+                !streamingText.Contains("80 Tz <42> Tj", StringComparison.Ordinal))
+                return false;
+        }
+        finally
+        {
+            if (File.Exists(streamingSource)) File.Delete(streamingSource);
+            if (File.Exists(streamingOutput)) File.Delete(streamingOutput);
+        }
+
         var verticalRequest = request with
         {
             MarkName = "PCO_VERTICAL_DIAG",
@@ -3333,7 +3511,8 @@ public sealed class PdfExportService
         var textRuns = BuildCharacterTextRuns(region.EffectiveText, indexes, advances);
 
         var renderMode = NativeMethods.FPDFTextObj_GetTextRenderMode(candidate.Object);
-        NativeMethods.FPDFPageObj_GetFillColor(candidate.Object, out var red, out var green, out var blue, out var alpha);
+        if (NativeMethods.FPDFPageObj_GetFillColor(candidate.Object, out var red, out var green, out var blue, out var alpha) == 0)
+            throw new InvalidDataException("変更対象のPDFテキスト色を取得できませんでした。");
         var target = region.EditedGeometry.LocalBounds;
         var textAngle = GetPdfCharacterAngle(region);
         var textCos = Math.Cos(textAngle);
@@ -3364,8 +3543,10 @@ public sealed class PdfExportService
                 }
                 finally { Marshal.FreeHGlobal(unicode); }
 
-                NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, renderMode);
-                NativeMethods.FPDFPageObj_SetFillColor(textObject, red, green, blue, alpha);
+                if (NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, renderMode) == 0)
+                    throw new InvalidDataException($"「{text}」の描画モードを設定できませんでした。");
+                if (NativeMethods.FPDFPageObj_SetFillColor(textObject, red, green, blue, alpha) == 0)
+                    throw new InvalidDataException($"「{text}」の文字色を設定できませんでした。");
                 if (NativeMethods.FPDFPageObj_GetBounds(textObject, out var left, out var bottom, out var right, out var top) == 0 ||
                     right <= left || top <= bottom)
                     throw new InvalidDataException($"「{text}」の文字領域を計算できませんでした。");
@@ -3830,22 +4011,22 @@ public sealed class PdfExportService
                 ? 1
                 : Math.Max(2, (int)Math.Ceiling(cellSize * cellSize * 0.12d));
             for (var y = 0; y < rows; y++)
-            for (var x = 0; x < columns; x++)
-            {
-                var index = y * columns + x;
-                if (!rawOccupied[index]) continue;
-                var neighbourCount = 0;
-                for (var neighbourY = Math.Max(0, y - 1); neighbourY <= Math.Min(rows - 1, y + 1); neighbourY++)
-                for (var neighbourX = Math.Max(0, x - 1); neighbourX <= Math.Min(columns - 1, x + 1); neighbourX++)
+                for (var x = 0; x < columns; x++)
                 {
-                    if (neighbourX == x && neighbourY == y) continue;
-                    if (rawOccupied[neighbourY * columns + neighbourX]) neighbourCount++;
-                }
+                    var index = y * columns + x;
+                    if (!rawOccupied[index]) continue;
+                    var neighbourCount = 0;
+                    for (var neighbourY = Math.Max(0, y - 1); neighbourY <= Math.Min(rows - 1, y + 1); neighbourY++)
+                        for (var neighbourX = Math.Max(0, x - 1); neighbourX <= Math.Min(columns - 1, x + 1); neighbourX++)
+                        {
+                            if (neighbourX == x && neighbourY == y) continue;
+                            if (rawOccupied[neighbourY * columns + neighbourX]) neighbourCount++;
+                        }
 
-                // Preserve genuine strokes and punctuation, but discard isolated
-                // one-cell JPEG speckles that otherwise bridge a large blank area.
-                occupied[index] = cellInk[index] >= strongCellInk || neighbourCount >= 2;
-            }
+                    // Preserve genuine strokes and punctuation, but discard isolated
+                    // one-cell JPEG speckles that otherwise bridge a large blank area.
+                    occupied[index] = cellInk[index] >= strongCellInk || neighbourCount >= 2;
+                }
             return occupied;
         }
 

@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.ProjectFormat;
@@ -95,6 +96,8 @@ public partial class App
             ];
             await LayoutAsync();
             Check(!viewModel.HasDocument && !viewModel.CanUsePreview, "Startup has no document or usable preview.");
+            Check(Control("ProjectStorageModeStatusItem").Visibility == Visibility.Collapsed,
+                "Startup hides project PDF storage information from the status bar.");
             foreach (var name in documentControls)
                 Check(!Control(name).IsEnabled, $"Startup disables {name}.");
             Check(documentCommands.All(command => !command.CanExecute(null)), "Startup disables all document commands.");
@@ -127,6 +130,61 @@ public partial class App
             await viewModel.LoadPdfForDiagnosticsAsync(pdfPath);
             await LayoutAsync();
             Check(viewModel.HasDocument && viewModel.CanUsePreview && viewModel.PageItems.Count == 2, "PDF load produces a usable two-page document.");
+            var readingOrderRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("reading order", 20, 20, 120, 30, true))
+            {
+                ReadingOrder = 1,
+            };
+            viewModel.OverlayItems.Add(readingOrderRegion);
+            viewModel.EditorModeIndex = 1;
+            var overlayCanvas = (ListBox)Control("OverlayCanvas");
+            overlayCanvas.SelectedItems.Add(readingOrderRegion);
+            await LayoutAsync();
+            var readingOrderBadgeLayer = (ItemsControl)Control("ReadingOrderBadgeLayer");
+            Check(readingOrderBadgeLayer.Visibility == Visibility.Visible && !readingOrderBadgeLayer.IsHitTestVisible,
+                "Reading-order badges use a visible, non-interactive foreground layer in reading-order mode.");
+            Check(Panel.GetZIndex(readingOrderBadgeLayer) > Panel.GetZIndex(Control("OverlayCanvas")),
+                "Reading-order badges are stacked above OCR selection borders and resize handles.");
+            static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+            {
+                for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+                {
+                    var child = VisualTreeHelper.GetChild(parent, index);
+                    yield return child;
+                    foreach (var descendant in Descendants(child)) yield return descendant;
+                }
+            }
+            var selectedRegionContainer = overlayCanvas.ItemContainerGenerator.ContainerFromItem(readingOrderRegion) as ListBoxItem;
+            Check(selectedRegionContainer is not null && Descendants(selectedRegionContainer).OfType<Thumb>()
+                    .Any(thumb => Equals(thumb.Tag, "NW") && thumb.Visibility == Visibility.Visible),
+                "The foreground-layer check includes a selected region with its upper-left resize handle visible.");
+            var readingOrderBadgeContainer = readingOrderBadgeLayer.ItemContainerGenerator.ContainerFromItem(readingOrderRegion) as ContentPresenter;
+            Check(readingOrderBadgeContainer is not null &&
+                  readingOrderBadgeContainer.ContentTemplate.FindName("ReadingOrderBadge", readingOrderBadgeContainer) is Border
+                  {
+                      Background: SolidColorBrush { Color.A: 255 },
+                      BorderBrush: SolidColorBrush { Color: var badgeBorderColor },
+                      BorderThickness: { Left: > 0 }
+                  } && badgeBorderColor == Colors.White,
+                "Reading-order numbers have an opaque badge and contrasting outline above the selection frame.");
+            Snapshot("reading-order-badges");
+            viewModel.EditorModeIndex = 0;
+            viewModel.OverlayItems.Clear();
+            await LayoutAsync();
+            Check(viewModel.ProjectStorageModeStatusText.Contains(viewModel.ProjectStorageModeText, StringComparison.Ordinal),
+                "The project PDF storage status contains the current project mode name.");
+            Check(viewModel.ProjectStorageModeText == LocalizationService.Translate("ポータブルモード"),
+                "Embedded project storage uses the Portable mode display name.");
+            Check(Control("ProjectStorageModeStatusItem").Visibility == Visibility.Visible &&
+                  Equals(((StatusBarItem)Control("ProjectStorageModeStatusItem")).Content, viewModel.ProjectStorageModeStatusText),
+                "The status bar identifies the current project PDF storage method.");
+            var propertiesWindow = new DocumentPropertiesWindow(viewModel);
+            Check(propertiesWindow.ProjectStorageModeText == viewModel.ProjectStorageModeText,
+                "Document properties reports project PDF storage rather than application data storage.");
+            Check(((ComboBox)propertiesWindow.FindName("PageModeComboBox")).Items
+                    .OfType<ComboBoxItem>()
+                    .Any(item => string.Equals(item.Tag?.ToString(), InitialPageMode.ContinuousFacingPages.ToString(), StringComparison.Ordinal)),
+                "Document properties offers continuous facing pages as an exported-PDF initial view.");
+            propertiesWindow.Close();
             foreach (var name in documentControls)
                 Check(Control(name).IsEnabled, $"PDF load enables {name}.");
             Check(saveAsNotifications > 0 && viewModel.SaveProjectAsCommand.CanExecute(null), "Save As notifies the UI when a document is loaded.");
@@ -168,6 +226,13 @@ public partial class App
             await viewModel.SaveProjectForDiagnosticsAsync(projectPath);
             await LayoutAsync();
             Check(viewModel.CanRestoreProjectBackup && Control("RestoreProjectMenuItem").IsEnabled, "Saving a project enables backup restoration.");
+            await viewModel.SaveProjectForDiagnosticsAsync(projectPath, ProjectPdfStorageMode.Relative);
+            await LayoutAsync();
+            Check(viewModel.ProjectForDiagnostics?.PdfStorageMode == ProjectPdfStorageMode.Relative &&
+                  Equals(((StatusBarItem)Control("ProjectStorageModeStatusItem")).Content, viewModel.ProjectStorageModeStatusText),
+                "Changing the project PDF storage method updates the properties source and status bar.");
+            Check(viewModel.ProjectStorageModeText == LocalizationService.Translate("通常モード"),
+                "Relative project storage uses the Normal mode display name.");
             await viewModel.LoadProjectForDiagnosticsAsync(projectPath);
             Check(viewModel.HasDocument && viewModel.SaveProjectAsCommand.CanExecute(null), "Reopening a saved project enables document operations.");
 
@@ -199,18 +264,28 @@ public partial class App
         }
     }
 
-    private static void WriteDocumentUiTestPdf(string path)
+    private static void WriteDocumentUiTestPdf(
+        string path,
+        int pageCount = 2,
+        string? pageLayout = null,
+        string? direction = null)
     {
+        if (pageCount < 1) throw new ArgumentOutOfRangeException(nameof(pageCount));
         var pdf = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int> { 0 };
-        string[] objects =
-        [
-            "<< /Type /Catalog /Pages 2 0 R >>",
-            "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        var pageReferences = string.Join(' ', Enumerable.Range(3, pageCount).Select(number => $"{number} 0 R"));
+        var catalogOptions = string.Concat(
+            string.IsNullOrWhiteSpace(pageLayout) ? string.Empty : $" /PageLayout {pageLayout}",
+            string.IsNullOrWhiteSpace(direction) ? string.Empty : $" /ViewerPreferences << /Direction {direction} >>");
+        var objects = new List<string>
+        {
+            $"<< /Type /Catalog /Pages 2 0 R{catalogOptions} >>",
+            $"<< /Type /Pages /Kids [{pageReferences}] /Count {pageCount} >>",
+        };
+        objects.AddRange(Enumerable.Repeat(
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << >> >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << >> >>",
-        ];
-        for (var index = 0; index < objects.Length; index++)
+            pageCount));
+        for (var index = 0; index < objects.Count; index++)
         {
             offsets.Add(pdf.Length);
             pdf.Append($"{index + 1} 0 obj\n{objects[index]}\nendobj\n");

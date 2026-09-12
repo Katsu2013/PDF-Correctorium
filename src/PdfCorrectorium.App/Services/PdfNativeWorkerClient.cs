@@ -13,7 +13,13 @@ internal sealed class PdfNativeWorkerClient
     private const int MaximumProtocolCharacters = 64 * 1024;
     private const long MaximumResultJsonBytes = 256L * 1024 * 1024;
     private const long MaximumPreviewBytes = 512L * 1024 * 1024;
+    /// <summary>Current-page editing and explicit user operations use this worker.</summary>
     public static PdfNativeWorkerClient Shared { get; } = new();
+    /// <summary>
+    /// Thumbnails, continuous-page neighbors and document scans use a separate
+    /// process so queued background rendering cannot delay an explicit page move.
+    /// </summary>
+    public static PdfNativeWorkerClient Background { get; } = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly StringBuilder _standardError = new();
@@ -201,6 +207,8 @@ internal sealed class PdfNativeWorkerClient
         return string.IsNullOrWhiteSpace(error) ? message + exit : message + exit + Environment.NewLine + error;
     }
 
+    /// <summary>ワーカープロセス側で標準入力の1行JSON要求を処理し、1行JSON応答を返します。</summary>
+    /// <remarks>出力先を専用一時領域に限定し、画像・JSONの成果物サイズも制限します。</remarks>
     internal static async Task<int> RunServerAsync(CancellationToken cancellationToken = default)
     {
         string? line;
@@ -217,21 +225,21 @@ internal sealed class PdfNativeWorkerClient
                 switch (request.Operation)
                 {
                     case "render":
-                    {
-                        var result = PdfPreviewService.RenderPageInProcess(
-                            request.PdfPath, request.PageNumber, request.TargetWidth, cancellationToken);
-                        var encoder = new PngBitmapEncoder();
-                        encoder.Frames.Add(BitmapFrame.Create(result.Image));
-                        await using (var stream = new LengthLimitedWriteStream(
-                                         new FileStream(Path.Combine(outputDirectory, "preview.png"), FileMode.CreateNew,
-                                             FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous),
-                                         MaximumPreviewBytes))
-                            encoder.Save(stream);
-                        await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
-                            new PreviewMetadata(result.PageCount, result.PageNumber, result.PageWidthPoints,
-                                result.PageHeightPoints, result.TextRegions), cancellationToken);
-                        break;
-                    }
+                        {
+                            var result = PdfPreviewService.RenderPageInProcess(
+                                request.PdfPath, request.PageNumber, request.TargetWidth, cancellationToken);
+                            var encoder = new PngBitmapEncoder();
+                            encoder.Frames.Add(BitmapFrame.Create(result.Image));
+                            await using (var stream = new LengthLimitedWriteStream(
+                                             new FileStream(Path.Combine(outputDirectory, "preview.png"), FileMode.CreateNew,
+                                                 FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous),
+                                             MaximumPreviewBytes))
+                                encoder.Save(stream);
+                            await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
+                                new PreviewMetadata(result.PageCount, result.PageNumber, result.PageWidthPoints,
+                                    result.PageHeightPoints, result.TextRegions), cancellationToken);
+                            break;
+                        }
                     case "characters":
                         await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
                             PdfPreviewService.ReadCharacterBoxesInProcess(request.PdfPath, request.PageNumber, cancellationToken),
@@ -300,6 +308,7 @@ internal sealed class PdfNativeWorkerClient
     private static string GetWorkerRoot() =>
         Path.GetFullPath(Path.Combine(Path.GetTempPath(), "PdfCorrectorium", "native-workers"));
 
+    /// <summary>ワーカー成果物の出力先が専用一時領域の配下にあることを検証します。</summary>
     private static string EnsureWorkerOutputDirectory(string path)
     {
         var root = GetWorkerRoot();
@@ -309,6 +318,7 @@ internal sealed class PdfNativeWorkerClient
         return fullPath;
     }
 
+    /// <summary>ワーカーが生成した成果物を読み込む前に、空ファイルと過大ファイルを拒否します。</summary>
     private static void EnsureFileSize(string path, long maximumBytes, string kind)
     {
         var length = new FileInfo(path).Length;

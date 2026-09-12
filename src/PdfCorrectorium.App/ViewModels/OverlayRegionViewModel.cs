@@ -113,6 +113,25 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     /// <summary>検索結果として一時強調するUTF-16文字数です。</summary>
     private int _searchHighlightLength;
 
+    // These are derived display data, never project/undo state. Retain only the
+    // current text segmentation and cell snapshot; discard on relevant edits.
+    private string? _segmentedText;
+    private int[] _textElementStarts = [];
+    private IReadOnlyList<CharacterOverlayCell>? _characterCells;
+
+    private int[] TextElementStarts
+    {
+        get
+        {
+            if (!string.Equals(_segmentedText, Text, StringComparison.Ordinal))
+            {
+                _textElementStarts = StringInfo.ParseCombiningCharacters(Text);
+                _segmentedText = Text;
+            }
+            return _textElementStarts;
+        }
+    }
+
     public OverlayRegionViewModel(PdfTextOverlayRegion source, int readingOrder = 0, string wordReadingsText = "")
         : this(
             Guid.NewGuid(),
@@ -439,7 +458,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     public bool CanRestoreOriginalCharacterAdvances =>
         !IsGeometryLocked && HasUnlockedCharacters &&
         ParseCharacterAdvances(Original.CharacterAdvancesText).Count == TextElementCount && TextElementCount > 0;
-    public int TextElementCount => StringInfo.ParseCombiningCharacters(Text).Length;
+    public int TextElementCount => TextElementStarts.Length;
     public double CharacterSelectionLeft => SelectedCells().Select(cell => cell.Left).DefaultIfEmpty(0).Min();
     public double CharacterSelectionTop => SelectedCells().Select(cell => cell.Top).DefaultIfEmpty(0).Min();
     public double CharacterSelectionWidth
@@ -484,8 +503,9 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     {
         get
         {
-            var indexes = StringInfo.ParseCombiningCharacters(Text);
-            if (indexes.Length == 0) return [];
+            if (_characterCells is not null) return _characterCells;
+            var indexes = TextElementStarts;
+            if (indexes.Length == 0) return _characterCells = Array.Empty<CharacterOverlayCell>();
             ReconcileCharacterAdvances();
             var cells = new CharacterOverlayCell[indexes.Length];
             var offset = 0d;
@@ -511,7 +531,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
                     isSearchMatch);
                 offset += advance;
             }
-            return cells;
+            return _characterCells = Array.AsReadOnly(cells);
         }
     }
 
@@ -1229,8 +1249,13 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         return true;
     }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        // Subscribers may synchronously read geometry during notifications.
+        if (propertyName is nameof(Text) or nameof(Width) or nameof(Height) or nameof(CharacterCells))
+            _characterCells = null;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 
     private static double NormalizeDegrees(double value)
     {
@@ -1615,8 +1640,12 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         NotifyCharacterSelection();
     }
 
-    private IReadOnlyList<CharacterOverlayCell> SelectedCells() =>
-        CharacterCells.Where(cell => cell.IsSelected).ToArray();
+    private IReadOnlyList<CharacterOverlayCell> SelectedCells()
+    {
+        if (_selectedCharacterIndices.Count == 0) return [];
+        var cells = CharacterCells;
+        return _selectedCharacterIndices.Where(index => index < cells.Count).Select(index => cells[index]).ToArray();
+    }
 
     private void UpdateExtentFromCharacterAdvances()
     {
@@ -1706,6 +1735,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
 
     private void NotifyCharacterSelection()
     {
+        _characterCells = null;
         OnPropertyChanged(nameof(SelectedCharacterIndex));
         OnPropertyChanged(nameof(SelectedCharacterIndices));
         OnPropertyChanged(nameof(SelectedCharacterCount));

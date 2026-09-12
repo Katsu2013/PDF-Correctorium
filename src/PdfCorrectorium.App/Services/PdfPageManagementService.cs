@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using PdfCorrectorium.Core.Documents;
 
 namespace PdfCorrectorium.App.Services;
 
@@ -56,6 +57,40 @@ public sealed class PdfPageManagementService
             outputPath,
             OperationTimeout,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// 論理ページ対応を1回の出力用PDFへ実体化します。通常編集では呼び出さず、
+    /// 外部ページの取り込みまたは最終出力の境界でだけ使用します。
+    /// </summary>
+    public async Task MaterializeAsync(
+        string sourcePdfPath,
+        IReadOnlyList<ProjectPageReference> sequence,
+        string outputPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (sequence.Count == 0) throw new ArgumentException("少なくとも1ページが必要です。", nameof(sequence));
+        if (!File.Exists(sourcePdfPath)) throw new FileNotFoundException("元PDFが見つかりません。", sourcePdfPath);
+        var arguments = new List<string>
+        {
+            sourcePdfPath,
+            "--pages",
+            sourcePdfPath,
+            string.Join(',', sequence.Select(page => page.SourcePageNumber)),
+            "--",
+        };
+        var rotations = sequence
+            .Select((page, index) => (PageNumber: index + 1, Rotation: ProjectPageSequence.NormalizeRotation(page.RotationDegrees)))
+            .Where(item => item.Rotation != 0)
+            .GroupBy(item => item.Rotation)
+            .OrderBy(group => group.Key);
+        foreach (var rotation in rotations)
+        {
+            var range = string.Join(',', rotation.Select(item => item.PageNumber));
+            arguments.Add($"--rotate=+{rotation.Key}:{range}");
+        }
+        arguments.Add(outputPath);
+        await RunAsync(arguments, outputPath, OperationTimeout, cancellationToken);
     }
 
     private static async Task RunAsync(

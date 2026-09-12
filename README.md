@@ -21,13 +21,16 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - **ページの編集**：ページの追加・削除・並べ替え・回転ができ、元に戻す／やり直しにも対応します。
 - **しおりの編集**：しおりの追加・修正・削除や、階層・順序の整理ができます。
 - **文書情報の編集**：タイトル、作者、文書の言語、出力PDFのバージョンなどを変更できます。
+- **コメントとタグ**：文書、ページ、選択したOCR文字領域へコメントとタグを付け、解決状態や重要度を管理できます。
+- **ページ内リンク**：選択したOCR文字領域に移動先ページを設定し、アプリ内で移動できるほか、出力PDFへ内部リンクとして保存できます。
+- **入力PDFの確認**：フォーム、署名、JavaScript、埋め込みファイル、レイヤー、非埋め込みフォントなど、編集・出力時に注意したい特性を表示します。
 - **作業の保存・PDF出力**：プロジェクトとして保存して編集を再開し、修正結果を別のPDFとして出力できます。
 
 現在は開発版です。アプリ内で画像から新たにOCRを実行する機能など、未実装の項目もあります。詳しくは「現在の開発状況」と「残る制限」をご確認ください。
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.132`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.151`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -35,14 +38,15 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - 確認状態とPDF出力用の属性
 - 状態による絞り込み、ページをまたぐ対象移動、確認済みにして次へ進む操作、位置・サイズの直接編集を防ぐ専用の「校正・確認」モード
 - OCR文字列、位置・サイズ、文字ごとの送り幅、読み順、確認状態、検索・置換、複数領域編集の「元に戻す／やり直し」
-- ZIP互換の`.pdfocrproj`形式による安全なプロジェクト保存・読み込み・検証（展開件数・容量・圧縮率・埋込PDF整合性の上限検査を含む）
+- ZIP互換の`.pdfocrproj`形式による安全なプロジェクト保存・読み込み・検証（PDFを内包するポータブルモードと、元PDFをコピーしない通常モード。展開件数・容量・圧縮率・埋込PDF整合性の上限検査を含む）
 - SHA-256による元PDFの同一性確認
 - ポータブル版とインストール版それぞれのデータ保存先の解決
 - 構造化された診断ログの基盤
 - PDFとプロジェクトを開くWPFアプリケーション画面
 - 最近開いたPDF・プロジェクトの一覧から再読み込み、表示件数の設定、履歴クリア
 - 再利用可能な別プロセスのPDFiumワーカーによるページ描画・文字抽出・文書情報読込と、スクロール可能なプレビュー
-- ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転、および各ページ構成操作のUndo/Redo。作業PDFは履歴の寿命に合わせて回収
+- 編集用プレビューのページ配置（単一ページ／見開き）とスクロール方式（ページ切り替え／連続スクロール）を独立して選択可能。初回はPDFの初期表示指定に従い、意図的に変更した状態はプロジェクトへ保存。見開きでは表紙の単独表示有無と左綴じ／右綴じを選べ、連続表示では表示範囲周辺だけを遅延描画してクリックしたページをその位置で編集面へ切り替え
+- ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転、および各ページ構成操作のUndo/Redo。削除・並べ替え・回転は元PDFを複製せず論理ページ情報だけを更新し、挿入と最終出力の境界でだけPDFを実体化
 - プロジェクト外部のPDFと、プロジェクトに埋め込まれたPDFのプレビュー
 - PDFの文字オブジェクトから抽出したOCR文字列の半透明表示（不可視描画モードや透明度ゼロの文字を含む）
 - NDLOCR-Liteの関連ファイル（JSON、XML、TXT、TEI）の自動検出
@@ -52,8 +56,11 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - 25～400%の表示倍率、幅・高さ・ページ全体・選択範囲に合わせる表示、ツールバー操作、Ctrl＋マウスホイール
 - OCR文字列の検索・置換、繰り返し領域への変更反映、文書全体のOCR品質分析
 - PDFのしおり、文書情報（タイトル・作者・件名・キーワード・作成アプリ・PDF変換ツール）、文書言語、出力PDFバージョン、PDFを開いたときの表示設定の編集
+- 入力PDFのフォーム、署名、JavaScript、添付、レイヤー、増分更新、非埋め込みフォント等の注意事項表示
+- 文書・ページ・OCR領域に対するコメント、重要度、解決状態、タグの編集とプロジェクト保存
+- 選択OCR領域から別ページへ移動するリンクの設定、戻る／進む、Ctrl+クリックによる移動、出力PDFへのGoToリンク保存
 - 元PDFとは別のPDFへの安全な出力、出力後の検証、検証後の保存確定
-- プロジェクトの自動保存、世代別バックアップ、バックアップからの復元、ページサムネイルのキャッシュ
+- プロジェクトの自動保存、容量上限付き世代バックアップ、バックアップからの復元、現在ページ周辺だけを保持するページサムネイルキャッシュ
 - 「設定 → 表示 → 表示言語」で切り替えられる日本語・英語の画面表示
 - ポータブル版・インストール版の両方で、表示言語の選択を次回起動時まで保持
 - パネル、サムネイルサイズ、OCRの重ね合わせ表示、編集ハンドル、ショートカット、自動保存、バックアップ保持数を設定できるコンパクトな作業画面
@@ -61,7 +68,45 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 実装済みの範囲は、古い設計資料に記載された初期の基盤段階より広がっています。Version 1.0に向けた未実装項目や既知の不具合は、[実装状況](IMPLEMENTATION_STATUS.md)と設計資料内の実装状況欄で管理しています。上記の機能一覧は、読み込み・保存・再出力時の完全な情報保持や、Version 1.0の全要件の達成を保証するものではありません。
 
-## 安全性の修正と残る制限（dev.132）
+## 安全性の修正と残る制限（dev.151）
+
+dev.151では、PDFを最初に開いた際にカタログの`PageLayout`と`ViewerPreferences/Direction`を読み、単一／見開き、ページ切り替え／連続スクロール、表紙位置、左右綴じを編集画面の初期状態へ反映します。指定がないPDFはPDF仕様の既定どおり単一ページ・左から右で開きます。画面上で表示方法を意図的に変更すると、任意項目`EditorViewState`としてそのプロジェクトへ保存され、再度開いたときに文書の初期表示より優先して復元されます。初回状態の適用だけでは未保存扱いにしません。文書プロパティでは連続見開きも選択でき、出力PDFへ`TwoColumnLeft`／`TwoColumnRight`として保存します。
+
+非対話のページ描画診断がUIスレッドを停止させる問題を解消しました。明示的なページ移動と、サムネイル・連続表示・文書走査は別々のPDFワーカーで処理するため、先読み処理が操作を待たせません。複数起動時は起動ログをプロセス別に保存し、設定は各画面が読み込み後に変更した項目だけを最新ファイルへ統合します。ページ編集用の一時セッションは、別プロセスが作成中のフォルダーを放棄済みと誤認して削除しないため、同時起動でも安全に初期化できます。標準の`dotnet test`も実際の27件の契約テストを必ず実行します。
+
+dev.148では「単一ページ／見開き」と「ページ切り替え／連続スクロール」を独立した設定へ変更し、単一ページ＋連続スクロール、見開き＋連続スクロールを含む4通りを選べるようにしました。表紙や末尾に相手ページがない場合、空き側には白紙のページ面や枠線を描かず、背景だけを表示します。連続見開きも全ページ画像を保持せず、各見開きの位置情報と表示範囲周辺の最大12画像だけを保持します。旧設定の「連続ページ」は単一ページ＋連続スクロールへ自動移行します。
+
+dev.147では、見開き表示の「表紙を単独表示」と「左綴じ／右綴じ」を独立して切り替えられるようにしました。左綴じは若いページを左、右綴じは若いページを右へ配置し、表紙を単独表示する場合は1ページ目を左綴じで右側、右綴じで左側へ置きます。
+
+dev.146では、連続ページ表示で文書の先頭から末尾までを切れ目なくスクロールできます。全ページ分の軽量な配置枠だけを用意し、表示範囲の前後1画面に入る画像を遅延描画します。画像キャッシュは最大12ページに制限し、高速スクロールや文書・モード変更では古い描画を中止します。現在ページだけをOCR編集面とし、別ページをクリックするとスクロール位置を保ったまま、そのページが編集可能になります。
+
+dev.143では、ページ削除・並べ替え・回転を、元PDFのページ番号と回転角を持つ論理ページ列として保存する方式へ変更しました。これらの操作やUndo/RedoではPDF全体のコピーを作らず、外部ページの挿入、画像最適化の解析、最終PDF出力など物理PDFが必要な境界でだけ一度実体化します。プレビュー、OCR座標、しおり、コメント、タグ、内部リンクは固定ページIDに追従します。
+
+新しいプロジェクト形式1.4では、`project.json`と重複していたページ別JSON、元PDF参照JSON、再生成可能なサムネイルを新規保存しません。通常モードの安定した外部PDFはコピーせず、管理対象の一時PDFから変換するときだけ`.assets`へ保存します。参照されなくなった内容ハッシュPDFは、現行・自動保存・バックアップの参照を確認してから整理します。内包PDFの展開キャッシュは最大16件・4 GiB、世代バックアップは設定件数・4 GiB、復旧直前コピーは1件、画面サムネイルは64件かつ現在ページの前後32ページに制限します。固定名`.bak`と世代バックアップの二重作成も廃止しました。
+
+文字送り補正用QDFはファイル全体をメモリに読み込まず、マーク位置を一度の順次走査で索引化して、必要な範囲だけをストリーム置換します。大きなPDFの検索・品質走査用プレビューも低解像度に限定します。
+
+dev.142では、ページ追加・削除・並べ替え・回転で生成する作業PDFに、現在表示中のPDFを含む最大12ファイル・合計1 GiBの上限を追加しました。上限を超えると、OCR編集とページ編集が混在するUndo/Redoの時系列を途中で切断しないよう、古い側の連続した履歴を破棄して未参照PDFを直ちに回収します。現在表示中のPDFは単体で上限を超える場合も保持し、追加PDFを必要としない直近のOCR履歴は可能な限り残します。
+
+dev.141では、OCR文字を領域ごとにまとめて描画し、文字セルの計算結果を再利用することで描画負荷を軽減しました。領域サイズ変更ハンドルも選択中だけ生成します。文字編集、検索強調、ロック、読み順番号の表示は維持しています。検証方法と残る改善候補は[OCR描画の軽量化](OCR-RENDERING.md)を参照してください。
+
+dev.140では、読み順番号をOCR領域や選択枠とは独立した最前面レイヤーへ表示するようにしました。左上のサイズ変更ハンドルや隣接する領域の枠が番号を隠さず、番号は不透明な背景と白い輪郭で判読できます。表示だけの変更で、読み順データやプロジェクト形式は変わりません。
+
+dev.139では、プロジェクトのPDF保存方式の表示名を「ポータブルモード」と「通常モード」へ統一しました。ポータブルモードはPDFを`.pdfocrproj`内へ保存し、通常モードは元PDFを現在位置から相対参照します。文書プロパティ、ステータスバー、別名保存時の保存設定画面で同じ名称を使用します。内部データの`Embedded`／`Relative`は変更していないため、既存プロジェクトとの互換性は変わりません。
+
+dev.138では、アプリ自体のデータ保存モードと、開いているプロジェクトのPDF保存方式を画面上で明確に分離しました。アプリデータ保存モード（ポータブル／インストール）は「編集 → 設定 → 管理」だけに表示します。文書のプロパティにはプロジェクトの「PDF保存方式」として「ポータブルモード」または「通常モード」を表示し、ステータスバーにも`PDF保存: ポータブルモード`または`PDF保存: 通常モード`と表示します。文書未読込時にはステータス表示を隠し、別名保存で方式を切り替えた直後にも表示を更新します。
+
+dev.137では、通常の元PDFを通常モードで保存したときに、PDFを隣接`.assets`へ複製していた動作を修正しました。元PDFの現在位置をプロジェクト保存先からの相対パスで記録し、PDFのコピーも`.assets`の作成も行いません。`.assets`を作るのは、ポータブルモードから通常モードへ変換するとき、またはページ編集で生成した作業PDFを永続化するときだけです。別ドライブ間では相対パスを作れないため、コピーへ自動変更せず、ポータブルモードまたは同じドライブへの保存を案内します。
+
+dev.136では、「プロジェクトを別名で保存」でポータブルモード（PDF内包）と通常モードを選択できる保存設定画面を追加しました。新しく開いたPDFの初期値はポータブル動作でポータブルモード、インストール動作で通常モードですが、保存時に切り替えられます。上書き保存はプロジェクトに記録された方式を維持します。
+
+dev.135では、プロジェクト形式1.2の最小対応アプリ版を、この形式を導入した`1.0.0-dev.133`へ固定しました。保存に使用したアプリ版は引き続き別項目へ記録するため、dev.135で保存しても、内容が形式1.2の範囲ならdev.133以降で開けることを正しく表します。
+
+dev.134では一時的に動作モードから保存方式を固定しましたが、dev.136で利用者が明示的に切り替えられる仕様へ改めました。dev.137では通常モードの意味を整理し、通常の元PDFは現在位置のまま参照するようにしています。
+
+dev.133では両方式を実装しましたが、動作モードは保存画面の初期選択にしか反映されず、ポータブル動作でも利用者の選択や既存プロジェクトの方式によってリンク型のまま保存できました。これは「ポータブルならPDFを内包する」という仕様を満たしていなかったため、dev.134で修正しました。
+
+同時に、入力PDF特性の注意事項、対象別コメント／タグ、OCR領域からのページ内リンクを追加しました。特性検査は注意喚起を目的とした限定的・ヒューリスティックな検査で、電子署名の真正性検証や悪意あるPDFの安全性保証ではありません。ページリンクは本アプリで設定したOCR領域を対象とし、既存PDFリンクの編集、ページ番号の自動認識、任意矩形の作成は未対応です。
 
 dev.132では、文書情報辞書を持たないPDFへしおりと文書情報を同時追加した際に、両者の内部オブジェクト番号が衝突する不具合を修正しました。
 
@@ -73,13 +118,17 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 自動保存は設定した間隔、または約30秒間入力がない場合に実行します（5秒ごとに判定）。一度も保存していないプロジェクトは、元PDFを埋め込んだ復旧用ファイルを`workspaces/recovery/<project-id>.autosave.pdfocrproj`に保存します。復旧するには、このファイルを明示的に開いてください。起動時に復旧データを自動検出する機能は未実装です。復旧用ファイルへの保存だけでは、プロジェクトを保存済み扱いにはしません。
 
-**プロジェクトの互換性：** 新しく保存する形式は1.1です。dev.123は形式1.0と1.1を読み込めます。dev.123より前のアプリでは新しい形式1.1のファイルを開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
+**プロジェクトの互換性：** 新しく保存する形式は1.4です。現行dev.151は形式1.0、1.1、1.2、1.3、1.4を読み込めます。形式1.4は論理ページ列を正本とし、重複キャッシュを省略するため、dev.142以前では開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
 
-外部サービス連携／アプリ内でのOCR実行、ルビ・コメント・タグ・差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
+外部サービス連携／アプリ内でのOCR実行、ルビ、差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
 
 ## 最近開いたファイル
 
 「ファイル → 最近開いたファイル」から、PDFやプロジェクトを新しい順の一覧から開けます。「編集 → 設定 → 管理」で表示件数（既定10件、0～30件）と履歴クリアを設定できます。0件では表示・記録を停止し、履歴クリアは「保存」で確定します。PDFやプロジェクト自体は削除しません。履歴は設定の書き出しに含めません。詳しくは[操作ガイド](RECENT-FILES.md)を参照してください。
+
+## プロジェクトの保存方式
+
+「プロジェクトを別名で保存」で保存先を指定した後、保存設定画面から方式を選択します。「ポータブルモード」は現在の元PDFを`.pdfocrproj`へ内包するため、プロジェクトファイル1つを移動して利用できます。「通常モード」は通常、元PDFをコピーせず、その現在位置をプロジェクトからの相対パスで参照します。元PDFまたはプロジェクトを単独で移動すると参照できなくなるため、位置関係を維持してください。埋め込みPDFからの変換時や外部ページ挿入後など、管理対象の一時PDFを永続化するときだけ隣接`.assets`へ書き出します。回転・削除・並べ替えだけでは作成しません。未参照の内容ハッシュPDFは、復旧用プロジェクトを含む参照確認後に自動整理します。上書き保存は現在の方式を維持し、別名保存で方式を変更すると相互に変換できます。
 
 ## 設定の持ち運び・配置プリセット
 
@@ -105,15 +154,15 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 文字列、単語の読み方、確認状態は編集できます。一方、位置の直接移動、サイズ変更、回転、整列、文字幅調整、領域の作成・削除・分割・結合は無効になります。既存の位置・サイズのロック設定は書き換えません。品質分析からの補正にも同じ制限を適用します。ただし、文字列の修正には通常の文字枠調整規則を使用するため、文字の追加・削除に必要なレイアウト変更は発生します。レイアウトを直接調整する場合はOCR編集モードへ戻してください。確認状態と修正した文字列は、空文字や領域属性を含め、プロジェクト保存と「元に戻す／やり直し」に対応しています。絞り込み条件と選択中のモードは一時的な画面状態であり、文書情報としては保存しません。
 
-確認対象の一覧から選択した場合や前後の対象へ移動した場合は、対象が見える位置へプレビューをスクロールします。プレビュー上のOCR領域を直接クリックした場合は、スクロール位置を変えません。現在のページの対象件数は、文書全体や階層別の確認進捗を表すものではありません。これらの集計や、コメント・タグ・差分は未実装です。
+確認対象の一覧から選択した場合や前後の対象へ移動した場合は、対象が見える位置へプレビューをスクロールします。プレビュー上のOCR領域を直接クリックした場合は、スクロール位置を変えません。現在のページの対象件数は、文書全体や階層別の確認進捗を表すものではありません。コメントとタグは対象単位で編集できますが、階層別集計、差分、監査履歴は未実装です。
 
 ## ビルド
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン132では、ソリューション全体の製品バージョンが`1.0.0-dev.132`、アセンブリ／ファイルバージョンが`1.0.0.132`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン151では、ソリューション全体の製品バージョンが`1.0.0-dev.151`、アセンブリ／ファイルバージョンが`1.0.0.151`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
-変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.1、読み込みに必要な最小版はdev.123のままです。この変更時点の作業フォルダーではGit管理情報を利用できませんでした。ローカルのビルド記録はGit履歴の代わりにはなりません。
+変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.4、読み込みに必要な最小版はdev.143です。ローカルのビルド記録はGit履歴の代わりにはならないため、配布前にGitのコミットと送信結果も個別に確認します。
 
 ### 前提条件と実行手順
 
@@ -175,7 +224,7 @@ dev.123で修正する前の2026-08-30の監査では、文書UI 136項目、フ
 
 常設の`--persistence-test <new-output-directory>`では、文書切り替え・キャンセル・失敗時の保持、プロジェクト保存とPDF出力での空文字、読み込み済み／未表示領域の属性、校正モードの制限、一括処理後の状態、無操作時の自動保存、元PDFを埋め込んだ復旧データを追加検証します。他の診断モードと同様に、新しい出力フォルダーを指定して実行してください。
 
-dev.132の`--page-history-test <new-output-directory>`では、生成したPDFを使ってページ追加・削除・並べ替え・90度回転をUndo/Redoし、作業PDF、OCRページ、選択状態、操作前のOCR履歴、Redo後のプロジェクト保存・再読込に加え、作業PDF回収、PDFiumワーカー分離・資源制限、外部処理の期限・出力量、OCR／しおり取込上限を29項目で検証します。
+`--page-history-test <new-output-directory>`では、生成したPDFを使ってページ追加・削除・並べ替え・90度回転をUndo/Redoし、削除・並べ替え・回転で作業PDFを作らないこと、論理回転を最終出力へ一度だけ反映すること、挿入時の作業PDF回収、OCRページ・選択状態・操作前のOCR履歴、Redo後のプロジェクト保存・再読込、PDFiumワーカー分離・資源制限、外部処理の期限・出力量、OCR／しおり取込上限、および32個の同時セッション初期化を39項目で検証します。
 
 ```powershell
 $pageHistoryOutput = Join-Path $PWD ("outputs/.verification/page-history-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
@@ -184,7 +233,7 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## ドキュメント
 
-[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの5点の図版を参照できます。図版には校正・確認画面と文書プロパティ画面も含みます。今後の修復機能は未実装と明記しています。`PDF-Correctorium-Design-Documentation.pdf`は2026-08-09時点の内容のままで、再生成していません。
+[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの7点の図版を参照できます。図版には校正・確認、文書プロパティ、プロジェクトPDF保存方式表示、保存方式選択・入力注意・文書注釈、見開きの表紙・左右綴じ配置を含みます。今後の修復機能は未実装と明記しています。`PDF-Correctorium-Design-Documentation.pdf`は2026-08-09時点の内容のままで、再生成していません。
 
 ## ライセンス
 
@@ -213,13 +262,16 @@ You can work without changing the source PDF, save your edits to resume later, a
 - **Edit pages**: Add, delete, reorder, and rotate pages.
 - **Edit bookmarks**: Add, modify, and delete bookmarks, and organize their hierarchy and order.
 - **Edit document information**: Change the title, author, document language, output PDF version, and other properties.
+- **Add comments and tags**: Attach comments and tags to the document, a page, or a selected OCR region, including importance and resolved state.
+- **Create in-document links**: Assign a destination page to a selected OCR region, follow it in the app, and save it as an internal PDF link on export.
+- **Review input characteristics**: Surface notices for forms, signatures, JavaScript, embedded files, layers, non-embedded fonts, and other characteristics that may affect editing or export.
 - **Save your work and export PDFs**: Save a project to resume editing later and export the corrected result as a separate PDF.
 
 This is a development version. Some features, including running new OCR on images within the application, are not yet implemented. See "Current milestone" and "Safety fixes and remaining limitations" below for details.
 
 ## Current milestone
 
-The current repository snapshot corresponds to the `v1.0.0-dev.132` development line. It includes:
+The current repository snapshot corresponds to the `v1.0.0-dev.151` development line. It includes:
 
 - C# / .NET 8 / WPF solution structure
 - Core OCR region model with vertical/horizontal writing and independent rotation
@@ -227,13 +279,14 @@ The current repository snapshot corresponds to the `v1.0.0-dev.132` development 
 - Review states and output attributes
 - Dedicated proofreading/review mode with status filters, cross-page target navigation, verify-and-next, and protection from direct geometry edits
 - Undo/redo for OCR text, geometry, character advances, reading order, review state, search/replace, multi-region edits, and page insertion/deletion/reordering/rotation
-- Safe ZIP-compatible `.pdfocrproj` save/open/validation with bounded entries, expansion, compression ratios, JSON, thumbnails, and embedded PDFs
+- Safe ZIP-compatible `.pdfocrproj` save/open/validation with self-contained embedded-PDF and non-copying relative-reference modes, plus bounded entries, expansion, compression ratios, JSON, thumbnails, and embedded PDFs
 - Source PDF SHA-256 fingerprinting
 - Portable and installed data-path resolution
 - Structured diagnostic log foundation
 - WPF application shell for opening PDFs and projects
 - Reusable out-of-process PDFium worker for page rendering, text extraction and document-property inspection, with a scrollable preview
-- Page count, asynchronous thumbnail navigation, previous/next controls, page insertion/deletion/reordering, and 90-degree page rotation
+- Independent page layout (single page / facing pages) and flow (page by page / continuous scrolling) controls. A PDF's viewer preferences provide the initial state, while an intentional override is saved in the project. Facing pages support an optional separate cover and left- or right-bound placement; continuous flow lazily renders only the viewport neighborhood and promotes a clicked page without losing the scroll position
+- Page count, asynchronous thumbnail navigation, previous/next controls, page insertion/deletion/reordering, and 90-degree page rotation; deletion, reordering, and rotation update logical page references without copying the source PDF, while insertion and final export materialize once at the operation boundary
 - External and embedded project source-PDF preview support
 - Semi-transparent OCR text overlays extracted from PDF text objects, including invisible render mode and zero-alpha text
 - Automatic NDLOCR-Lite companion discovery for JSON, XML, TXT, and TEI files
@@ -243,8 +296,11 @@ The current repository snapshot corresponds to the `v1.0.0-dev.132` development 
 - 25-400% zoom, fit-width, fit-height, fit-page, fit-selection, toolbar controls, and Ctrl+mouse-wheel
 - OCR search/replace, repeated-region propagation, and whole-document OCR quality analysis
 - Editable PDF bookmarks, document metadata (title, author, subject, keywords, creator, and producer), document language, output PDF version, and viewer preferences
+- Input-PDF notices for forms, signatures, JavaScript, attachments, layers, incremental updates, and non-embedded fonts
+- Targeted comments with importance, resolved state, and tags on documents, pages, and OCR regions
+- App-authored OCR-region links with back/forward navigation, Ctrl+click following, and exported PDF GoTo annotations
 - Safe isolated export to a separately saved PDF, followed by validation and output commit
-- Project autosave, versioned backups, backup restoration, and cached page thumbnails
+- Project autosave, byte-bounded versioned backups, backup restoration, and a current-page-neighborhood thumbnail cache
 - Japanese and English UI, switchable from `Settings > Display > Display language`
 - Persistent UI-language selection for both portable and installed operation
 - Compact preview workspace with configurable panels, thumbnail size, overlay appearance, edit handles, shortcuts, autosave, and backup retention
@@ -252,7 +308,45 @@ The current repository snapshot corresponds to the `v1.0.0-dev.132` development 
 
 The implemented application is broader than the original foundation milestone described in older design snapshots. Remaining Version 1.0 gaps and known defects are tracked in [Implementation status](IMPLEMENTATION_STATUS.md) and in the implementation-status sections of the design documentation. Features listed above are not a guarantee of complete round-trip preservation or of meeting every Version 1.0 requirement.
 
-## Safety fixes and remaining limitations (dev.132)
+## Safety fixes and remaining limitations (dev.151)
+
+Dev.151 reads Catalog `/PageLayout` and `/ViewerPreferences /Direction` when a PDF is first opened and uses them for the editor's layout, flow, cover placement, and binding. Missing hints use the PDF defaults of Single Page and L2R. An intentional editor-view change is stored in the optional project `EditorViewState` and restored ahead of the document hint; merely applying the initial or restored state does not mark the project dirty. Document Properties now includes Continuous Facing Pages and exports it as `/TwoColumnLeft` or `/TwoColumnRight`.
+
+The non-interactive page-render diagnostic no longer blocks the UI dispatcher. Explicit page navigation uses a foreground PDF worker while thumbnails, continuous-view neighbors and document scans use a separate background worker. Startup logs are process-specific, concurrent application instances merge only preferences changed since their own load, and page-working sessions cannot mistake another process's newly created directory for an abandoned session. Standard `dotnet test` always executes the 27 dependency-free contract checks.
+
+Dev.148 separated page layout (Single Page / Facing Pages) from flow (Page by Page / Continuous Scrolling), allowing all four combinations, including continuous facing spreads. When a cover or final page has no partner, the empty side shows only the canvas background—no artificial white page, border, or shadow. Continuous facing view retains spread geometry and at most 12 nearby page images rather than every rendered page. The legacy Continuous Pages preference migrates to Single Page plus Continuous Scrolling.
+
+Dev.147 added independent Facing Pages preferences for a separate cover and left- or right-bound placement. Left binding places the earlier page on the left and a separate page-1 cover on the right; right binding mirrors both rules.
+
+Dev.146 makes Continuous Pages a seamless, full-document scroll from the first page through the last. It creates only lightweight layout slots for all pages, lazily renders the viewport plus a one-screen buffer, retains at most 12 preview images, and cancels stale work during fast scrolling or a document/mode change. The current page remains the sole interactive OCR surface; clicking another page promotes it in place without losing the scroll position.
+
+Dev.143 stores page deletion, reordering, and rotation as a logical sequence of immutable source-page numbers, stable page IDs, and rotation values. These edits and their Undo/Redo history no longer generate full working-PDF copies. A physical PDF is materialized once only where required, such as external-page insertion, image-optimization analysis, or final export. Preview, OCR geometry, bookmarks, comments, tags, and internal links follow the stable page IDs.
+
+Project format 1.4 stops writing redundant per-page JSON, source-reference JSON, and regenerable thumbnails alongside canonical `project.json`. A stable external PDF in Normal mode remains in place; only a transient managed PDF is persisted to `.assets`. Unreferenced content-hash assets are reclaimed after scanning current, autosave, and backup projects. Embedded-source materializations are limited to 16 files / 4 GiB, versioned backups to the configured count / 4 GiB, pre-recovery copies to one, and in-memory thumbnails to 64 within 32 pages of the current page. New saves also stop duplicating the same previous project into both fixed `.bak` and versioned backups.
+
+Character-spacing QDF updates now index markers in one sequential pass and stream unchanged ranges instead of loading the entire QDF into managed memory. Search and quality-analysis previews use a bounded low resolution.
+
+Dev.142 bounds page-edit working PDFs to 12 files and 1 GiB in total, including the current working PDF. When either limit would be exceeded, it removes one contiguous prefix from the oldest side of the shared OCR/page Undo timeline and immediately reclaims the now-unreferenced PDFs. The current PDF remains usable even when it alone exceeds the byte budget, and recent OCR-only entries remain available when they require no additional PDF.
+
+dev.141 draws OCR characters in one layer per region, reuses current cell geometry, and creates region resize handles only while selected. Character editing, search highlights, locks, and foreground reading-order badges are preserved. See [OCR rendering notes](OCR-RENDERING.md) for verification and remaining work.
+
+Dev.140 renders reading-order number badges in a dedicated foreground layer above OCR regions and selection chrome. The upper-left resize handle and neighboring region borders no longer obscure a number; each badge uses an opaque fill and contrasting white outline. This is a presentation-only change and does not alter reading-order data or the project format.
+
+Dev.139 consistently labels project PDF storage as Portable mode or Normal mode. Portable mode embeds the PDF in `.pdfocrproj`; Normal mode leaves the source PDF in place and references it by a relative path. Document Properties, the status bar and Save Project As use the same labels. The persisted `Embedded` / `Relative` values are unchanged, so existing project compatibility is unaffected.
+
+Dev.138 separates the application's data-location mode from the open project's PDF storage form in the UI. Portable/installed application-data storage is shown only under Edit > Settings > Manage. Document Properties identifies the project value as `PDF storage` and shows Embedded / self-contained or Relative reference; the status bar shows the same project value and is hidden while no document is open. The value updates immediately after Save As converts the project storage form.
+
+Dev.137 stops duplicating an ordinary source PDF into an adjacent `.assets` directory when Relative Reference is selected. It records the source's current location relative to the project and creates neither a PDF copy nor `.assets`. An `.assets` directory is now used only when converting an embedded project to relative storage or when a page-edited working PDF must be made durable. A cross-drive relative path is impossible on Windows, so the save fails with guidance to use Embedded or save on the same drive instead of silently copying.
+
+Dev.136 adds a project-save options window to Save Project As, allowing explicit selection between embedded and relative-reference storage. A newly opened PDF defaults to embedded storage in portable operation and relative storage in installed operation, but the choice can be changed when saving. Ordinary overwrite saves preserve the mode recorded in the project.
+
+Dev.135 keeps the minimum reader for project format 1.2 fixed at `1.0.0-dev.133`, the build that introduced the format. The saving application version is recorded separately, so a project saved by dev.135 correctly remains compatible with dev.133 and later when it uses only format-1.2 data.
+
+Dev.134 temporarily made the application mode authoritative; dev.136 replaces that behavior with explicit per-Save-As selection. Dev.137 clarifies relative storage so an ordinary source PDF remains in its current location.
+
+Dev.133 introduced both storage forms, but the application mode only selected the dialog default. A portable run could therefore remain linked through a user choice or an existing project. That did not meet the portable self-containment requirement and is corrected in dev.134.
+
+It also adds input-PDF characteristic notices, targeted comments/tags, and app-authored page links. The characteristic scan is bounded and heuristic: it is not signature-authenticity validation or a security guarantee. Page-link authoring currently targets selected OCR regions; existing PDF links, automatic page-number recognition, and arbitrary rectangle creation are not edited.
 
 Dev.132 fixes an object-number collision when adding both bookmarks and a new document-information dictionary to a PDF that had no existing `/Info` dictionary.
 
@@ -264,13 +358,17 @@ The five issues reproduced in the dev.122 audit are now addressed: document swit
 
 Autosave runs at the configured interval or after about 30 seconds without input (checked every 5 seconds). Never-saved projects receive a source-embedded recovery package under `workspaces/recovery/<project-id>.autosave.pdfocrproj`. Open that file explicitly to recover; automatic recovery discovery at startup is not implemented. Recovery writes do not mark the project saved.
 
-**Project compatibility:** new saves use format 1.1; versions 1.0 and 1.1 can be read by dev.123. Older application builds cannot open new 1.1 packages. Keep a backup when older-build compatibility is needed. The manifest now records the build version.
+**Project compatibility:** new saves use format 1.4. Current dev.151 reads formats 1.0, 1.1, 1.2, 1.3, and 1.4. Format 1.4 makes the logical page sequence canonical and omits redundant caches, so dev.142 and earlier cannot open newly saved projects. Keep a backup when older-build compatibility is needed. The manifest records the saving build version.
 
-External/in-app OCR, ruby/comments/tags/diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
+External/in-app OCR, ruby, diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
 
 ## Recent files
 
 Use File > Recent Files to reopen PDFs and projects in most-recently-opened order. Edit > Settings > Manage provides the display count (default 10, range 0–30) and Clear History. Zero stops displaying and recording history; clearing takes effect only on Settings Save, and never deletes documents. File paths are excluded from settings export. See the [usage guide (Japanese)](RECENT-FILES.md).
+
+## Project storage modes
+
+After choosing a path in Save Project As, select Portable mode or Normal mode in the project-save options window. Portable mode stores the source PDF inside `.pdfocrproj`, allowing one-file movement. Normal mode normally leaves the source PDF in place and records its path relative to the project; moving either file alone may break the reference. Only embedded-to-Normal conversion and transient managed PDFs, such as a source created by external-page insertion, are written to adjacent `.assets`; rotation, deletion, and reordering alone do not create one. Unreferenced content-hash assets are removed only after current and recovery projects have been scanned. Overwrite preserves the current mode, while Save As can convert either way.
 
 ## Settings transfer and workspace presets
 
@@ -296,15 +394,15 @@ Choose `校正・確認` in the toolbar mode selector. The right pane lists matc
 
 Text, word readings, and review status remain editable. Ordinary direct movement, resize, rotation, alignment, character-width adjustment, region creation/deletion and split/merge commands are disabled in this mode; existing geometry-lock settings are not rewritten. The quality-analysis correction path is also guarded. Text corrections still use the normal character-cell reconciliation rules, including layout changes needed for inserting/removing text. Return to OCR editing for direct layout adjustments. Review states and corrected text support project save and Undo/Redo, including intentional empty text and preserved region metadata. Review filters and the selected mode are temporary UI state, not saved document metadata.
 
-Selecting a review-list entry or using target navigation scrolls the preview to reveal the target. Ordinary selection by clicking an OCR region in the preview leaves the scroll position unchanged. The current-page target count is not a document-wide or hierarchical review-progress report; those aggregate reports, comments, tags and diffs remain unimplemented.
+Selecting a review-list entry or using target navigation scrolls the preview to reveal the target. Ordinary selection by clicking an OCR region in the preview leaves the scroll position unchanged. The current-page target count is not a document-wide or hierarchical review-progress report. Targeted comments and tags are available, but aggregate reports, diffs, and persistent audit history remain unimplemented.
 
 ## Build
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 132 produces product version `1.0.0-dev.132` and assembly/file version `1.0.0.132` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 151 produces product version `1.0.0-dev.151` and assembly/file version `1.0.0.151` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
-Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format remains 1.1; its minimum reader remains dev.123. Git metadata was unavailable in this working folder at the time of this change; local build records are not a substitute for Git history.
+Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.4 and its minimum reader is dev.143. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
 
 ### Commands and prerequisites
 
@@ -367,7 +465,7 @@ Before the dev.123 fixes, the 2026-08-30 audit re-ran the 136 document-UI, 67 fi
 
 The permanent `--persistence-test <new-output-directory>` additionally checks switching/cancel/failure preservation, empty OCR text through project and PDF output, loaded/unvisited region metadata, review restrictions, bulk status, idle autosave and embedded recovery. Run it like the other diagnostic modes, with a new output directory.
 
-The dev.132 `--page-history-test <new-output-directory>` uses generated PDFs to exercise Undo/Redo for page insertion, deletion, reordering and 90-degree rotation. Its 29 checks also cover working-PDF reclamation, PDFium worker isolation/resource limits, external-process deadline/output caps, OCR/bookmark import caps, OCR history continuity, and project save/reload after redo.
+`--page-history-test <new-output-directory>` uses generated PDFs to exercise Undo/Redo for page insertion, deletion, reordering and 90-degree rotation. Its 39 checks verify that deletion, reordering, and rotation create no working PDF; that logical rotation is materialized exactly once at final export; that insertion working files are reclaimed; and that 32 working-file sessions can initialize concurrently. It also covers PDFium worker isolation/resource limits, external-process deadline/output caps, OCR/bookmark import caps, OCR history continuity, selection state, and project save/reload after redo.
 
 ```powershell
 $pageHistoryOutput = Join-Path $PWD ("outputs/.verification/page-history-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
@@ -376,7 +474,7 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## Documentation
 
-The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and five updated diagrams, including the new review and document-properties views. Future repair functionality is explicitly labeled unimplemented. `PDF-Correctorium-Design-Documentation.pdf` remains the 2026-08-09 snapshot and has not been regenerated.
+The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and seven updated diagrams, including review, document-properties, project-PDF-storage/annotation, and facing-page cover/binding layouts. Future repair functionality is explicitly labeled unimplemented. `PDF-Correctorium-Design-Documentation.pdf` remains the 2026-08-09 snapshot and has not been regenerated.
 
 ## License
 

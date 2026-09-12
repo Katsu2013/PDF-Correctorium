@@ -1,11 +1,11 @@
-using System.Globalization;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
-using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 using PdfCorrectorium.App.Services;
 
 namespace PdfCorrectorium.App;
@@ -42,6 +42,9 @@ public partial class ApplicationSettingsWindow : Window
         UiLanguageComboBox.SelectedValue = settings.UiLanguage;
         ToolbarDisplayModeComboBox.SelectedIndex = settings.ShowToolbarText ? 1 : 0;
         ToolbarButtonSizeSlider.Value = settings.ToolbarButtonSize;
+        DocumentPageFlowModeComboBox.SelectedValue = settings.DocumentPageFlowMode.ToString();
+        FacingPagesShowCoverSeparatelyCheckBox.IsChecked = settings.FacingPagesShowCoverSeparately;
+        FacingPagesBindingDirectionComboBox.SelectedValue = settings.FacingPagesBindingDirection.ToString();
         ShowPropertyHelpTextCheckBox.IsChecked = settings.ShowPropertyHelpText;
         ShowPageListPanelCheckBox.IsChecked = settings.ShowPageListPanel;
         ShowPropertiesPanelCheckBox.IsChecked = settings.ShowPropertiesPanel;
@@ -188,6 +191,19 @@ public partial class ApplicationSettingsWindow : Window
             return false;
         }
 
+        var facingPagesBindingDirection = Enum.TryParse<FacingPageBindingDirection>(
+            FacingPagesBindingDirectionComboBox.SelectedValue as string,
+            ignoreCase: true,
+            out var selectedBindingDirection)
+            ? selectedBindingDirection
+            : FacingPageBindingDirection.LeftBinding;
+        var documentPageFlowMode = Enum.TryParse<DocumentPageFlowMode>(
+            DocumentPageFlowModeComboBox.SelectedValue as string,
+            ignoreCase: true,
+            out var selectedPageFlowMode)
+            ? selectedPageFlowMode
+            : DocumentPageFlowMode.PageByPage;
+
         settings = (ResultSettings with
         {
             RecentFileLimit = recentFileLimit,
@@ -195,6 +211,9 @@ public partial class ApplicationSettingsWindow : Window
             UiLanguage = UiLanguageComboBox.SelectedValue as string ?? LocalizationService.JapaneseLanguage,
             ShowToolbarText = ToolbarDisplayModeComboBox.SelectedIndex == 1,
             ToolbarButtonSize = ToolbarButtonSizeSlider.Value,
+            DocumentPageFlowMode = documentPageFlowMode,
+            FacingPagesShowCoverSeparately = FacingPagesShowCoverSeparatelyCheckBox.IsChecked == true,
+            FacingPagesBindingDirection = facingPagesBindingDirection,
             ShowPropertyHelpText = ShowPropertyHelpTextCheckBox.IsChecked == true,
             ShowPageListPanel = ShowPageListPanelCheckBox.IsChecked == true,
             ShowPropertiesPanel = ShowPropertiesPanelCheckBox.IsChecked == true,
@@ -352,8 +371,14 @@ public partial class ApplicationSettingsWindow : Window
     private async void ExportSettings_OnClick(object sender, RoutedEventArgs e)
     {
         if (!TryReadSettings(out var settings)) return;
-        var dialog = new SaveFileDialog { Filter = "PDF Correctorium settings (*.json)|*.json", DefaultExt = ".json",
-            AddExtension = true, FileName = "PDF-Correctorium-settings.json", OverwritePrompt = true };
+        var dialog = new SaveFileDialog
+        {
+            Filter = "PDF Correctorium settings (*.json)|*.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+            FileName = "PDF-Correctorium-settings.json",
+            OverwritePrompt = true
+        };
         if (dialog.ShowDialog(this) != true) return;
         try
         {

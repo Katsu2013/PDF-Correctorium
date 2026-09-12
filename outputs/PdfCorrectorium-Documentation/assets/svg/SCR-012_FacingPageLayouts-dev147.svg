@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">SCR-012 見開き表示の配置</title>
+  <desc id="desc">dev.147で選択できる、表紙単独表示の有無と左綴じ・右綴じの4通りを示す模式図。</desc>
+  <style>
+    text{font-family:'Yu Gothic UI','Meiryo','Segoe UI',sans-serif;fill:#263746}.title{font-size:25px;font-weight:600}.heading{font-size:18px;font-weight:600}.body{font-size:15px}.page{font-size:20px;font-weight:600}.muted{font-size:14px;fill:#667085}.panel{fill:#fff;stroke:#b8c1ce}.sheet{fill:#fffdf8;stroke:#7b8794;stroke-width:2}.blank{fill:#eef1f4;stroke:#a9b2bd;stroke-width:2;stroke-dasharray:7 5}.accent{fill:#d72c30}
+  </style>
+  <rect width="1280" height="720" fill="#f5f6f8"/>
+  <text x="38" y="48" class="title">見開き表示：表紙と綴じ方向</text>
+  <text x="38" y="76" class="muted">SCR-012 / dev.147　表示設定で切り替え。PDFの内容や出力PDFの初期表示設定は変更しません。</text>
+
+  <rect x="38" y="108" width="580" height="250" rx="8" class="panel"/>
+  <text x="62" y="141" class="heading">左綴じ・表紙を単独表示</text>
+  <text x="62" y="168" class="body">1ページ目は右側。次の見開きは 2｜3。</text>
+  <rect x="128" y="195" width="170" height="125" rx="3" class="blank"/>
+  <rect x="308" y="195" width="170" height="125" rx="3" class="sheet"/>
+  <text x="213" y="264" text-anchor="middle" class="muted">空白</text><text x="393" y="264" text-anchor="middle" class="page">1</text>
+  <path d="M490 258h72" stroke="#d72c30" stroke-width="3"/><path d="m552 250 10 8-10 8" fill="none" stroke="#d72c30" stroke-width="3"/>
+
+  <rect x="662" y="108" width="580" height="250" rx="8" class="panel"/>
+  <text x="686" y="141" class="heading">右綴じ・表紙を単独表示</text>
+  <text x="686" y="168" class="body">1ページ目は左側。次の見開きは 3｜2。</text>
+  <rect x="752" y="195" width="170" height="125" rx="3" class="sheet"/>
+  <rect x="932" y="195" width="170" height="125" rx="3" class="blank"/>
+  <text x="837" y="264" text-anchor="middle" class="page">1</text><text x="1017" y="264" text-anchor="middle" class="muted">空白</text>
+  <path d="M738 258h-72" stroke="#d72c30" stroke-width="3"/><path d="m676 250-10 8 10 8" fill="none" stroke="#d72c30" stroke-width="3"/>
+
+  <rect x="38" y="390" width="580" height="250" rx="8" class="panel"/>
+  <text x="62" y="423" class="heading">左綴じ・表紙を単独表示しない</text>
+  <text x="62" y="450" class="body">先頭から組にして 1｜2。若いページが左側。</text>
+  <rect x="128" y="477" width="170" height="125" rx="3" class="sheet"/>
+  <rect x="308" y="477" width="170" height="125" rx="3" class="sheet"/>
+  <text x="213" y="546" text-anchor="middle" class="page">1</text><text x="393" y="546" text-anchor="middle" class="page">2</text>
+  <path d="M490 540h72" stroke="#d72c30" stroke-width="3"/><path d="m552 532 10 8-10 8" fill="none" stroke="#d72c30" stroke-width="3"/>
+
+  <rect x="662" y="390" width="580" height="250" rx="8" class="panel"/>
+  <text x="686" y="423" class="heading">右綴じ・表紙を単独表示しない</text>
+  <text x="686" y="450" class="body">先頭から組にして 2｜1。若いページが右側。</text>
+  <rect x="752" y="477" width="170" height="125" rx="3" class="sheet"/>
+  <rect x="932" y="477" width="170" height="125" rx="3" class="sheet"/>
+  <text x="837" y="546" text-anchor="middle" class="page">2</text><text x="1017" y="546" text-anchor="middle" class="page">1</text>
+  <path d="M738 540h-72" stroke="#d72c30" stroke-width="3"/><path d="m676 532-10 8 10 8" fill="none" stroke="#d72c30" stroke-width="3"/>
+
+  <text x="38" y="684" class="muted">相手ページが存在しない末尾も、綴じ方向に応じた側へ空白を表示します。</text>
+</svg>

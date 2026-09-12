@@ -13,4 +13,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!--
+    This project is a dependency-free contract runner rather than an adapter-based
+    unit-test assembly. Make the standard `dotnet test` entry point execute it so
+    CI cannot report success after discovering zero tests.
+  -->
+  <Target Name="RunContractChecksForDotNetTest" AfterTargets="VSTest">
+    <Exec Command="dotnet &quot;$(TargetPath)&quot;" />
+  </Target>
+
 </Project>

@@ -1,4 +1,5 @@
 using PdfCorrectorium.App.Services;
+using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.ProjectFormat;
 
 if (args.Length == 1 && string.Equals(args[0], "--output-commit-test", StringComparison.Ordinal))
@@ -54,9 +55,34 @@ var outputPath = Path.GetFullPath(args[1]);
 var package = new ProjectPackageService();
 var project = await package.OpenAsync(projectPath);
 var projectDirectory = Path.GetDirectoryName(projectPath)!;
-var sourcePath = !string.IsNullOrWhiteSpace(project.SourcePdf.RelativePath)
-    ? Path.GetFullPath(Path.Combine(projectDirectory, project.SourcePdf.RelativePath))
-    : project.SourcePdf.AbsolutePathHint
-      ?? throw new FileNotFoundException("The source PDF could not be resolved.");
-var result = await new PdfExportService().ExportAsync(sourcePath, outputPath, project);
-Console.WriteLine($"Pages={result.ModifiedPages}; Regions={result.ModifiedRegions}; Output={outputPath}");
+var operationDirectory = Path.Combine(Path.GetTempPath(), $"PdfCorrectorium-project-export-{Guid.NewGuid():N}");
+Directory.CreateDirectory(operationDirectory);
+try
+{
+    var sourcePath = project.SourcePdf.IsEmbedded
+        ? await package.MaterializeEmbeddedSourceAsync(projectPath, project.SourcePdf, Path.Combine(operationDirectory, "cache"))
+        : package.ResolveSourcePath(project.SourcePdf, projectDirectory);
+    var sequence = ProjectPageSequence.Normalize(
+        project.PageSequence,
+        project.Pages,
+        project.SourcePdf.PageCount ?? project.PageSequence.Count);
+    var exportProject = project;
+    if (!ProjectPageSequence.IsPhysicalIdentity(sequence, project.SourcePdf.PageCount ?? sequence.Count))
+    {
+        var materializedPath = Path.Combine(operationDirectory, "document.pdf");
+        await new PdfPageManagementService().MaterializeAsync(sourcePath, sequence, materializedPath);
+        sourcePath = materializedPath;
+        exportProject = project with
+        {
+            SourcePdf = project.SourcePdf with { PageCount = sequence.Count },
+            PageSequence = ProjectPageSequence.AsMaterialized(sequence),
+        };
+    }
+
+    var result = await new PdfExportService().ExportAsync(sourcePath, outputPath, exportProject);
+    Console.WriteLine($"Pages={result.ModifiedPages}; Regions={result.ModifiedRegions}; Output={outputPath}");
+}
+finally
+{
+    try { Directory.Delete(operationDirectory, recursive: true); } catch { }
+}

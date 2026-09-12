@@ -154,8 +154,8 @@
                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SourceHash, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}" TextWrapping="Wrap"  IsTabStop="False"/>
                                 <TextBlock Grid.Row="3" Text="OCRデータソース:" Style="{StaticResource PropertyLabelStyle}" />
                                 <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding OcrDataSourceText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
-                                <TextBlock Grid.Row="4" Text="保存モード:" Style="{StaticResource PropertyLabelStyle}" />
-                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding StorageModeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
+                                <TextBlock Grid.Row="4" Text="PDF保存方式:" Style="{StaticResource PropertyLabelStyle}" />
+                                <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding ProjectStorageModeText, Mode=OneWay}" Style="{StaticResource PropertyValueStyle}"  IsTabStop="False"/>
                             </Grid>
                         </Expander>
                     </StackPanel>
@@ -335,6 +335,7 @@
                                     <ComboBoxItem Content="1ページ" Tag="SinglePage" />
                                     <ComboBoxItem Content="連続ページ" Tag="Continuous" />
                                     <ComboBoxItem Content="見開き" Tag="FacingPages" />
+                                    <ComboBoxItem Content="連続見開き" Tag="ContinuousFacingPages" />
                                 </ComboBox>
                                 <Label Grid.Row="1" Content="綴じ方向:(_B)" Style="{StaticResource KeyboardPropertyLabelStyle}"  Padding="0" Target="{Binding ElementName=BindingDirectionComboBox}" />
                                 <ComboBox x:Name="BindingDirectionComboBox" Grid.Row="1" Grid.Column="1" MinWidth="300" AutomationProperties.AccessKey="Alt+B">

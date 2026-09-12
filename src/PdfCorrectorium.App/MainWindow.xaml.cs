@@ -1,18 +1,18 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Input;
 using System.Windows.Data;
-using System.Windows.Threading;
-using System.Globalization;
-using System.Windows.Media;
 using System.Windows.Documents;
-using System.ComponentModel;
-using System.Diagnostics;
-using PdfCorrectorium.App.ViewModels;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using PdfCorrectorium.App.Services;
-using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core;
+using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
 
@@ -125,13 +125,19 @@ public partial class MainWindow : Window
         PreviewMouseMove += (_, _) => ViewModel.NotifyUserActivity();
         ViewModel.PropertyChanged += ViewModel_OnPropertyChanged;
         ViewModel.OcrSearchSelectionRequested += ViewModel_OnOcrSearchSelectionRequested;
+        InitializeContinuousPageView();
+        UpdatePreviewDocumentLayout();
         _autoSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(5),
         };
         _autoSaveTimer.Tick += async (_, _) => await ViewModel.AutoSaveIfDueAsync();
         _autoSaveTimer.Start();
-        Closed += (_, _) => _autoSaveTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _autoSaveTimer.Stop();
+            ReleaseContinuousPageView();
+        };
         LocalizationService.Apply(this);
     }
 
@@ -671,6 +677,12 @@ public partial class MainWindow : Window
         if (ViewModel.IsReviewNavigating) ViewModel.CancelReviewNavigation();
         CommitPendingEditorBindings();
         if (sender is not Border { DataContext: OverlayRegionViewModel region } border) return;
+        if (Keyboard.Modifiers == ModifierKeys.Control && ViewModel.HasInternalLinkFor(region.Id))
+        {
+            _ = ViewModel.NavigateInternalLinkAsync(region.Id);
+            e.Handled = true;
+            return;
+        }
         var horizontalOffset = PreviewScrollViewer.HorizontalOffset;
         var verticalOffset = PreviewScrollViewer.VerticalOffset;
         if (ViewModel.IsCharacterEditMode)
@@ -898,6 +910,36 @@ public partial class MainWindow : Window
                 dialog.ResultDocumentLanguage);
     }
 
+    private void InputPdfIssues_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasDocument) return;
+        new InputPdfIssuesWindow(ViewModel.InputPdfIssues.ToArray()) { Owner = this }.ShowDialog();
+    }
+
+    private void CommentsAndTags_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasDocument) return;
+        CommitPendingEditorBindings();
+        var dialog = new ProjectCommentsWindow(ViewModel.GetCurrentCommentTarget(), ViewModel.GetComments(), ViewModel.GetTags()) { Owner = this };
+        if (dialog.ShowDialog() == true)
+            ViewModel.ApplyCommentsAndTags(dialog.ResultComments, dialog.ResultTags);
+    }
+
+    private async void InternalLinkEdit_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasDocument || !ViewModel.HasSelectedOverlay) return;
+        CommitPendingEditorBindings();
+        var existing = ViewModel.GetSelectedInternalLink();
+        var dialog = new InternalLinkWindow(ViewModel.PageItems.Count, existing, ViewModel.GetInternalLinkDestinationPage(existing)) { Owner = this };
+        if (dialog.ShowDialog() == true)
+            await ViewModel.CreateInternalLinkAsync(dialog.ResultDestinationPage, dialog.ResultZoomPercent, dialog.Description);
+    }
+
+    private async void InternalLinkNavigate_OnClick(object sender, RoutedEventArgs e) => await ViewModel.NavigateSelectedInternalLinkAsync();
+    private async void InternalLinkBack_OnClick(object sender, RoutedEventArgs e) => await ViewModel.NavigateInternalLinkBackAsync();
+    private async void InternalLinkForward_OnClick(object sender, RoutedEventArgs e) => await ViewModel.NavigateInternalLinkForwardAsync();
+    private void InternalLinkDelete_OnClick(object sender, RoutedEventArgs e) => ViewModel.DeleteSelectedInternalLink();
+
     /// <summary>現在のプロジェクトコンテナを検証し、診断結果を表示します。</summary>
     private async void ValidateProjectMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
@@ -976,7 +1018,7 @@ public partial class MainWindow : Window
         ViewModel.ReloadRecentFiles();
         var dialog = new ApplicationSettingsWindow(
             CaptureWorkspaceSettings(),
-            ViewModel.StorageModeText,
+            ViewModel.ApplicationStorageModeText,
             ViewModel.SettingsFilePath,
             ViewModel.RecentFileCount)
         {
@@ -1778,12 +1820,96 @@ public partial class MainWindow : Window
     private void PreviewScrollViewer_OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_previewFitMode != PreviewFitMode.None) ApplyPreviewFit();
+        if (ViewModel.IsContinuousView) ScheduleContinuousPreviewRefresh();
     }
 
     private void PreviewImage_OnTargetUpdated(object sender, DataTransferEventArgs e)
     {
-        if (_previewFitMode == PreviewFitMode.None || ViewModel.PreviewImage is null) return;
-        Dispatcher.BeginInvoke(ApplyPreviewFit, DispatcherPriority.Loaded);
+        if (ViewModel.PreviewImage is null) return;
+        if (ViewModel.IsFacingPagesView && !ViewModel.IsContinuousView)
+            Dispatcher.BeginInvoke(() => PreviewPageHost.BringIntoView(), DispatcherPriority.Loaded);
+        else if (ViewModel.IsContinuousView)
+            Dispatcher.BeginInvoke(ScheduleContinuousPreviewRefresh, DispatcherPriority.Loaded);
+        if (_previewFitMode != PreviewFitMode.None)
+            Dispatcher.BeginInvoke(ApplyPreviewFit, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>現在モードに応じ、単一の編集面と遅延描画した隣接ページを並べ替えます。</summary>
+    private void UpdatePreviewDocumentLayout()
+    {
+        if (ViewModel.IsContinuousView)
+        {
+            FacingBlankPageHost.Visibility = Visibility.Collapsed;
+            ActivateContinuousPageLayout();
+            return;
+        }
+
+        DeactivateContinuousPageLayout();
+        PreviewPageHost.Margin = ViewModel.DocumentViewMode == DocumentViewMode.SinglePage
+            ? new Thickness(0)
+            : new Thickness(6);
+        if (ViewModel.DocumentViewMode == DocumentViewMode.FacingPages)
+        {
+            var currentPage = ViewModel.SelectedPage?.PageNumber ?? 1;
+            var layout = ViewModel.GetCurrentFacingPageLayout();
+            var currentColumn = layout.LeftPageNumber == currentPage ? 0 : 1;
+            var companionColumn = currentColumn == 0 ? 1 : 0;
+            var companionPage = layout.GetCompanionPageNumber(currentPage);
+
+            PlacePreviewHost(PreviewPageHost, 0, currentColumn);
+            PlacePreviewHost(PreviousPreviewPageHost, 0,
+                companionPage.HasValue && companionPage.Value < currentPage ? companionColumn : 0);
+            PlacePreviewHost(NextPreviewPageHost, 0,
+                companionPage.HasValue && companionPage.Value > currentPage ? companionColumn : 1);
+
+            var blankColumn = layout.LeftPageNumber is null ? 0 : layout.RightPageNumber is null ? 1 : -1;
+            FacingBlankPageHost.Visibility = blankColumn >= 0 ? Visibility.Hidden : Visibility.Collapsed;
+            if (blankColumn >= 0) PlacePreviewHost(FacingBlankPageHost, 0, blankColumn);
+        }
+        else
+        {
+            FacingBlankPageHost.Visibility = Visibility.Collapsed;
+            PlacePreviewHost(PreviousPreviewPageHost, 0, 0);
+            PlacePreviewHost(PreviewPageHost, 0, 0, 2);
+            PlacePreviewHost(NextPreviewPageHost, 0, 1);
+        }
+    }
+
+    private static void PlacePreviewHost(FrameworkElement element, int row, int column, int columnSpan = 1)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        Grid.SetColumnSpan(element, columnSpan);
+    }
+
+    /// <summary>フィット倍率計算用に、現在のページ配置が占める未拡大寸法を返します。</summary>
+    internal (double Width, double Height) GetPreviewLayoutDimensions()
+    {
+        const double pageMargin = 12;
+        var currentWidth = (double)Math.Max(1, ViewModel.PreviewPixelWidth);
+        var currentHeight = (double)Math.Max(1, ViewModel.PreviewPixelHeight);
+        var previousWidth = ViewModel.HasPreviousPreview ? ViewModel.PreviousPreviewPixelWidth + pageMargin : 0;
+        var previousHeight = ViewModel.HasPreviousPreview ? ViewModel.PreviousPreviewPixelHeight + pageMargin : 0;
+        var nextWidth = ViewModel.HasNextPreview ? ViewModel.NextPreviewPixelWidth + pageMargin : 0;
+        var nextHeight = ViewModel.HasNextPreview ? ViewModel.NextPreviewPixelHeight + pageMargin : 0;
+        // 連続表示の「高さに合わせる／全体表示」は文書全長ではなく、現在の1行を
+        // 基準にし、長大文書でも実用的な倍率を保つ。
+        return ViewModel.IsFacingPagesView
+            ? (currentWidth + pageMargin + Math.Max(currentWidth + pageMargin, Math.Max(previousWidth, nextWidth)),
+                Math.Max(currentHeight + pageMargin, Math.Max(previousHeight, nextHeight)))
+            : (currentWidth + (ViewModel.IsContinuousView ? pageMargin : 0),
+                currentHeight + (ViewModel.IsContinuousView ? pageMargin : 0));
+    }
+
+    private void AdjacentPreviewPage_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border { Tag: int pageNumber })
+        {
+            CommitPendingEditorBindings();
+            ViewModel.NavigateFromAdjacentPreview(pageNumber);
+            Dispatcher.BeginInvoke(() => PreviewPageHost.BringIntoView(), DispatcherPriority.Loaded);
+            e.Handled = true;
+        }
     }
 
     private void ApplyPreviewFit()
@@ -1797,15 +1923,16 @@ public partial class MainWindow : Window
             availableHeight = PreviewScrollViewer.ActualHeight;
         if (!double.IsFinite(availableWidth) || availableWidth <= 20 ||
             !double.IsFinite(availableHeight) || availableHeight <= 20) return;
+        var (layoutWidth, layoutHeight) = GetPreviewLayoutDimensions();
         var zoom = _previewFitMode switch
         {
-            PreviewFitMode.Width => EditorInteractionMath.CalculateFitWidthPercent(availableWidth, ViewModel.PreviewPixelWidth),
-            PreviewFitMode.Height => EditorInteractionMath.CalculateFitHeightPercent(availableHeight, ViewModel.PreviewPixelHeight),
+            PreviewFitMode.Width => EditorInteractionMath.CalculateFitWidthPercent(availableWidth, layoutWidth),
+            PreviewFitMode.Height => EditorInteractionMath.CalculateFitHeightPercent(availableHeight, layoutHeight),
             PreviewFitMode.Page => EditorInteractionMath.CalculateFitPagePercent(
                 availableWidth,
                 availableHeight,
-                ViewModel.PreviewPixelWidth,
-                ViewModel.PreviewPixelHeight),
+                layoutWidth,
+                layoutHeight),
             _ => ViewModel.ZoomPercent,
         };
         _isApplyingFit = true;
@@ -1815,6 +1942,21 @@ public partial class MainWindow : Window
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(MainWindowViewModel.DocumentViewMode) or
+            nameof(MainWindowViewModel.DocumentPageFlowMode) or
+            nameof(MainWindowViewModel.FacingPagesShowCoverSeparately) or
+            nameof(MainWindowViewModel.FacingPagesBindingDirection) or nameof(MainWindowViewModel.SelectedPage) or
+            nameof(MainWindowViewModel.HasPreviousPreview) or nameof(MainWindowViewModel.HasNextPreview))
+        {
+            UpdatePreviewDocumentLayout();
+            if (ViewModel.IsFacingPagesView && !ViewModel.IsContinuousView)
+                Dispatcher.BeginInvoke(() => PreviewPageHost.BringIntoView(), DispatcherPriority.Loaded);
+            else if (ViewModel.IsContinuousView)
+                Dispatcher.BeginInvoke(ScheduleContinuousPreviewRefresh, DispatcherPriority.Loaded);
+            if (_previewFitMode != PreviewFitMode.None) Dispatcher.BeginInvoke(ApplyPreviewFit, DispatcherPriority.Loaded);
+            return;
+        }
+
         if (e.PropertyName == nameof(MainWindowViewModel.SelectedCharacterAdvance))
         {
             // A focused LostFocus binding may still contain the value that was
@@ -1833,6 +1975,8 @@ public partial class MainWindow : Window
         var newZoom = Math.Max(0.01, ViewModel.ZoomFactor);
         _lastZoomFactor = newZoom;
         if (!_isApplyingFit) _previewFitMode = PreviewFitMode.None;
+        if (ViewModel.IsContinuousView)
+            ContinuousDocumentLayoutHost.SetZoomFactor(newZoom);
 
         var viewportWidth = Math.Max(1, PreviewScrollViewer.ViewportWidth);
         var viewportHeight = Math.Max(1, PreviewScrollViewer.ViewportHeight);

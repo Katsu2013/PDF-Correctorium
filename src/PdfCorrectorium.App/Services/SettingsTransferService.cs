@@ -46,8 +46,10 @@ public static class SettingsTransferService
         Validate(settings);
         var json = JsonSerializer.Serialize(new
         {
-            format = Format, formatVersion = TransferVersion,
-            applicationVersion = ApplicationBuildInfo.Version, settings = settings.Normalize(),
+            format = Format,
+            formatVersion = TransferVersion,
+            applicationVersion = ApplicationBuildInfo.Version,
+            settings = settings.Normalize(),
         }, Options);
         return WriteAtomicallyAsync(path, json, cancellationToken);
     }

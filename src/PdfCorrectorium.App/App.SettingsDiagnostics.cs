@@ -39,9 +39,18 @@ public partial class App
             var service = new ApplicationSettingsService(paths);
             var original = new ApplicationSettings
             {
-                UiLanguage = "en-US", AutoSaveEnabled = false, PageListWidth = 300, PropertiesPanelWidth = 410,
-                PageThumbnailSize = 183, PreviousCharacterShortcut = "Ctrl+Shift+F8",
-                NextCharacterShortcut = "", ShowPropertyHelpText = true,
+                UiLanguage = "en-US",
+                AutoSaveEnabled = false,
+                PageListWidth = 300,
+                PropertiesPanelWidth = 410,
+                PageThumbnailSize = 183,
+                PreviousCharacterShortcut = "Ctrl+Shift+F8",
+                NextCharacterShortcut = "",
+                ShowPropertyHelpText = true,
+                DocumentViewMode = DocumentViewMode.FacingPages,
+                DocumentPageFlowMode = DocumentPageFlowMode.Continuous,
+                FacingPagesShowCoverSeparately = false,
+                FacingPagesBindingDirection = FacingPageBindingDirection.RightBinding,
             };
             var preset = WorkspacePreset.Capture(" 校正用_Layout ", original with { ShowPropertiesPanel = false });
             original = original with { WorkspacePresets = [preset] };
@@ -51,6 +60,42 @@ public partial class App
             await SettingsTransferService.ExportAsync(export, original);
             var imported = await SettingsTransferService.ImportAsync(export);
             Check(JsonSerializer.Serialize(imported) == JsonSerializer.Serialize(original.Normalize()), "All settings and presets round-trip, including hidden thumbnail size and unassigned shortcuts.");
+            Check(imported.DocumentViewMode == DocumentViewMode.FacingPages &&
+                imported.DocumentPageFlowMode == DocumentPageFlowMode.Continuous &&
+                !imported.FacingPagesShowCoverSeparately &&
+                imported.FacingPagesBindingDirection == FacingPageBindingDirection.RightBinding &&
+                (new ApplicationSettings
+                {
+                    DocumentViewMode = (DocumentViewMode)999,
+                    DocumentPageFlowMode = (DocumentPageFlowMode)999,
+                    FacingPagesBindingDirection = (FacingPageBindingDirection)999,
+                }).Normalize() is
+                {
+                    DocumentViewMode: DocumentViewMode.SinglePage,
+                    DocumentPageFlowMode: DocumentPageFlowMode.PageByPage,
+                    FacingPagesBindingDirection: FacingPageBindingDirection.LeftBinding,
+                },
+                "Document and facing-page settings round-trip, and unknown future values fall back safely.");
+            Check((new ApplicationSettings
+            {
+                FormatVersion = 15,
+                DocumentViewMode = DocumentViewMode.Continuous,
+            }).Normalize() is
+            {
+                DocumentViewMode: DocumentViewMode.SinglePage,
+                DocumentPageFlowMode: DocumentPageFlowMode.Continuous,
+            },
+                "Legacy continuous-page settings migrate to independent single-page and continuous-scroll axes.");
+            Check(
+                FacingPageLayoutCalculator.Calculate(1, 6, true, FacingPageBindingDirection.LeftBinding) == new FacingPageLayout(null, 1) &&
+                FacingPageLayoutCalculator.Calculate(1, 6, true, FacingPageBindingDirection.RightBinding) == new FacingPageLayout(1, null) &&
+                FacingPageLayoutCalculator.Calculate(2, 6, true, FacingPageBindingDirection.LeftBinding) == new FacingPageLayout(2, 3) &&
+                FacingPageLayoutCalculator.Calculate(2, 6, true, FacingPageBindingDirection.RightBinding) == new FacingPageLayout(3, 2) &&
+                FacingPageLayoutCalculator.Calculate(1, 6, false, FacingPageBindingDirection.LeftBinding) == new FacingPageLayout(1, 2) &&
+                FacingPageLayoutCalculator.Calculate(1, 6, false, FacingPageBindingDirection.RightBinding) == new FacingPageLayout(2, 1) &&
+                FacingPageLayoutCalculator.Calculate(6, 6, true, FacingPageBindingDirection.LeftBinding) == new FacingPageLayout(6, null) &&
+                FacingPageLayoutCalculator.Calculate(6, 6, true, FacingPageBindingDirection.RightBinding) == new FacingPageLayout(null, 6),
+                "Facing-page calculation covers both binding directions, optional covers, regular spreads, and an unpaired final page.");
             Check(await File.ReadAllTextAsync(service.SettingsPath) == storedBefore, "Import/export alone do not change live settings.");
             var exported = await File.ReadAllTextAsync(export);
             Check(!exported.Contains(paths.ConfigurationDirectory) && !exported.Contains(paths.WorkspaceDirectory), "Export does not include local configuration/workspace paths.");
@@ -125,6 +170,22 @@ public partial class App
             await Task.WhenAll(service.SaveAsync(original), service.SaveAsync(original with { UiLanguage = "ja-JP" }));
             Check(service.Load().WorkspacePresets.Single() == preset, "Overlapping settings saves each commit a complete file.");
 
+            // Two application processes can start from the same baseline and
+            // save unrelated preferences later. A stale writer must merge only
+            // its changed fields rather than erase the other process's update.
+            await service.SaveAsync(original);
+            var firstInstance = new ApplicationSettingsService(paths);
+            var secondInstance = new ApplicationSettingsService(paths);
+            var firstBaseline = firstInstance.Load();
+            var secondBaseline = secondInstance.Load();
+            await firstInstance.SaveAsync(firstBaseline with { PageListWidth = 333 });
+            await secondInstance.SaveAsync(secondBaseline with { UiLanguage = LocalizationService.JapaneseLanguage });
+            var mergedSettings = new ApplicationSettingsService(paths).Load();
+            Check(
+                mergedSettings.PageListWidth == 333 &&
+                mergedSettings.UiLanguage == LocalizationService.JapaneseLanguage,
+                "Stale application instances merge unrelated settings changes.");
+
             var vm = new MainWindowViewModel(new ProjectPackageService(), new PdfPreviewService(), new PdfExportService(),
                 new NdlOcrCompanionService(), new DiagnosticLog(paths.LogDirectory), paths, () => { });
             main.DataContext = vm;
@@ -151,8 +212,12 @@ public partial class App
                 LocalizationService.SetLanguage(uiLanguage);
                 var dialog = new ApplicationSettingsWindow(captured, "Portable", service.SettingsPath)
                 {
-                    WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000,
-                    ShowActivated = false, ShowInTaskbar = false, ConfirmManagementAction = _ => true,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -20000,
+                    Top = -20000,
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    ConfirmManagementAction = _ => true,
                     ManagementMessageOverride = _ => { },
                 };
                 dialog.Show();
@@ -206,8 +271,121 @@ public partial class App
             }
 
             var pdf = Path.Combine(output, "source.pdf");
-            WriteDocumentUiTestPdf(pdf);
+            WriteDocumentUiTestPdf(pdf, 6);
             await vm.LoadPdfForDiagnosticsAsync(pdf);
+            vm.DocumentViewMode = DocumentViewMode.SinglePage;
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.Continuous;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            main.UpdateLayout();
+            var continuousHost = (Controls.ContinuousPagePanel)main.FindName("ContinuousDocumentLayoutHost");
+            Check(continuousHost.Visibility == Visibility.Visible &&
+                  continuousHost.PageCount == vm.PageItems.Count &&
+                  continuousHost.Children.Count <= 13 &&
+                  ReferenceEquals(((Border)main.FindName("PreviewPageHost")).Parent, continuousHost),
+                "Continuous view exposes every logical page through a virtualized layout while retaining only bounded visual children.");
+            Border? passivePage = null;
+            for (var attempt = 0; attempt < 200 && passivePage is null; attempt++)
+            {
+                passivePage = continuousHost.Children.OfType<Border>().SingleOrDefault(element => element.Tag is 2);
+                if (passivePage is null) await Task.Delay(25);
+            }
+            Check(passivePage is not null, "Continuous view realizes the visible second page.");
+            var passiveImage = ((Grid)passivePage!.Child).Children.OfType<Image>().Single();
+            for (var attempt = 0; attempt < 200 && passiveImage.Source is null; attempt++)
+            {
+                await Task.Delay(25);
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+            }
+            Check(passiveImage.Source is not null && !vm.HasNextPreview,
+                "Continuous view lazily renders a visible page through its bounded viewport cache, not the facing-page neighbor slots.");
+            ((ScrollViewer)main.FindName("PreviewScrollViewer")).ScrollToEnd();
+            Border? lastPage = null;
+            Image? lastImage = null;
+            for (var attempt = 0; attempt < 200 && lastImage?.Source is null; attempt++)
+            {
+                await Task.Delay(25);
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+                lastPage = continuousHost.Children.OfType<Border>().SingleOrDefault(element => element.Tag is 6);
+                lastImage = lastPage?.Child is Grid lastSurface ? lastSurface.Children.OfType<Image>().Single() : null;
+            }
+            Check(lastImage?.Source is not null,
+                "Scrolling to the end reaches and lazily renders the last page without replacing the document with a three-page window.");
+            vm.NavigateFromAdjacentPreview(2);
+            for (var attempt = 0; attempt < 200 && vm.SelectedPage?.PageNumber != 2; attempt++) await Task.Delay(10);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(vm.SelectedPage?.PageNumber == 2 &&
+                  ReferenceEquals(((Border)main.FindName("PreviewPageHost")).Parent, continuousHost) &&
+                  ((Border)main.FindName("PreviewPageHost")).Tag is 2,
+                "Selecting any continuous preview promotes that position to the editable page without leaving continuous view.");
+            vm.NavigateFromAdjacentPreview(1);
+            for (var attempt = 0; attempt < 200 && vm.SelectedPage?.PageNumber != 1; attempt++) await Task.Delay(10);
+            vm.FacingPagesShowCoverSeparately = true;
+            vm.FacingPagesBindingDirection = FacingPageBindingDirection.LeftBinding;
+            vm.DocumentViewMode = DocumentViewMode.FacingPages;
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.PageByPage;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            var coverLayout = vm.GetCurrentFacingPageLayout();
+            Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1,
+                $"Left-bound facing view places a separate cover on the right (selected={vm.SelectedPage?.PageNumber}, left={coverLayout.LeftPageNumber}, right={coverLayout.RightPageNumber}, column={Grid.GetColumn((Border)main.FindName("PreviewPageHost"))}).");
+            Check(((Border)main.FindName("FacingBlankPageHost")).Visibility == Visibility.Hidden,
+                "Facing view reserves the cover's empty side without drawing a white blank page.");
+            Check(main.GetPreviewLayoutDimensions().Width > vm.PreviewPixelWidth * 2,
+                "Facing view fit dimensions include both sides of the spread.");
+            Check(vm.DocumentViewModeDescription.Contains("表紙", StringComparison.Ordinal) ||
+                  vm.DocumentViewModeDescription.Contains("cover", StringComparison.OrdinalIgnoreCase),
+                "Facing view exposes the active cover behavior in its description.");
+            vm.FacingPagesBindingDirection = FacingPageBindingDirection.RightBinding;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 0 &&
+                  Grid.GetColumn((Border)main.FindName("FacingBlankPageHost")) == 1,
+                "Right-bound facing view places a separate cover on the left.");
+            vm.FacingPagesShowCoverSeparately = false;
+            for (var attempt = 0; attempt < 200 && !vm.HasNextPreview; attempt++) await Task.Delay(10);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1 &&
+                  Grid.GetColumn((Border)main.FindName("NextPreviewPageHost")) == 0 &&
+                  ((Border)main.FindName("FacingBlankPageHost")).Visibility == Visibility.Collapsed &&
+                  vm.NextPreviewPageNumber == 2,
+                "Without a separate cover, right-bound facing view pairs pages 1 and 2 in right-to-left order.");
+            vm.NavigateFromAdjacentPreview(2);
+            for (var attempt = 0; attempt < 200 && (vm.SelectedPage?.PageNumber != 2 || !vm.HasPreviousPreview); attempt++) await Task.Delay(10);
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 0 &&
+                  Grid.GetColumn((Border)main.FindName("PreviousPreviewPageHost")) == 1 &&
+                  vm.PreviousPreviewPageNumber == 1,
+                "Selecting the second page retains the right-bound page pair and correct companion.");
+            vm.FacingPagesBindingDirection = FacingPageBindingDirection.LeftBinding;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1 &&
+                  Grid.GetColumn((Border)main.FindName("PreviousPreviewPageHost")) == 0,
+                "Changing to left binding reverses the same pair without rebuilding the source PDF.");
+            vm.NavigateFromAdjacentPreview(1);
+            for (var attempt = 0; attempt < 200 && vm.SelectedPage?.PageNumber != 1; attempt++) await Task.Delay(10);
+            vm.FacingPagesShowCoverSeparately = true;
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.Continuous;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            main.UpdateLayout();
+            var separateCover = continuousHost.GetPageSlotBounds(1);
+            var followingSpread = continuousHost.GetPageSlotBounds(2);
+            Check(continuousHost.Visibility == Visibility.Visible &&
+                  separateCover.Left > 0 && followingSpread.Top > separateCover.Top,
+                "Continuous facing view reserves an undrawn left side for a separate left-bound cover and places the next spread below it.");
+            vm.FacingPagesShowCoverSeparately = false;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            main.UpdateLayout();
+            var leftFirst = continuousHost.GetPageSlotBounds(1);
+            var leftSecond = continuousHost.GetPageSlotBounds(2);
+            Check(Math.Abs(leftFirst.Top - leftSecond.Top) < 0.1 && leftFirst.Left < leftSecond.Left,
+                "Continuous facing view combines pages 1 and 2 in one left-bound spread when the cover is not separate.");
+            vm.FacingPagesBindingDirection = FacingPageBindingDirection.RightBinding;
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            main.UpdateLayout();
+            var rightFirst = continuousHost.GetPageSlotBounds(1);
+            var rightSecond = continuousHost.GetPageSlotBounds(2);
+            Check(Math.Abs(rightFirst.Top - rightSecond.Top) < 0.1 && rightFirst.Left > rightSecond.Left,
+                "Continuous facing view mirrors the same spread for right binding without duplicating page images.");
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.PageByPage;
+            vm.DocumentViewMode = DocumentViewMode.SinglePage;
             vm.AddManualOcrRegion(new Rect(20, 20, 140, 30));
             // Use the actual UI zoom action to leave auto-fit; the fixture VM replaces the constructor VM.
             typeof(MainWindow).GetMethod("PreviewZoomInMenuItem_OnClick",

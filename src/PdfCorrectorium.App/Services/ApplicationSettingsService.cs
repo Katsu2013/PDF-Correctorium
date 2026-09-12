@@ -1,9 +1,39 @@
-using System.Text.Json;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows.Media;
 using PdfCorrectorium.Infrastructure;
 
 namespace PdfCorrectorium.App.Services;
+
+/// <summary>編集画面でページを並べる方法です。</summary>
+public enum DocumentViewMode
+{
+    /// <summary>現在ページだけを表示します。</summary>
+    SinglePage,
+    /// <summary>旧設定との互換用。形式16以降では単一ページ＋連続スクロールへ移行されます。</summary>
+    Continuous,
+    /// <summary>綴じ方向と表紙設定に従って左右2ページを表示します。</summary>
+    FacingPages,
+}
+
+/// <summary>ページまたは見開きを、切り替えて表示するか連続して表示するかを指定します。</summary>
+public enum DocumentPageFlowMode
+{
+    /// <summary>現在のページまたは見開きだけを表示します。</summary>
+    PageByPage,
+    /// <summary>全ページまたは全見開きを縦方向へ連続表示します。</summary>
+    Continuous,
+}
+
+/// <summary>編集画面の見開きでページを送る方向です。</summary>
+public enum FacingPageBindingDirection
+{
+    /// <summary>左から右へ読む文書として、若いページを左へ配置します。</summary>
+    LeftBinding,
+    /// <summary>右から左へ読む文書として、若いページを右へ配置します。</summary>
+    RightBinding,
+}
 
 /// <summary>
 /// 画面表示、編集補助、履歴、およびショートカットに関する利用者設定です。
@@ -14,7 +44,7 @@ namespace PdfCorrectorium.App.Services;
 /// </remarks>
 public sealed record ApplicationSettings
 {
-    public const int CurrentFormatVersion = 13;
+    public const int CurrentFormatVersion = 16;
     /// <summary>最近開いたファイルの表示件数。0は表示と新規記録を停止します。</summary>
     public int RecentFileLimit { get; init; } = 10;
     /// <summary>設定ファイルの移行判定に使用する形式バージョンです。</summary>
@@ -35,6 +65,14 @@ public sealed record ApplicationSettings
     public bool ShowPropertiesPanel { get; init; } = true;
     /// <summary>画面下部の状態・倍率表示を表示するかを指定します。</summary>
     public bool ShowStatusBar { get; init; } = true;
+    /// <summary>編集画面のページ表示方法です。PDFへ保存する初期表示設定とは独立しています。</summary>
+    public DocumentViewMode DocumentViewMode { get; init; } = DocumentViewMode.SinglePage;
+    /// <summary>編集画面をページ切り替えまたは連続スクロールのどちらで表示するかを指定します。</summary>
+    public DocumentPageFlowMode DocumentPageFlowMode { get; init; } = DocumentPageFlowMode.PageByPage;
+    /// <summary>見開き表示で先頭ページを表紙として片側へ単独配置するかを指定します。</summary>
+    public bool FacingPagesShowCoverSeparately { get; init; } = true;
+    /// <summary>見開き表示の左右配置に使用する綴じ方向です。</summary>
+    public FacingPageBindingDirection FacingPagesBindingDirection { get; init; } = FacingPageBindingDirection.LeftBinding;
     /// <summary>ページ一覧パネルの幅をDIP単位で保持します。</summary>
     public double PageListWidth { get; init; } = 230;
     /// <summary>OCRプロパティパネルの幅をDIP単位で保持します。</summary>
@@ -107,6 +145,19 @@ public sealed record ApplicationSettings
     {
         FormatVersion = CurrentFormatVersion,
         RecentFileLimit = Math.Clamp(RecentFileLimit, 0, RecentFilesService.MaximumCount),
+        // 形式15までの「連続ページ」は単一ページ配置とスクロール方式を兼ねていたため、
+        // 形式16で独立した2軸へ無損失で移行します。
+        DocumentViewMode = DocumentViewMode is DocumentViewMode.SinglePage or DocumentViewMode.FacingPages
+            ? DocumentViewMode
+            : DocumentViewMode.SinglePage,
+        DocumentPageFlowMode = FormatVersion < 16 && DocumentViewMode == DocumentViewMode.Continuous
+            ? DocumentPageFlowMode.Continuous
+            : Enum.IsDefined(DocumentPageFlowMode)
+                ? DocumentPageFlowMode
+                : DocumentPageFlowMode.PageByPage,
+        FacingPagesBindingDirection = Enum.IsDefined(FacingPagesBindingDirection)
+            ? FacingPagesBindingDirection
+            : FacingPageBindingDirection.LeftBinding,
         WorkspacePresets = WorkspacePreset.NormalizeList(WorkspacePresets),
         UiLanguage = string.Equals(UiLanguage, LocalizationService.EnglishLanguage, StringComparison.OrdinalIgnoreCase)
             ? LocalizationService.EnglishLanguage
@@ -170,6 +221,8 @@ public sealed class ApplicationSettingsService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
     };
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private ApplicationSettings? _baseline;
 
     public ApplicationSettingsService(ApplicationPaths paths) =>
         SettingsPath = Path.Combine(paths.ConfigurationDirectory, "settings.json");
@@ -184,13 +237,13 @@ public sealed class ApplicationSettingsService
     {
         try
         {
-            if (!File.Exists(SettingsPath)) return new ApplicationSettings();
+            if (!File.Exists(SettingsPath)) return SetBaseline(new ApplicationSettings());
             var json = File.ReadAllText(SettingsPath);
-            return (JsonSerializer.Deserialize<ApplicationSettings>(json, JsonOptions) ?? new ApplicationSettings()).Normalize();
+            return SetBaseline((JsonSerializer.Deserialize<ApplicationSettings>(json, JsonOptions) ?? new ApplicationSettings()).Normalize());
         }
-        catch (IOException) { return new ApplicationSettings(); }
-        catch (UnauthorizedAccessException) { return new ApplicationSettings(); }
-        catch (JsonException) { return new ApplicationSettings(); }
+        catch (IOException) { return SetBaseline(new ApplicationSettings()); }
+        catch (UnauthorizedAccessException) { return SetBaseline(new ApplicationSettings()); }
+        catch (JsonException) { return SetBaseline(new ApplicationSettings()); }
     }
 
     /// <summary>
@@ -200,9 +253,92 @@ public sealed class ApplicationSettingsService
     /// <param name="cancellationToken">処理の取り消しを通知するトークン。</param>
     public async Task SaveAsync(ApplicationSettings settings, CancellationToken cancellationToken = default)
     {
-        var normalized = settings.Normalize();
-        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        await SettingsTransferService.WriteAtomicallyAsync(SettingsPath,
-            JsonSerializer.Serialize(normalized, JsonOptions), cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(settings);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            await using var fileLock = await AcquireLockAsync(cancellationToken).ConfigureAwait(false);
+            var submitted = settings.Normalize();
+            var latest = ReadCurrentSettings();
+            var merged = MergeChangedProperties(_baseline, submitted, latest).Normalize();
+            await SettingsTransferService.WriteAtomicallyAsync(
+                SettingsPath,
+                JsonSerializer.Serialize(merged, JsonOptions),
+                cancellationToken).ConfigureAwait(false);
+            _baseline = merged;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 別プロセスが設定を書き換えていても、呼出元が読み込み後に変更した項目だけを
+    /// 最新ファイルへ反映します。これにより同時起動時の無関係な設定消失を防ぎます。
+    /// </summary>
+    private static ApplicationSettings MergeChangedProperties(
+        ApplicationSettings? baseline,
+        ApplicationSettings submitted,
+        ApplicationSettings latest)
+    {
+        if (baseline is null) return submitted;
+
+        var baselineJson = JsonSerializer.SerializeToNode(baseline, JsonOptions)!.AsObject();
+        var submittedJson = JsonSerializer.SerializeToNode(submitted, JsonOptions)!.AsObject();
+        var latestJson = JsonSerializer.SerializeToNode(latest, JsonOptions)!.AsObject();
+        foreach (var property in submittedJson)
+        {
+            baselineJson.TryGetPropertyValue(property.Key, out var oldValue);
+            if (!JsonNode.DeepEquals(oldValue, property.Value))
+                latestJson[property.Key] = property.Value?.DeepClone();
+        }
+
+        return latestJson.Deserialize<ApplicationSettings>(JsonOptions) ?? submitted;
+    }
+
+    private ApplicationSettings ReadCurrentSettings()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return new ApplicationSettings();
+            using var stream = new FileStream(
+                SettingsPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read | FileShare.Delete);
+            return (JsonSerializer.Deserialize<ApplicationSettings>(stream, JsonOptions) ?? new ApplicationSettings()).Normalize();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new ApplicationSettings();
+        }
+    }
+
+    private async Task<FileStream> AcquireLockAsync(CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(
+                    SettingsPath + ".lock",
+                    FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite,
+                    FileShare.None);
+            }
+            catch (IOException) when (attempt < 100)
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private ApplicationSettings SetBaseline(ApplicationSettings settings)
+    {
+        _baseline = settings.Normalize();
+        return _baseline;
     }
 }

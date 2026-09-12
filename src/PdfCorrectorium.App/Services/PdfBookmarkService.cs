@@ -172,6 +172,77 @@ public sealed class PdfBookmarkService
         }
     }
 
+    /// <summary>PDF Catalogから初期ページ配置と綴じ方向を読み取ります。</summary>
+    public async Task<ViewerSettings> ReadViewerSettingsAsync(
+        string pdfPath,
+        CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(pdfPath);
+        string? stagedPath = null;
+        try
+        {
+            var qpdfInputPath = fullPath;
+            if (fullPath.Length >= 220)
+            {
+                var operationDirectory = Path.Combine(
+                    Path.GetTempPath(), "PDF-Correctorium", "viewer-settings", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(operationDirectory);
+                stagedPath = Path.Combine(operationDirectory, "input.pdf");
+                File.Copy(fullPath, stagedPath, overwrite: true);
+                qpdfInputPath = stagedPath;
+            }
+
+            var trailerJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                ["--json-output=2", "--json-object=trailer", qpdfInputPath, "-"], cancellationToken))!;
+            var trailerObjects = trailerJson["qpdf"]![1]!.AsObject();
+            var rootReference = trailerObjects["trailer"]!["value"]!["/Root"]!.GetValue<string>();
+            var (rootObjectNumber, rootGeneration) = ParseReference(rootReference);
+            var catalogJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                ["--json-output=2", $"--json-object={rootObjectNumber},{rootGeneration}", qpdfInputPath, "-"],
+                cancellationToken))!;
+            var catalogValue = catalogJson["qpdf"]![1]![$"obj:{rootReference}"]!["value"]!.AsObject();
+            var pageLayout = catalogValue["/PageLayout"] is JsonValue layoutNode &&
+                             layoutNode.TryGetValue<string>(out var layoutName)
+                ? layoutName
+                : null;
+            string? direction = null;
+            if (catalogValue["/ViewerPreferences"] is JsonObject directPreferences)
+            {
+                direction = ReadName(directPreferences["/Direction"]);
+            }
+            else if (catalogValue["/ViewerPreferences"] is JsonValue referenceNode &&
+                     referenceNode.TryGetValue<string>(out var preferencesReference))
+            {
+                var (objectNumber, generation) = ParseReference(preferencesReference);
+                var preferencesJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                    ["--json-output=2", $"--json-object={objectNumber},{generation}", qpdfInputPath, "-"],
+                    cancellationToken))!;
+                var preferences = preferencesJson["qpdf"]![1]![$"obj:{preferencesReference}"]!["value"]!.AsObject();
+                direction = ReadName(preferences["/Direction"]);
+            }
+            return PdfViewerSettingsMapping.FromCatalogNames(pageLayout, direction);
+        }
+        finally
+        {
+            if (stagedPath is not null)
+            {
+                var operationDirectory = Path.GetDirectoryName(stagedPath)!;
+                TryDeleteFile(stagedPath);
+                try
+                {
+                    if (Directory.Exists(operationDirectory)) Directory.Delete(operationDirectory);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort cleanup; a scanner may transiently retain the temporary file.
+                }
+            }
+        }
+    }
+
+    private static string? ReadName(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<string>(out var name) ? name : null;
+
     /// <summary>
     /// しおりをPDF CorrectoriumのJSON交換形式へ書き出します。
     /// </summary>
@@ -415,6 +486,8 @@ public sealed class PdfBookmarkService
             PdfOutputVersion.Automatic,
             null,
             true,
+            null,
+            null,
             cancellationToken);
     }
 
@@ -437,6 +510,8 @@ public sealed class PdfBookmarkService
         PdfOutputVersion outputPdfVersion,
         string? documentLanguage,
         bool replaceBookmarks,
+        IReadOnlyList<PdfInternalLink>? internalLinks,
+        IReadOnlyList<OcrPage>? projectPages,
         CancellationToken cancellationToken = default)
     {
         var fullPath = Path.GetFullPath(pdfPath);
@@ -557,6 +632,18 @@ public sealed class PdfBookmarkService
                 updateObjects[$"obj:{infoReference}"] = new JsonObject { ["value"] = infoValue };
             }
 
+            if (internalLinks is { Count: > 0 } && projectPages is { Count: > 0 })
+            {
+                nextObjectId = await WriteInternalLinkObjectsAsync(
+                    qpdfInputPath,
+                    internalLinks,
+                    projectPages,
+                    pageReferences,
+                    updateObjects,
+                    nextObjectId,
+                    cancellationToken);
+            }
+
             updateObjects[$"obj:{rootReference}"] = new JsonObject { ["value"] = catalogValue };
             var update = new JsonObject
             {
@@ -603,6 +690,84 @@ public sealed class PdfBookmarkService
                 // Antivirus scanners can briefly retain the empty directory; the OS may clean it later.
             }
         }
+    }
+
+    /// <summary>アプリで設定した内部リンクをLink注釈とGoTo宛先としてページ辞書へ追加します。</summary>
+    private async Task<int> WriteInternalLinkObjectsAsync(
+        string pdfPath,
+        IReadOnlyList<PdfInternalLink> links,
+        IReadOnlyList<OcrPage> projectPages,
+        IReadOnlyDictionary<int, string> pageReferences,
+        JsonObject updateObjects,
+        int nextObjectId,
+        CancellationToken cancellationToken)
+    {
+        var pagesById = projectPages.ToDictionary(page => page.Id);
+        foreach (var sourceGroup in links.Where(link => link.IsEnabled).GroupBy(link => link.SourcePageId))
+        {
+            if (!pagesById.TryGetValue(sourceGroup.Key, out var sourcePage) ||
+                !pageReferences.TryGetValue(sourcePage.PageNumber, out var sourcePageReference)) continue;
+            var (pageObjectNumber, pageGeneration) = ParseReference(sourcePageReference);
+            var pageObjectJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                ["--json-output=2", $"--json-object={pageObjectNumber},{pageGeneration}", pdfPath, "-"], cancellationToken))!;
+            var pageValue = pageObjectJson["qpdf"]![1]![$"obj:{sourcePageReference}"]!["value"]!.DeepClone().AsObject();
+
+            JsonArray annotations;
+            string? indirectAnnotationsReference = null;
+            if (pageValue["/Annots"] is JsonArray directAnnotations)
+            {
+                annotations = directAnnotations.DeepClone().AsArray();
+            }
+            else if (pageValue["/Annots"] is JsonValue annotsReferenceNode &&
+                     annotsReferenceNode.TryGetValue<string>(out var annotsReference) && annotsReference.EndsWith(" R", StringComparison.Ordinal))
+            {
+                indirectAnnotationsReference = annotsReference;
+                var (annotsObjectNumber, annotsGeneration) = ParseReference(annotsReference);
+                var annotsJson = JsonNode.Parse(await RunQpdfForTextAsync(
+                    ["--json-output=2", $"--json-object={annotsObjectNumber},{annotsGeneration}", pdfPath, "-"], cancellationToken))!;
+                annotations = annotsJson["qpdf"]![1]![$"obj:{annotsReference}"]!["value"]!.DeepClone().AsArray();
+            }
+            else
+            {
+                annotations = [];
+            }
+
+            foreach (var link in sourceGroup)
+            {
+                if (!pagesById.TryGetValue(link.DestinationPageId, out var destinationPage) ||
+                    !pageReferences.TryGetValue(destinationPage.PageNumber, out var destinationPageReference)) continue;
+                var bounds = link.SourceBounds ?? sourcePage.TextRegions.FirstOrDefault(region => region.Id == link.SourceRegionId)?.EditedGeometry.LocalBounds;
+                if (bounds is not { IsValid: true } rectangle) continue;
+                var annotationReference = $"{nextObjectId++} 0 R";
+                var destination = link.DestinationZoomPercent is > 0
+                    ? new JsonArray(destinationPageReference, "/XYZ",
+                        link.DestinationPosition?.X is { } x ? JsonValue.Create(x) : null,
+                        link.DestinationPosition?.Y is { } y ? JsonValue.Create(y) : null,
+                        link.DestinationZoomPercent.Value / 100d)
+                    : new JsonArray(destinationPageReference, "/Fit");
+                var annotation = new JsonObject
+                {
+                    ["/Type"] = "/Annot",
+                    ["/Subtype"] = "/Link",
+                    ["/Rect"] = new JsonArray(rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Top),
+                    ["/Border"] = new JsonArray(0, 0, 0),
+                    ["/Dest"] = destination,
+                    ["/NM"] = "u:pdfcorrectorium-link-" + link.Id.ToString("N"),
+                };
+                if (!string.IsNullOrWhiteSpace(link.Description)) annotation["/Contents"] = "u:" + link.Description;
+                updateObjects[$"obj:{annotationReference}"] = new JsonObject { ["value"] = annotation };
+                annotations.Add(annotationReference);
+            }
+
+            if (indirectAnnotationsReference is not null)
+                updateObjects[$"obj:{indirectAnnotationsReference}"] = new JsonObject { ["value"] = annotations };
+            else
+            {
+                pageValue["/Annots"] = annotations;
+                updateObjects[$"obj:{sourcePageReference}"] = new JsonObject { ["value"] = pageValue };
+            }
+        }
+        return nextObjectId;
     }
 
     /// <summary>アプリの表示設定をPDF CatalogのPageLayoutとViewerPreferencesへ変換します。</summary>

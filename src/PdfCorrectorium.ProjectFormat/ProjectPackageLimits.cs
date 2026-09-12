@@ -21,4 +21,9 @@ public sealed record ProjectPackageLimits
     public long MaximumTotalUncompressedBytes { get; init; } = 17L * 1024 * 1024 * 1024;
     /// <summary>圧縮前サイズを圧縮後サイズで割った最大比率です。</summary>
     public double MaximumCompressionRatio { get; init; } = 1000;
+    public int MaximumCommentCount { get; init; } = 100_000;
+    public int MaximumTagCount { get; init; } = 4_096;
+    public int MaximumInternalLinkCount { get; init; } = 100_000;
+    public int MaximumCommentCharacters { get; init; } = 32_768;
+    public int MaximumTagNameCharacters { get; init; } = 128;
 }

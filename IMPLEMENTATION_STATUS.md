@@ -1,6 +1,218 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.132
+## Current repository snapshot: v1.0.0-dev.151
+
+### Reliability, concurrency and verification hardening (2026-09-12)
+
+- The non-interactive page-render diagnostic now awaits the isolated PDF worker asynchronously instead of synchronously blocking the WPF dispatcher. Its real PDF-to-PNG path completes and shuts down normally.
+- Explicit current-page rendering uses the foreground PDF worker; thumbnails, adjacent/continuous-page previews and document-wide scan rendering use a separate background worker. Background look-ahead can no longer hold the interactive render queue.
+- Startup diagnostics write one process-specific log with cross-reader sharing and never prevent startup when a log destination becomes unavailable. Concurrent application instances no longer race on a single daily file.
+- Application settings saves are serialized across processes and merge only fields changed since each service loaded its baseline. A stale instance therefore preserves unrelated settings saved by another instance.
+- Page working-file cleanup no longer treats a newly created session directory as abandoned before its owner creates the lock file. A grace period and open-only lock probing prevent concurrent launches from deleting one another's initialization state.
+- Cancellation now reaches document search and quality-scan page loading. PDF native result codes that affect visibility, render mode, color and mark names are checked instead of silently accepting invalid data.
+- The standard `dotnet test` solution command executes the dependency-free contract runner, preventing a zero-test success. Formatting policy now matches the repository's LF source files, and disposable cancellation/stream resources are released consistently.
+- Product/numeric versions are 1.0.0-dev.151 / 1.0.0.151. Project format 1.4, minimum application version dev.143, and application-settings format 16 are unchanged because no persisted schema changed. The dev.150 portable candidate was rejected before commit or release when its concurrent-launch check exposed the page-session initialization race; changed source therefore advanced to dev.151.
+
+Repository-root Release build succeeded with 0 warnings/errors. Standard `dotnet test` executed all 27 contract checks. Document-UI 151, OCR-rendering 29, recent-files 76, review 69, page-history 39, file-launch 80, persistence 59, settings/concurrency 99, keyboard 4,050, pre-publication versioning 17 and dependency-lock 2 checks passed; editor, render and source smoke diagnostics exited 0. Direct PDF export, project save/reopen/export and bookmark output passed, and qpdf found no syntax or stream errors in all three outputs. Two independent 32-process concurrent smoke runs completed without failure; the recorded run produced 32 unique startup logs. Results: `outputs/.verification/final-dev151-20260912-105239109`, versioning results: `outputs/.verification/versioning-dev151-20260912-105357878`.
+
+The certified portable output is produced by `tools/BuildPortable.ps1` under the timestamped `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.151-win-x64-*` directory. `GetBuildVersion.ps1 -PublishDirectory` and published dependency/version checks must agree with product version `1.0.0-dev.151`, numeric version `1.0.0.151`, the distribution label and `build-info.json`; the exact path and fingerprint are taken from that immutable build record.
+
+## Previous repository snapshot: v1.0.0-dev.149
+
+### PDF initial view and project-specific editor view (2026-09-12)
+
+- Opening a PDF now reads Catalog `/PageLayout` and `/ViewerPreferences /Direction`. The first editor layout uses the document's single/facing and page-by-page/continuous combination, cover placement, and binding direction; missing entries use the PDF defaults of Single Page and L2R.
+- An intentional editor layout, flow, cover, or binding change is stored as the optional project `EditorViewState`, marks the project unsaved, and is restored on reopening. Merely applying a PDF's initial view or a saved project view does not create an override or mark the project modified.
+- Document Properties can now select continuous facing pages, which writes `/TwoColumnLeft` or `/TwoColumnRight`; the existing four combinations continue to use bounded lazy rendering and do not create a working PDF.
+- Product/numeric versions are 1.0.0-dev.149 / 1.0.0.149. Project format 1.4, minimum application version dev.143, and application-settings format 16 are unchanged because the project field is optional.
+
+Repository-root Release build succeeded with 0 warnings/errors. 27 contract, 151 document-UI, 4,050 keyboard, 98 settings/layout, 59 persistence and 17 pre-publication version checks passed; source smoke exited 0. The new coverage reads missing and explicit PDF catalog view settings, saves an intentional project override, restores it without a dirty state, and exposes Continuous Facing Pages in Document Properties. Results: `outputs/.verification/final-dev149-20260912-042250874`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.149-win-x64-20260912-042510`. The packaged document-UI 151, settings 98 and persistence 59 checks passed, packaged smoke exited 0, and 18 published version/dependency checks passed at `outputs/.verification/packaged-dev149-20260912-042536200`. Product version `1.0.0-dev.149`, numeric version `1.0.0.149`, distribution label and binary metadata agree. SDK 10.0.400; source fingerprint `D8EE5E71F24D03C5FDC666ECC32F8B3A76CD64D6509DCBCFFAC7BC723EAEC08D`.
+
+## Previous repository snapshot: v1.0.0-dev.148
+
+### Independent page layout and continuous facing spreads (2026-09-11)
+
+- Page layout (Single Page / Facing Pages) and flow (Page by Page / Continuous Scrolling) are now independent settings, so all four combinations are available from the View menu and toolbar. Settings format 16 migrates the former Continuous Pages value to Single Page plus Continuous Scrolling.
+- A missing cover partner or unpaired final page reserves its position but draws no white page surface, border, or shadow. Page-by-page and continuous facing views use the same cover/binding calculator.
+- Continuous facing spreads reuse the bounded virtualized layout and at most 12 viewport-neighbor images. Changing layout, cover, or binding cancels stale work and does not rebuild, copy, or mark the source PDF/project as modified. Only the current page remains the interactive OCR editing surface.
+- Product/numeric versions are 1.0.0-dev.148 / 1.0.0.148. Project format 1.4 and minimum application version dev.143 are unchanged.
+
+Repository-root Release build succeeded with 0 warnings/errors. 27 contract, 150 document-UI, 4,050 keyboard, 98 settings/layout and 17 pre-publication version checks passed; source smoke exited 0. The settings suite covers legacy migration, the four independent layout/flow combinations, undrawn empty sides, both bindings, bounded lazy rendering, and preserved editing/Undo state. Results: `outputs/.verification/final-dev148-20260911-195325189`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.148-win-x64-20260911-195430`. The packaged settings diagnostic repeated all 98 checks, packaged smoke exited 0, and 18 published version/dependency checks passed at `outputs/.verification/packaged-dev148-20260911-195506170`. Product version `1.0.0-dev.148`, numeric version `1.0.0.148`, distribution label and binary metadata agree. SDK 10.0.400; source fingerprint `DD247243453FD12A5FFE2B5A40B881D826CFB1C019312205BC15F1AE98B1C301`.
+
+## Previous repository snapshot: v1.0.0-dev.147
+
+### Facing-page cover and binding controls (2026-09-11)
+
+- Facing Pages now independently supports showing page 1 as a separate cover and choosing left or right binding. Left binding places the earlier page on the left and a separate cover on the right; right binding mirrors the spread and cover. An unpaired first or final page receives a blank opposite side.
+- The shared, side-effect-free `FacingPageLayoutCalculator` drives both WPF placement and companion-page lazy rendering. Changing the options cancels stale companion rendering and never rebuilds or copies the source PDF.
+- Options are available in View > Page Display > Facing-page Settings and Settings > Display. They persist in application settings format 15, normalize unknown binding values to left binding, and remain independent from project format 1.4 and exported-PDF viewer preferences.
+- Product/numeric versions are 1.0.0-dev.147 / 1.0.0.147.
+
+Repository-root Release build succeeded with 0 warnings/errors. 27 contract, 150 document-UI, 3,922 keyboard, 94 settings/facing-view and 17 pre-publication version checks passed; source smoke exited 0. The settings diagnostic covers all four cover/binding combinations, companion navigation, an unpaired final page, persistence, unknown-value fallback, and unchanged edit/Undo state. Results: `outputs/.verification/final-dev147-20260911-142240685`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.147-win-x64-20260911-142615`. The packaged settings diagnostic repeated all 94 checks, packaged smoke exited 0, and 18 published version/dependency checks passed at `outputs/.verification/packaged-dev147-20260911-142636719`. Product version `1.0.0-dev.147`, numeric version `1.0.0.147`, distribution label and all five managed/application binary versions agree. SDK 10.0.400; source fingerprint `7D1ECC323711203D1D7DDF16C75C037F2ADF70B5950D6F8D04AEB54720ADFC23`. Git metadata is unavailable in this workspace, so Git tracking/commit/push were not performed.
+
+## Older repository snapshot: v1.0.0-dev.146
+
+Dev.146 introduced seamless full-document Continuous Pages using lightweight layout slots and a bounded 12-image viewport cache. Repository-root Release build succeeded with 0 warnings/errors. 27 contract, 150 document-UI, 3,868 keyboard, 86 settings/continuous-view and 17 pre-publication version checks passed; source smoke exited 0. Results: `outputs/.verification/final-dev146-20260911-125638498`.
+
+Its certified portable output is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.146-win-x64-20260911-125840`. The packaged settings diagnostic repeated all 86 checks, packaged smoke exited 0, and 18 published version/dependency checks passed at `outputs/.verification/packaged-dev146-20260911-125901341`. Source fingerprint: `42453ACA3E30501813D1854AF7D213C4F2E517C90B3979DE355F055EA381F019`.
+
+## Older repository snapshot: v1.0.0-dev.145
+
+Dev.145 introduced the Single Page, bounded neighboring-page Continuous Pages, and Facing Pages layouts. Its certified portable output was `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.145-win-x64-20260911-040357`; verification details remain in the test and operations records. Dev.146 supersedes its three-page Continuous Pages implementation.
+
+## Older repository snapshot: v1.0.0-dev.143
+
+### Logical page composition and bounded regenerated data (2026-09-10)
+
+- Page deletion, reordering and 90-degree rotation now update a stable-ID logical page sequence instead of generating a complete working PDF for every edit and Undo/Redo state. Preview, OCR geometry, bookmarks, comments, tags and internal links follow the logical pages. External-page insertion and final export materialize the physical PDF once at the required operation boundary.
+- Project format 1.4 makes `project.json` canonical and stops writing duplicate `source/source-reference.json`, per-page OCR JSON and regenerable thumbnails. Embedded PDFs are stored without futile ZIP recompression. Formats 1.0–1.3 remain readable; newly saved 1.4 projects require dev.143 or later.
+- Normal-mode saves leave stable external PDFs in place. Only session-owned physical PDFs, such as an external-page insertion result, are persisted to `.assets`; unreferenced SHA-256-named assets are reclaimed only after scanning the current project, autosave, versioned backups and pre-recovery copies.
+- Embedded-source materializations are limited by LRU order to 16 PDFs / 4 GiB. Versioned backups are limited by configured count and 4 GiB, pre-recovery copies to one, and duplicate fixed `.bak` creation has ended. In-memory thumbnails are limited to 64 entries and generated only within 32 pages of the current page; moving elsewhere refreshes that neighborhood.
+- Character-spacing QDF updates use a single streaming marker index and range-copy replacement rather than reading the full QDF into managed memory. Search and quality analysis render only 96-pixel-wide scan previews. Page-history snapshots no longer retain regenerable thumbnail byte arrays.
+- Product/numeric versions are 1.0.0-dev.143 / 1.0.0.143.
+
+Final verification: repository-root Release build succeeded with 0 warnings/errors. 27 contract, 38 logical page-history, 55 persistence, 29 OCR-rendering, 17 pre-publication version and 18 published version/dependency checks passed; the editor diagnostic (including streaming QDF replacement), packaged 38-check page-history, packaged 55-check persistence and packaged smoke diagnostics all exited 0. Results: `outputs/.verification/logical-page-dev143-20260910-194529133`, `outputs/.verification/storage-dev143-20260910-194552508`, `outputs/.verification/rendering-dev143-20260910-194552508`, `outputs/.verification/versioning-dev143-20260910-194641576`, `outputs/.verification/packaged-logical-page-dev143-20260910-194833357`, `outputs/.verification/packaged-storage-dev143-20260910-194833357`, `outputs/.verification/versioning-published-dev143-20260910-194751694`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.143-win-x64-20260910-194723`. Product version `1.0.0-dev.143`, numeric version `1.0.0.143`, distribution label and all five managed/application binary versions agree. SDK 10.0.400; source fingerprint `70C7F7CD4D198A7185B74DE60E4D90E3FD3F3D7B931385120F646D1A5FD82788`. Git metadata is unavailable in this workspace, so Git tracking/commit/push were not performed.
+
+## Previous repository snapshot: v1.0.0-dev.142
+
+### Bounded page-edit working history (2026-09-10)
+
+- Page insertion, deletion, reordering and rotation working PDFs are now governed by a dedicated retention policy: at most 12 session-owned PDFs and 1 GiB in total, including the current working PDF. The current file remains usable when it alone exceeds the byte budget; an additional revision is retained only when it fits.
+- Retention keeps one contiguous newest prefix of the shared OCR/page Undo timeline. It never removes an entry from the middle, which would make earlier OCR state inconsistent with the page structure. Unreachable PDFs are reclaimed immediately after trimming.
+- Shared before/after paths are counted once. Missing session-owned files form a safe history boundary rather than leaving a future failing Undo entry. The policy is separated from the ViewModel and accepts injected limits for deterministic diagnostics and future replacement by logical page-state materialization.
+- The page-history diagnostic now covers default-limit integration plus independent file-count, byte-count, shared-resource, missing-resource and immediate-reclamation decisions. Product/numeric versions: 1.0.0-dev.142 / 1.0.0.142. Project format remains 1.3 and minimum reader remains dev.137 because no persisted schema changed.
+
+Final verification: repository-root Release build succeeded with 0 warnings/errors. 24 contract, 37 page-history, 79 settings, 55 persistence and 18 published version/dependency checks passed, as did source and packaged smoke diagnostics. The packaged page-history diagnostic repeated all 37 checks against the delivered binaries. Results: `outputs/.verification/page-history-dev142-1789022594295`, `outputs/.verification/settings-dev142-1789022640417`, `outputs/.verification/persistence-dev142-1789022640417`, `outputs/.verification/versioning-dev142-20260910-154428512`, `outputs/.verification/packaged-page-history-dev142-1789022754168`, `outputs/.verification/versioning-published-dev142-20260910-154614273`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.142-win-x64-20260910-154528`. Product version `1.0.0-dev.142`, numeric version `1.0.0.142`, distribution label and all five managed/application binary versions agree. SDK 10.0.400; source fingerprint `C7E04484B06409B8334EAF261F62B5DB98186CDC9289DB361BFDFE80E9C9F82F`. Git metadata remained unavailable, so Git tracking/commit/push were not performed.
+
+## Previous repository snapshot: v1.0.0-dev.141
+
+### OCR overlay rendering costs (2026-09-10)
+
+- Replaced per-character Border/Viewbox/TextBlock visual trees with one `OcrCharacterLayer` per OCR region. Glyph layout caches are element-owned and bounded; selection, locks, search highlights, Unicode cells and zoom-aware border widths are preserved.
+- Cache only the current text segmentation and immutable cell snapshot. Text, geometry, selection, lock, search and undo/redo changes invalidate display data. Repeated unchanged reads do not allocate new cell arrays.
+- Instantiate the eight region resize handles only while their region is selected in line/paragraph mode outside review mode. Drag and undo still use the existing editing commands.
+- Added `--ocr-rendering-test` for mixed-script image equivalence, cache invalidation, actual editor bindings/resize events, and a 20,000-character synthetic cost comparison. The existing editor diagnostic also needed fixture cleanup: character-adjustment sample lines were contaminating a later two-line reading-order assertion. The same failure was reproduced with isolated dev.140 binaries before correcting the fixture.
+- Details, measurement limits and remaining rendering work: [OCR-RENDERING.md](OCR-RENDERING.md). Product/numeric versions: 1.0.0-dev.141 / 1.0.0.141. Project format remains 1.3, minimum reader dev.137.
+
+Final verification: repository-root Release build succeeded with 0 warnings/errors. 24 contract, 29 rendering, 150 document-UI, 69 review, 55 persistence, 79 settings, 3792 keyboard and 18 version/dependency checks passed, as did the editor diagnostic. Packaged rendering (29), persistence (55) and smoke diagnostics exited 0. Document-UI assertions cover title/About version strings; contract checks cover assembly and saved-manifest application versions. Results: `outputs/.verification/final-dev141-20260910-084845378`, `outputs/.verification/versioning-20260910-085123260`, `outputs/.verification/packaged-dev141-20260910-085121375`.
+
+Synthetic 250-region / 20,000-character rendering: 80,251 visual objects reduced to 251; initial construction/layout/drawing 4,333ms to 643ms; cumulative managed allocations 321,021,016 to 83,248,160 bytes. These are isolated component measurements, not end-to-end PDF speed or resident-memory figures. Repeated unchanged cell reads allocated 0 bytes; mixed-script baseline image difference was 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.141-win-x64-20260910-085048`. Product version `1.0.0-dev.141`, numeric version `1.0.0.141`, distribution label and all five managed/application binary versions agree. SDK 10.0.400; source fingerprint `C34BD4504CE131CA4676571E5392B1FF4653A735C840667D769C39E5E9F335CB`. This workspace is still not recognized as a Git repository; Git tracking/commit/push were not performed.
+
+## Previous repository snapshot: v1.0.0-dev.140
+
+### Reading-order badge foreground layer (2026-09-10)
+
+- Reading-order number badges are rendered in a dedicated, non-interactive foreground layer above all OCR region bodies, selection borders and resize handles. Adjacent regions can no longer cover the sequence number.
+- Badges use an opaque teal fill and a white outline so the number remains legible over the PDF and selection chrome at every zoom level.
+- Product/numeric versions: 1.0.0-dev.140 / 1.0.0.140. Project format remains 1.3 and its minimum reader remains dev.137 because this is a presentation-only correction.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 24 contract, 3792 keyboard, 150 document-UI, 55 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4372 total). The document-UI suite includes a selected region with its upper-left resize handle visible plus foreground-layer, non-interactive, opaque-fill and contrasting-outline assertions. Packaged persistence (55 checks) and smoke diagnostics both exited 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.140-win-x64-20260910-013719`. Product version `1.0.0-dev.140`, numeric version `1.0.0.140`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `9C6E7EDCA2B288A0C1D601123452191FE580ED8E581682E592813215A75343D9`. Results are under `outputs/.verification/final-dev140-20260910-013514593`, `outputs/.verification/versioning-20260910-014100167` and `outputs/.verification/packaged-dev140-20260910-013838980`.
+
+## Previous repository snapshot: v1.0.0-dev.139
+
+### User-facing project storage terminology (2026-09-10)
+
+- Project PDF storage is now presented consistently as `Portable mode` for a PDF embedded in the project and `Normal mode` for a source PDF referenced by relative path. Document Properties, the status bar and Save Project As use the same names.
+- The Save Project As mnemonics are now Alt+P for Portable mode and Alt+N for Normal mode. Internal manifest values remain `Embedded` and `Relative`, so the data format and existing projects are unchanged.
+- Product/numeric versions: 1.0.0-dev.139 / 1.0.0.139. Project format remains 1.3 and its minimum reader remains dev.137.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 24 contract, 3792 keyboard, 146 document-UI, 55 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4368 total). The settings suite encountered one transient file-lock failure during its first combined run and passed all 79 checks in a new isolated output folder. Packaged persistence (55 checks) and smoke diagnostics both exited 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.139-win-x64-20260910-010451`. Product version `1.0.0-dev.139`, numeric version `1.0.0.139`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `4103E0B097BF13B6589B89F4F73298CEA0D65723BE978204982EB918A3597E57`. Results are under `outputs/.verification/final-dev139-20260910-005935071`, `outputs/.verification/dev139-settings-retry-20260910-010211410`, `outputs/.verification/dev139-file-launch-20260910-010247802`, `outputs/.verification/versioning-20260910-010532886` and `outputs/.verification/packaged-dev139-20260910-010530306`.
+
+## Previous repository snapshot: v1.0.0-dev.138
+
+### Project storage labeling and status (2026-09-09)
+
+- Application data placement and project PDF storage are now distinct UI concepts. Portable/installed application-data placement is exposed only in Settings > Manage as `Application data storage mode`.
+- Document Properties labels the project value as `PDF storage` and reports the then-current Embedded / self-contained or Relative reference wording. The status bar reports the same project value, remains hidden without an open document, and updates immediately when Save As converts the project storage form.
+- Product/numeric versions: 1.0.0-dev.138 / 1.0.0.138. Project format remains 1.3 and its minimum reader remains dev.137 because this revision changes presentation, not persisted data compatibility.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 24 contract, 3792 keyboard, 144 document-UI, 55 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4366 total). Packaged persistence (55 checks) and smoke diagnostics both exited 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.138-win-x64-20260909-171102`. Product version `1.0.0-dev.138`, numeric version `1.0.0.138`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `FE2EB9DC63837D72C8EDFABFAB343A0D494107DC2F7872622F2E5D52CC5845F8`. Results are under `outputs/.verification/final-dev138-20260909-170841984`, `outputs/.verification/versioning-dev138-20260909-171032713`, `outputs/.verification/versioning-20260909-171140033` and `outputs/.verification/packaged-dev138-20260909-171138730`.
+
+## Previous repository snapshot: v1.0.0-dev.137
+
+### Non-copying relative project references (2026-09-09)
+
+- Saving an ordinary external PDF as a relative-reference project now records the PDF's path relative to the selected project location. It does not copy the PDF and does not create an adjacent `.assets` directory.
+- An adjacent `<project-name>.assets` directory is created only when an embedded source is converted to relative storage or a page-structure edit has produced a transient working PDF that must be made durable.
+- Save As recalculates an existing external reference from the new project location. Cross-drive relative references are rejected with guidance to choose embedded storage or a same-drive project location; the application does not silently duplicate the PDF.
+- Project format 1.3 permits normalized parent-directory segments in an external relative reference while continuing to reject rooted, drive-qualified, empty and `.` segments. Formats 1.0–1.2 remain readable; the minimum reader for newly saved 1.3 packages is dev.137.
+- Product/numeric versions: 1.0.0-dev.137 / 1.0.0.137.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 24 contract, 3792 keyboard, 139 document-UI, 55 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4361 total). Packaged persistence and smoke diagnostics both exited 0. The packaged test project records `..\source.pdf`, has no absolute path hint, resolves to the original PDF by fingerprint, and creates no `.assets` directory for normal relative saves.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.137-win-x64-20260909-140946`. Product version `1.0.0-dev.137`, numeric version `1.0.0.137`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `D07EE1412B59F93243982E8FC79DF53DC7EDBD8953B4997AAADC3B0B91C7FE93`. Results are under `outputs/.verification/final-dev137-20260909-140745220`, `outputs/.verification/versioning-20260909-140904954` and `outputs/.verification/packaged-dev137-20260909-141031745`.
+
+## Previous repository snapshot: v1.0.0-dev.136
+
+### Project storage selection on Save As (2026-09-09)
+
+- Save Project As now opens a localized, keyboard-accessible storage-options window after the destination path is selected. Embedded and relative-reference storage can be selected independently from portable/installed operation.
+- Newly opened PDFs still default to embedded storage in portable operation and relative storage in installed operation. Ordinary overwrite saves preserve the project mode; Save As can convert in either direction.
+- Embedded output is verified to contain `source/document.pdf`. Relative output stores a SHA-256-named PDF in the adjacent `.assets` directory and does not duplicate the PDF in the project package. Former `.assets` directories are not deleted automatically during conversion.
+- Product/numeric versions: 1.0.0-dev.136 / 1.0.0.136. Project format remains 1.2 and its minimum reader remains dev.133.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 23 contract, 3792 keyboard, 139 document-UI, 50 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4355 total). Packaged persistence and smoke diagnostics both exited 0. The storage UI selection, both defaults, and all four operation-mode/storage-mode combinations were exercised.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.136-win-x64-20260909-021904`. Product version `1.0.0-dev.136`, numeric version `1.0.0.136`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `909D65DA8F877525893CA3964965EA6344679A083C58422ACBA79B7D68BAC129`. Results are under `outputs/.verification/final-dev136-20260909-021720790`, `outputs/.verification/dev136-keyboard-20260909-021518138`, `outputs/.verification/versioning-20260909-021930393` and `outputs/.verification/packaged-dev136-20260909-021942070`.
+
+## Previous repository snapshot: v1.0.0-dev.135
+
+### Stable project-format compatibility metadata (2026-09-08)
+
+- Project format 1.2 now records its actual minimum reader, `1.0.0-dev.133`, independently from the current saving build. `applicationVersion` continues to record the exact build that saved the package.
+- The portable embedding correction from dev.134 remains in effect and is covered by package-content diagnostics.
+- Product/numeric versions: 1.0.0-dev.135 / 1.0.0.135. Project format remains 1.2 and its minimum reader remains dev.133.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 23 contract, 3776 keyboard, 139 document-UI, 43 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4332 total). Packaged persistence and smoke diagnostics both exited 0. The packaged project contains `source/document.pdf`; its manifest records minimum reader dev.133 and saving build dev.135.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.135-win-x64-20260908-010928`. Product version `1.0.0-dev.135`, numeric version `1.0.0.135`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `8F1ADA2EB47C8B0D1AE4213356CAB8BA9FCE4FCE039419EF099D0762D57D928A`. Results are under `outputs/.verification/final-dev135-20260908-010825709`, `outputs/.verification/versioning-20260908-010957421` and `outputs/.verification/packaged-dev135-20260908-011007893`.
+
+## Superseded intermediate snapshot: v1.0.0-dev.134
+
+### Portable-project embedding correction (2026-09-08)
+
+- Project storage is now determined by the application mode rather than a save-dialog default: portable operation always embeds the current working PDF as `source/document.pdf`; installed operation always stores a same-tree relative reference in the adjacent `<project-name>.assets` directory.
+- Re-saving a formerly linked project in portable operation converts it to embedded storage. The obsolete storage-choice dialog was removed so a portable project cannot accidentally remain linked.
+- Persistence diagnostics inspect the ZIP package itself for `source/document.pdf` and separately confirm that installed-mode projects remain relative and do not contain the embedded-PDF entry.
+- Product/numeric versions: 1.0.0-dev.134 / 1.0.0.134. Project format remains 1.2 and its minimum reader remains dev.133; this behavior correction does not change the data schema.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 23 contract, 3776 keyboard, 139 document-UI, 43 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4332 total). Packaged persistence and smoke diagnostics both exited 0. The persistence checks directly opened the produced project ZIP and confirmed `source/document.pdf`; the installed-mode control package confirmed that entry was absent.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.134-win-x64-20260908-005647`. Product version `1.0.0-dev.134`, numeric version `1.0.0.134`, distribution label and all five managed/application binary versions agree. The 15 native dependency records are present in `build-info.json`. SDK 10.0.400; source fingerprint `06A0A25664AC55F15A7DB2E584527AC6487137CCC42EC46BF0A4EB064328F396`. Results are under `outputs/.verification/final-dev134-20260908-005438390`, `outputs/.verification/versioning-20260908-005718834` and `outputs/.verification/packaged-dev134-20260908-005730688`.
+
+## Previous repository snapshot: v1.0.0-dev.133
+
+### Project storage, input notices, comments/tags and page links (2026-09-07)
+
+- Project format 1.2 explicitly supports self-contained PDF embedding and linked storage. Linked projects keep a SHA-256-named PDF in an adjacent `<project-name>.assets` directory and persist only a same-tree relative path; rooted, drive-qualified, dot-segment and escaping paths are rejected. Portable operation defaults to embedded storage and installed operation defaults to linked storage. Formats 1.0 and 1.1 remain readable.
+- Added bounded, heuristic input-PDF notices for encryption/security state, non-embedded fonts, AcroForm/XFA, JavaScript, embedded files, optional content, signatures, launch actions and incremental updates. This is not cryptographic signature verification, conformance certification or a safety guarantee.
+- Added document/page/OCR-region comments with importance, resolution state and tags. Comments, tags and app-authored links persist in projects and participate in Undo/Redo. Persistent audit history, tag-color editing and the remaining target kinds are future work.
+- Added page-link authoring on selected OCR regions, optional destination zoom, Ctrl+click following, back/forward navigation and PDF GoTo link annotations on export. Existing PDF-link editing, automatic page-number recognition, arbitrary rectangles and external links remain out of scope.
+- Product/numeric versions: 1.0.0-dev.133 / 1.0.0.133. Project format 1.2 and minimum reader dev.133. Git metadata remains unusable in this working directory; no Git history was recreated or modified.
+
+Final verification: the repository-root Release solution build succeeded with 0 warnings/errors. 23 contract, 3786 keyboard, 139 document-UI, 38 persistence, 69 review, 29 page-history, 76 recent-file, 79 settings, 80 file-launch and 18 version/dependency-management checks passed (4337 total). The source and packaged bookmark/link diagnostics and packaged smoke test exited 0. Documentation verification covered 55 Markdown files, 318 local links and 6 SVG files without broken references or XML errors.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.133-win-x64-20260907-013108`. Product version `1.0.0-dev.133`, numeric version `1.0.0.133`, distribution label and all five managed/application binary versions agree. The 15 native dependency files match `DEPENDENCIES.lock.json`; all 20 records are present in `build-info.json`. SDK 10.0.400; source fingerprint `11ABC390DB95F75F76E89109A9F07C3EB983B7E39A8B2C077B286BB7B375F598`. Results are under `outputs/.verification/dev133-keyboard-20260906-145726896`, `outputs/.verification/final-dev133-20260907-012853412`, `outputs/.verification/bookmark-dev133-20260907-013012876`, `outputs/.verification/versioning-dev133-publish-20260907-013200387`, `outputs/.verification/packaged-smoke-dev133-20260907-013211379` and `outputs/.verification/packaged-link-dev133-20260907-013222234`.
+
+## Previous repository snapshot: v1.0.0-dev.132
 
 ### Bookmark allocation fix and external-processing containment (2026-09-04)
 

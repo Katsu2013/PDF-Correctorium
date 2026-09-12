@@ -32,18 +32,20 @@ public static class PdfViewerSettingsMapping
         if (settings.PageMode == InitialPageMode.Continuous)
             return "/OneColumn";
 
+        var continuousFacing = settings.PageMode == InitialPageMode.ContinuousFacingPages;
+
         // TwoPageLeft/TwoPageRight の Left/Right は奇数ページを置く側です。
         // 左綴じ（右開き、L2R）は表紙（1ページ目）を右、
         // 右綴じ（左開き、R2L）は表紙を左に置きます。
         // 表紙を単独表示しない場合は、最初の見開きにおける奇数ページ側を反転します。
         if (settings.ShowCoverSeparately)
             return settings.BindingDirection == BindingDirection.RightToLeft
-                ? "/TwoPageLeft"
-                : "/TwoPageRight";
+                ? continuousFacing ? "/TwoColumnLeft" : "/TwoPageLeft"
+                : continuousFacing ? "/TwoColumnRight" : "/TwoPageRight";
 
         return settings.BindingDirection == BindingDirection.RightToLeft
-            ? "/TwoPageRight"
-            : "/TwoPageLeft";
+            ? continuousFacing ? "/TwoColumnRight" : "/TwoPageRight"
+            : continuousFacing ? "/TwoColumnLeft" : "/TwoPageLeft";
     }
 
     /// <summary>
@@ -58,5 +60,31 @@ public static class PdfViewerSettingsMapping
     {
         ArgumentNullException.ThrowIfNull(settings);
         return settings.BindingDirection == BindingDirection.RightToLeft ? "/R2L" : "/L2R";
+    }
+
+    /// <summary>PDF CatalogのPageLayoutとDirectionを編集可能な文書設定へ変換します。</summary>
+    public static ViewerSettings FromCatalogNames(string? pageLayoutName, string? directionName)
+    {
+        var layout = string.IsNullOrWhiteSpace(pageLayoutName) ? "/SinglePage" : pageLayoutName.Trim();
+        var binding = string.Equals(directionName?.Trim(), "/R2L", StringComparison.Ordinal)
+            ? BindingDirection.RightToLeft
+            : BindingDirection.LeftToRight;
+        var isFacing = layout is "/TwoPageLeft" or "/TwoPageRight" or "/TwoColumnLeft" or "/TwoColumnRight";
+        var mode = layout switch
+        {
+            "/OneColumn" => InitialPageMode.Continuous,
+            "/TwoColumnLeft" or "/TwoColumnRight" => InitialPageMode.ContinuousFacingPages,
+            "/TwoPageLeft" or "/TwoPageRight" => InitialPageMode.FacingPages,
+            _ => InitialPageMode.SinglePage,
+        };
+        var oddPageOnLeft = layout.EndsWith("Left", StringComparison.Ordinal);
+        var showCoverSeparately = !isFacing ||
+            (binding == BindingDirection.RightToLeft ? oddPageOnLeft : !oddPageOnLeft);
+        return new ViewerSettings
+        {
+            BindingDirection = binding,
+            PageMode = mode,
+            ShowCoverSeparately = showCoverSeparately,
+        };
     }
 }

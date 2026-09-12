@@ -53,8 +53,10 @@ public partial class App
             var packages = new ProjectPackageService();
             var project = new PdfCorrectoriumProject
             {
-                Name = "Recent files", SourcePdf = await packages.CreateSourceReferenceAsync(pdf, output),
-                BookmarksInitialized = true, Bookmarks = [new PdfBookmark { Title = "Restored", PageNumber = 2 }],
+                Name = "Recent files",
+                SourcePdf = await packages.CreateSourceReferenceAsync(pdf, output),
+                BookmarksInitialized = true,
+                Bookmarks = [new PdfBookmark { Title = "Restored", PageNumber = 2 }],
                 DocumentMetadata = new PdfDocumentMetadata { Title = "Recent project" },
             };
             await packages.SaveAsync(projectPath, project);
@@ -184,8 +186,15 @@ public partial class App
             {
                 LocalizationService.SetLanguage(uiLanguage);
                 var dialog = new ApplicationSettingsWindow(vm.CurrentApplicationSettings, "Portable", settingsService.SettingsPath, vm.RecentFileCount)
-                { WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000, ShowActivated = false, ShowInTaskbar = false,
-                    ConfirmManagementAction = _ => false, ManagementMessageOverride = _ => { } };
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -20000,
+                    Top = -20000,
+                    ShowActivated = false,
+                    ShowInTaskbar = false,
+                    ConfirmManagementAction = _ => false,
+                    ManagementMessageOverride = _ => { }
+                };
                 dialog.Show(); ((TabControl)dialog.FindName("SettingsTabs")).SelectedItem = dialog.FindName("ManagementTab");
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 var count = (TextBox)dialog.FindName("RecentFileLimitTextBox");
@@ -222,7 +231,7 @@ public partial class App
                 Check(await File.ReadAllTextAsync(history.HistoryPath) == before, "Closing settings without Save discards the clear request.");
             }
             var saving = new ApplicationSettingsWindow(vm.CurrentApplicationSettings, "Portable", settingsService.SettingsPath, vm.RecentFileCount)
-                { ConfirmManagementAction = _ => true, ManagementMessageOverride = _ => { } };
+            { ConfirmManagementAction = _ => true, ManagementMessageOverride = _ => { } };
             ((Button)saving.FindName("ClearRecentFilesButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             using (var lockedSettings = new FileStream(settingsService.SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                 Check(!await main.ApplySettingsDialogAsync(saving) && await File.ReadAllTextAsync(history.HistoryPath) == before,

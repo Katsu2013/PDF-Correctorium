@@ -19,6 +19,14 @@ public sealed class ProjectPackageService
     public const string ProjectExtension = ".pdfocrproj";
     /// <summary>通常保存時に保持する世代バックアップ数です。</summary>
     public int BackupGenerationCount { get; set; } = 5;
+    /// <summary>世代バックアップ全体の既定保持上限です。最新1世代は上限を超えても残します。</summary>
+    public long BackupByteLimit { get; set; } = 4L * 1024 * 1024 * 1024;
+    /// <summary>展開済み元PDFキャッシュのファイル数上限です。現在要求中のPDFは必ず残します。</summary>
+    public int MaterializedSourceCacheFileLimit { get; set; } = 16;
+    /// <summary>展開済み元PDFキャッシュの合計容量上限です。現在要求中のPDFは必ず残します。</summary>
+    public long MaterializedSourceCacheByteLimit { get; set; } = 4L * 1024 * 1024 * 1024;
+    /// <summary>旧形式プロジェクトからメモリへ復元するサムネイル数の上限です。</summary>
+    public int LegacyThumbnailReadLimit { get; set; } = 64;
     /// <summary>信頼できないプロジェクトの展開量を制限する読込ポリシーです。</summary>
     public ProjectPackageLimits Limits { get; init; } = new();
     /// <summary>列挙値を可読な文字列で保存する共通JSON設定です。</summary>
@@ -59,12 +67,12 @@ public sealed class ProjectPackageService
         => await SaveCoreAsync(destinationPath, project, embedSourcePdf, thumbnailCache: null, createBackups: true, cancellationToken);
 
     /// <summary>
-    /// ページサムネイルをプロジェクト内へキャッシュしながら保存します。
+    /// 旧呼び出し元との互換性を保ちながらプロジェクトを保存します。
     /// </summary>
     /// <param name="destinationPath"><c>.pdfocrproj</c>保存先。</param>
     /// <param name="project">保存する編集モデル。</param>
     /// <param name="embedSourcePdf">元PDFをパッケージ内へ内包する場合は<c>true</c>。</param>
-    /// <param name="thumbnailCache">ページ番号をキーとする圧縮JPEGデータ。</param>
+    /// <param name="thumbnailCache">形式1.4以降では保存しない再生成可能キャッシュ。</param>
     public async Task SaveAsync(
         string destinationPath,
         PdfCorrectoriumProject project,
@@ -125,9 +133,8 @@ public sealed class ProjectPackageService
 
         var fullPath = Path.GetFullPath(destinationPath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        var tempPath = fullPath + ".tmp";
-        var backupPath = fullPath + ".bak";
-        if (File.Exists(tempPath)) File.Delete(tempPath);
+        // 保存処理ごとに一意な一時名を使い、並行保存や共有フォルダー上の固定名競合を避ける。
+        var tempPath = fullPath + $".{Guid.NewGuid():N}.tmp";
 
         try
         {
@@ -143,35 +150,35 @@ public sealed class ProjectPackageService
                     CreatedAtUtc = project.CreatedAtUtc,
                     LastSavedAtUtc = now,
                 };
-                var sourceForSave = project.SourcePdf with { IsEmbedded = embedSourcePdf };
-                var projectForSave = project with { LastSavedAtUtc = now, SourcePdf = sourceForSave };
+                var storageMode = embedSourcePdf ? ProjectPdfStorageMode.Embedded : ProjectPdfStorageMode.Relative;
+                var sourceForSave = project.SourcePdf with
+                {
+                    IsEmbedded = embedSourcePdf,
+                    RelativePath = embedSourcePdf ? null : project.SourcePdf.RelativePath,
+                    AbsolutePathHint = null,
+                };
+                var sourcePageCount = project.SourcePdf.PageCount ?? project.Pages.Select(page => page.PageNumber).DefaultIfEmpty(0).Max();
+                var projectForSave = project with
+                {
+                    LastSavedAtUtc = now,
+                    SourcePdf = sourceForSave,
+                    PdfStorageMode = storageMode,
+                    PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount),
+                };
                 await WriteJsonAsync(archive, "manifest.json", manifest, cancellationToken);
                 await WriteJsonAsync(archive, "project.json", projectForSave, cancellationToken);
-                await WriteJsonAsync(archive, "source/source-reference.json", sourceForSave, cancellationToken);
 
                 if (embedSourcePdf)
                 {
                     var sourcePath = ResolveExternalSourcePath(project.SourcePdf, Path.GetDirectoryName(fullPath)!);
-                    var entry = archive.CreateEntry("source/document.pdf", CompressionLevel.Optimal);
+                    var entry = archive.CreateEntry("source/document.pdf", CompressionLevel.NoCompression);
                     await using var output = entry.Open();
                     await using var input = File.OpenRead(sourcePath);
                     await input.CopyToAsync(output, cancellationToken);
                 }
 
-                foreach (var page in project.Pages.OrderBy(x => x.PageNumber))
-                    await WriteJsonAsync(archive, $"ocr/pages/page-{page.PageNumber:000000}.json", page, cancellationToken);
-
-                if (thumbnailCache is not null)
-                {
-                    foreach (var thumbnail in thumbnailCache
-                                 .Where(x => x.Key > 0 && x.Value.Length > 0)
-                                 .OrderBy(x => x.Key))
-                    {
-                        var entry = archive.CreateEntry($"thumbnails/page-{thumbnail.Key:000000}.jpg", CompressionLevel.NoCompression);
-                        await using var output = entry.Open();
-                        await output.WriteAsync(thumbnail.Value, cancellationToken);
-                    }
-                }
+                // OCRページの正本はproject.jsonだけです。ページ別JSONとサムネイルは
+                // 再生成可能な重複データだったため、形式1.4から新規保存しません。
             }
 
             var validation = await ValidateAsync(tempPath, cancellationToken);
@@ -180,13 +187,17 @@ public sealed class ProjectPackageService
 
             if (File.Exists(fullPath))
             {
-                // 通常保存では直前の状態を複数の復旧経路へ残してから、検証済みZIPを置き換える。
+                // 通常保存では直前の状態を世代バックアップへ残してから、検証済みZIPを置き換える。
                 if (createBackups)
                 {
-                    File.Copy(fullPath, backupPath, overwrite: true);
+                    // 固定名.bakと世代バックアップへ同じ旧版を二重コピーしない。
+                    // 復旧用の新規コピーは世代バックアップへ一本化する。
                     CreateVersionedBackup(fullPath);
                 }
                 File.Move(tempPath, fullPath, overwrite: true);
+                // 旧版が作成した固定名バックアップは、世代バックアップと現行ファイルを
+                // 正常に確定した後だけ整理する。読込側は旧.bakを引き続き復旧候補にできる。
+                if (createBackups) TryDelete(fullPath + ".bak");
             }
             else
             {
@@ -222,8 +233,10 @@ public sealed class ProjectPackageService
             // 復元前の現行ファイルも別名で保持し、復元操作自体が失敗しても戻せるようにする。
             var recoveryCopy = fullPath + $".pre-recovery-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}";
             if (File.Exists(fullPath)) File.Copy(fullPath, recoveryCopy, overwrite: false);
-            var temporaryPath = fullPath + ".restore.tmp";
-            File.Copy(candidate, temporaryPath, overwrite: true);
+            TrimRecoveryCopies(fullPath, recoveryCopy);
+            // 固定名を使わず、同時復元や共有フォルダー上の既存ファイルとの競合を避ける。
+            var temporaryPath = fullPath + $".{Guid.NewGuid():N}.restore.tmp";
+            File.Copy(candidate, temporaryPath, overwrite: false);
             var restoredValidation = await ValidateAsync(temporaryPath, cancellationToken);
             if (!restoredValidation.IsValid)
             {
@@ -238,6 +251,7 @@ public sealed class ProjectPackageService
         return null;
     }
 
+    /// <summary>現在のプロジェクトを世代バックアップへ複製し、保持数を超えた古い世代を削除します。</summary>
     private void CreateVersionedBackup(string fullPath)
     {
         var directory = Path.GetDirectoryName(fullPath)!;
@@ -245,11 +259,7 @@ public sealed class ProjectPackageService
         var backup = Path.Combine(directory, $"{stem}.backup-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}{ProjectExtension}");
         File.Copy(fullPath, backup, overwrite: false);
 
-        var keep = Math.Clamp(BackupGenerationCount, 1, 20);
-        foreach (var oldBackup in Directory.EnumerateFiles(directory, $"{stem}.backup-*{ProjectExtension}")
-                     .OrderByDescending(File.GetLastWriteTimeUtc)
-                     .Skip(keep))
-            File.Delete(oldBackup);
+        TrimVersionedBackups(fullPath, backup);
     }
 
     /// <summary>
@@ -267,7 +277,9 @@ public sealed class ProjectPackageService
         EnsureArchiveWithinLimits(archive);
         foreach (var entry in archive.Entries.Where(x =>
                      x.FullName.StartsWith("thumbnails/page-", StringComparison.OrdinalIgnoreCase) &&
-                     x.FullName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)))
+                     x.FullName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+                 .OrderBy(entry => entry.FullName, StringComparer.OrdinalIgnoreCase)
+                 .Take(Math.Max(1, LegacyThumbnailReadLimit)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var fileName = Path.GetFileNameWithoutExtension(entry.Name);
@@ -299,7 +311,12 @@ public sealed class ProjectPackageService
             throw new InvalidDataException($"Unsupported project version: {manifest.FormatVersion}");
         var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
         EnsureSourceReferenceIsSafe(project.SourcePdf);
-        return project;
+        project = NormalizeStorageMode(project, manifest.FormatVersion);
+        var sourcePageCount = project.SourcePdf.PageCount ?? project.Pages.Select(page => page.PageNumber).DefaultIfEmpty(0).Max();
+        return project with
+        {
+            PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount),
+        };
     }
 
     /// <summary>外部参照PDFのサイズとSHA-256がプロジェクト記録と一致するか確認します。</summary>
@@ -315,6 +332,68 @@ public sealed class ProjectPackageService
         await using var stream = info.OpenRead();
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return string.Equals(Convert.ToHexString(hash), source.Sha256, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 対象プロジェクト専用の.assetsから、同じフォルダー内の現行・自動保存・バックアップの
+    /// いずれからも参照されない内容ハッシュPDFだけを削除します。
+    /// </summary>
+    public async Task<int> CleanupUnreferencedAssetsAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default)
+    {
+        var fullProjectPath = Path.GetFullPath(projectPath);
+        var projectDirectory = Path.GetDirectoryName(fullProjectPath)!;
+        var assetsDirectory = Path.Combine(projectDirectory, Path.GetFileNameWithoutExtension(fullProjectPath) + ".assets");
+        if (!Directory.Exists(assetsDirectory)) return 0;
+
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in Directory.EnumerateFiles(projectDirectory, "*", SearchOption.TopDirectoryOnly)
+                     .Where(IsProjectRecoveryCandidate))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var project = await OpenAsync(candidate, cancellationToken);
+                if (project.SourcePdf.IsEmbedded || string.IsNullOrWhiteSpace(project.SourcePdf.RelativePath)) continue;
+                if (!IsSafeRelativeSourcePath(project.SourcePdf.RelativePath, allowParentSegments: true)) continue;
+                referenced.Add(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(candidate)!, project.SourcePdf.RelativePath)));
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException or UnauthorizedAccessException)
+            {
+                // 壊れた復旧候補を根拠に削除してはいけないため、その候補だけ無視します。
+            }
+        }
+
+        var removed = 0;
+        foreach (var asset in Directory.EnumerateFiles(assetsDirectory, "*.pdf", SearchOption.TopDirectoryOnly))
+        {
+            var stem = Path.GetFileNameWithoutExtension(asset);
+            if (stem.Length != 64 || stem.Any(character => !Uri.IsHexDigit(character)) || referenced.Contains(Path.GetFullPath(asset)))
+                continue;
+            try
+            {
+                File.Delete(asset);
+                removed++;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        try
+        {
+            if (!Directory.EnumerateFileSystemEntries(assetsDirectory).Any()) Directory.Delete(assetsDirectory);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return removed;
+    }
+
+    private static bool IsProjectRecoveryCandidate(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.EndsWith(ProjectExtension, StringComparison.OrdinalIgnoreCase) ||
+               name.EndsWith(ProjectExtension + ".bak", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains(".pre-recovery-", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>相対パスを優先し、見つからない場合は前回の絶対パスから元PDFを解決します。</summary>
@@ -340,7 +419,12 @@ public sealed class ProjectPackageService
         EnsureSourceReferenceIsSafe(source);
         Directory.CreateDirectory(destinationDirectory);
         var destinationPath = Path.Combine(destinationDirectory, $"{source.Sha256.ToLowerInvariant()}.pdf");
-        if (await FileMatchesSourceAsync(destinationPath, source, cancellationToken)) return destinationPath;
+        if (await FileMatchesSourceAsync(destinationPath, source, cancellationToken))
+        {
+            TouchCacheEntry(destinationPath);
+            TrimMaterializedSourceCache(destinationDirectory, destinationPath);
+            return destinationPath;
+        }
 
         // 直接書き込まず、サイズとハッシュを検証した一時ファイルだけを公開名へ移動する。
         var temporaryPath = destinationPath + $".{Guid.NewGuid():N}.tmp";
@@ -367,6 +451,8 @@ public sealed class ProjectPackageService
                     throw new InvalidDataException("The embedded source PDF fingerprint does not match the project.");
             }
             File.Move(temporaryPath, destinationPath, true);
+            TouchCacheEntry(destinationPath);
+            TrimMaterializedSourceCache(destinationDirectory, destinationPath);
             return destinationPath;
         }
         catch
@@ -391,16 +477,38 @@ public sealed class ProjectPackageService
             EnsureArchiveWithinLimits(archive);
             if (archive.GetEntry("manifest.json") is null) issues.Add(new("manifest.missing", "manifest.json is missing.", true));
             if (archive.GetEntry("project.json") is null) issues.Add(new("project.missing", "project.json is missing.", true));
-            if (archive.GetEntry("source/source-reference.json") is null) issues.Add(new("sourceReference.missing", "The source reference is missing.", true));
             if (issues.Count == 0)
             {
                 var manifest = await ReadJsonAsync<ProjectManifest>(archive, "manifest.json", cancellationToken);
                 var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
-                var source = await ReadJsonAsync<SourcePdfReference>(archive, "source/source-reference.json", cancellationToken);
+                var legacySourceEntry = archive.GetEntry("source/source-reference.json");
+                if (manifest.FormatVersion != ProjectManifest.CurrentVersion && legacySourceEntry is null)
+                    issues.Add(new("sourceReference.missing", "The source reference is missing.", true));
+                var source = legacySourceEntry is null
+                    ? project.SourcePdf
+                    : await ReadJsonAsync<SourcePdfReference>(archive, "source/source-reference.json", cancellationToken);
                 if (manifest.ProjectId != project.ProjectId) issues.Add(new("projectId.mismatch", "Manifest and project IDs differ.", true));
-                if (source != project.SourcePdf) issues.Add(new("sourceReference.mismatch", "The project and source reference entries differ.", true));
+                if (legacySourceEntry is not null && source != project.SourcePdf) issues.Add(new("sourceReference.mismatch", "The project and source reference entries differ.", true));
                 try { EnsureSourceReferenceIsSafe(source); }
                 catch (InvalidDataException ex) { issues.Add(new("sourceReference.invalid", ex.Message, true)); }
+                var normalizedProject = NormalizeStorageMode(project, manifest.FormatVersion);
+                if (manifest.FormatVersion is "1.2" or "1.3" or ProjectManifest.CurrentVersion)
+                {
+                    if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Embedded && !source.IsEmbedded)
+                        issues.Add(new("sourceStorage.mismatch", "The embedded storage mode does not match the source reference.", true));
+                    if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Relative && source.IsEmbedded)
+                        issues.Add(new("sourceStorage.mismatch", "The relative storage mode does not match the source reference.", true));
+                    if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Relative && string.IsNullOrWhiteSpace(source.RelativePath))
+                        issues.Add(new("sourcePath.missing", "A relative project must contain a relative PDF path.", true));
+                    else if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Relative &&
+                             !IsSafeRelativeSourcePath(source.RelativePath!,
+                                 allowParentSegments: manifest.FormatVersion is "1.3" or ProjectManifest.CurrentVersion))
+                        issues.Add(new("sourcePath.unsafe", manifest.FormatVersion == "1.2"
+                            ? "A version 1.2 relative PDF path must stay below the project directory."
+                            : "A relative PDF path must be normalized and must not be rooted or drive-qualified.", true));
+                    if (!string.IsNullOrWhiteSpace(source.AbsolutePathHint))
+                        issues.Add(new("sourcePath.absolute", "Project formats 1.2 and later must not persist an absolute PDF path.", true));
+                }
                 if (source.IsEmbedded && archive.GetEntry("source/document.pdf") is null)
                     issues.Add(new("sourcePdf.missing", "The project declares an embedded PDF, but source/document.pdf is missing.", true));
                 if (source.IsEmbedded && archive.GetEntry("source/document.pdf") is { } embedded && embedded.Length != source.FileSize)
@@ -409,6 +517,8 @@ public sealed class ProjectPackageService
                 if (!ProjectManifest.IsSupportedVersion(manifest.FormatVersion)) issues.Add(new("version.unsupported", manifest.FormatVersion, true));
                 if (project.Pages.Select(x => x.PageNumber).Distinct().Count() != project.Pages.Count)
                     issues.Add(new("pages.duplicate", "Duplicate page numbers were found.", true));
+                ValidatePageSequence(project, source, manifest.FormatVersion, issues);
+                ValidateProjectExtensions(normalizedProject, issues);
             }
         }
         catch (InvalidDataException ex) { issues.Add(new("zip.invalid", ex.Message, true)); }
@@ -425,6 +535,7 @@ public sealed class ProjectPackageService
         await JsonSerializer.SerializeAsync(stream, value, JsonOptions, cancellationToken);
     }
 
+    /// <summary>許可されたサイズ内でZIP内JSONを読み込み、空または過大なエントリを拒否します。</summary>
     private async Task<T> ReadJsonAsync<T>(ZipArchive archive, string name, CancellationToken cancellationToken)
     {
         var entry = archive.GetEntry(name) ?? throw new InvalidDataException($"Missing entry: {name}");
@@ -435,6 +546,7 @@ public sealed class ProjectPackageService
             ?? throw new InvalidDataException($"Empty JSON entry: {name}");
     }
 
+    /// <summary>ZIP爆弾、パストラバーサル、重複エントリ、過大な展開量を事前に検査します。</summary>
     private void EnsureArchiveWithinLimits(ZipArchive archive)
     {
         ValidateLimits();
@@ -498,10 +610,221 @@ public sealed class ProjectPackageService
             Limits.MaximumJsonEntryBytes <= 0 || Limits.MaximumThumbnailCount <= 0 ||
             Limits.MaximumThumbnailEntryBytes <= 0 || Limits.MaximumTotalThumbnailBytes <= 0 ||
             Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
-            !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0)
+            !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0 ||
+            Limits.MaximumCommentCount <= 0 || Limits.MaximumTagCount <= 0 ||
+            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumCommentCharacters <= 0 ||
+            Limits.MaximumTagNameCharacters <= 0)
             throw new InvalidOperationException("Project package resource limits must be positive finite values.");
     }
 
+    private static PdfCorrectoriumProject NormalizeStorageMode(PdfCorrectoriumProject project, string formatVersion)
+    {
+        var mode = project.PdfStorageMode == ProjectPdfStorageMode.Legacy
+            ? project.SourcePdf.IsEmbedded ? ProjectPdfStorageMode.Embedded : ProjectPdfStorageMode.Relative
+            : project.PdfStorageMode;
+        var source = project.SourcePdf with { IsEmbedded = mode == ProjectPdfStorageMode.Embedded };
+        // 1.0/1.1 projects may contain an absolute compatibility hint. It remains usable in memory,
+        // but the next current-format save removes it from the package.
+        return project with { PdfStorageMode = mode, SourcePdf = source };
+    }
+
+    private void ValidateProjectExtensions(PdfCorrectoriumProject project, List<ProjectValidationIssue> issues)
+    {
+        if (project.Comments.Count > Limits.MaximumCommentCount)
+            issues.Add(new("comments.limit", "The project contains too many comments.", true));
+        if (project.Tags.Count > Limits.MaximumTagCount)
+            issues.Add(new("tags.limit", "The project contains too many tags.", true));
+        if (project.InternalLinks.Count > Limits.MaximumInternalLinkCount)
+            issues.Add(new("links.limit", "The project contains too many internal links.", true));
+
+        var pages = project.Pages.ToDictionary(page => page.Id);
+        foreach (var item in project.PageSequence.Select((page, index) => (Page: page, Number: index + 1)))
+            pages.TryAdd(item.Page.PageId, new OcrPage { Id = item.Page.PageId, PageNumber = item.Number });
+        var regions = project.Pages.SelectMany(page => page.TextRegions.Select(region => (page.Id, Region: region)))
+            .ToDictionary(item => item.Region.Id);
+        var tags = new HashSet<Guid>();
+        var tagNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in project.Tags)
+        {
+            if (!tags.Add(tag.Id)) issues.Add(new("tags.duplicateId", "Duplicate tag IDs were found.", true));
+            if (string.IsNullOrWhiteSpace(tag.Name) || tag.Name.Length > Limits.MaximumTagNameCharacters)
+                issues.Add(new("tags.name", "A tag name is empty or too long.", true));
+            else if (!tagNames.Add(tag.Name.Trim()))
+                issues.Add(new("tags.duplicateName", "Duplicate tag names were found.", true));
+            if (!IsColorHex(tag.ColorHex)) issues.Add(new("tags.color", "A tag color is invalid.", true));
+        }
+
+        var commentIds = new HashSet<Guid>();
+        foreach (var comment in project.Comments)
+        {
+            if (!commentIds.Add(comment.Id)) issues.Add(new("comments.duplicateId", "Duplicate comment IDs were found.", true));
+            if (comment.Body.Length > Limits.MaximumCommentCharacters)
+                issues.Add(new("comments.body", "A comment is too long.", true));
+            if (comment.TagIds.Distinct().Count() != comment.TagIds.Count || comment.TagIds.Any(tagId => !tags.Contains(tagId)))
+                issues.Add(new("comments.tags", "A comment contains a duplicate or unknown tag reference.", true));
+            if (!TargetExists(comment.Target, pages, regions))
+                issues.Add(new("comments.target", "A comment target does not exist.", false));
+        }
+
+        var linkIds = new HashSet<Guid>();
+        foreach (var link in project.InternalLinks)
+        {
+            if (!linkIds.Add(link.Id)) issues.Add(new("links.duplicateId", "Duplicate internal-link IDs were found.", true));
+            if (!pages.ContainsKey(link.SourcePageId) || !pages.ContainsKey(link.DestinationPageId))
+                issues.Add(new("links.page", "An internal link refers to a missing page.", false));
+            if (link.SourceRegionId is { } regionId &&
+                (!regions.TryGetValue(regionId, out var region) || region.Id != link.SourcePageId))
+                issues.Add(new("links.region", "An internal link refers to a missing OCR region.", false));
+            if (link.SourceRegionId is null && link.SourceBounds is not { IsValid: true })
+                issues.Add(new("links.bounds", "An area link must contain a valid source rectangle.", true));
+            if (link.DestinationPosition is { IsFinite: false })
+                issues.Add(new("links.destination", "An internal-link destination contains invalid coordinates.", true));
+            if (link.DestinationZoomPercent is { } zoom && (!double.IsFinite(zoom) || zoom is < 25 or > 400))
+                issues.Add(new("links.zoom", "An internal-link destination zoom is outside 25–400 percent.", true));
+        }
+    }
+
+    /// <summary>形式1.4の論理ページ対応が元PDFとOCRページに整合するか検査します。</summary>
+    private static void ValidatePageSequence(
+        PdfCorrectoriumProject project,
+        SourcePdfReference source,
+        string formatVersion,
+        List<ProjectValidationIssue> issues)
+    {
+        if (formatVersion != ProjectManifest.CurrentVersion) return;
+        if (project.PageSequence.Count == 0)
+        {
+            if (source.PageCount is > 0 || project.Pages.Count > 0)
+                issues.Add(new("pageSequence.missing", "The logical page sequence is missing.", true));
+            return;
+        }
+
+        var sourcePageCount = source.PageCount;
+        var pageIds = new HashSet<Guid>();
+        foreach (var page in project.PageSequence)
+        {
+            if (page.PageId == Guid.Empty || !pageIds.Add(page.PageId))
+                issues.Add(new("pageSequence.duplicateId", "The logical page sequence contains an empty or duplicate page ID.", true));
+            if (page.SourcePageNumber <= 0 || sourcePageCount is { } count && page.SourcePageNumber > count)
+                issues.Add(new("pageSequence.sourcePage", "A logical page refers to a source page outside the PDF.", true));
+            if (ProjectPageSequence.NormalizeRotation(page.RotationDegrees) != page.RotationDegrees || page.RotationDegrees % 90 != 0)
+                issues.Add(new("pageSequence.rotation", "A logical page rotation must be 0, 90, 180, or 270 degrees.", true));
+        }
+
+        foreach (var page in project.Pages)
+        {
+            if (page.PageNumber <= 0 || page.PageNumber > project.PageSequence.Count)
+            {
+                issues.Add(new("pages.outOfSequence", "An OCR page lies outside the logical page sequence.", true));
+                continue;
+            }
+            if (page.Id != project.PageSequence[page.PageNumber - 1].PageId)
+                issues.Add(new("pages.sequenceId", "An OCR page ID does not match its logical page entry.", true));
+        }
+    }
+
+    /// <summary>世代数と合計容量の両方を満たすよう、古い世代バックアップから整理します。</summary>
+    private void TrimVersionedBackups(string fullPath, string newestBackup)
+    {
+        var directory = Path.GetDirectoryName(fullPath)!;
+        var stem = Path.GetFileNameWithoutExtension(fullPath);
+        var keepCount = Math.Clamp(BackupGenerationCount, 1, 20);
+        var byteLimit = Math.Max(1, BackupByteLimit);
+        var backups = Directory.EnumerateFiles(directory, $"{stem}.backup-*{ProjectExtension}")
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .ToArray();
+        long retainedBytes = 0;
+        for (var index = 0; index < backups.Length; index++)
+        {
+            var file = backups[index];
+            var mustKeep = index == 0 || file.FullName.Equals(newestBackup, StringComparison.OrdinalIgnoreCase);
+            var fits = index < keepCount && retainedBytes <= byteLimit - Math.Min(file.Length, byteLimit);
+            if (mustKeep || fits)
+            {
+                retainedBytes = checked(retainedBytes + file.Length);
+                continue;
+            }
+            TryDelete(file.FullName);
+        }
+    }
+
+    /// <summary>復旧直前コピーは直近の1件だけを残します。</summary>
+    private static void TrimRecoveryCopies(string fullPath, string newestCopy)
+    {
+        var directory = Path.GetDirectoryName(fullPath)!;
+        var fileName = Path.GetFileName(fullPath);
+        foreach (var oldCopy in Directory.EnumerateFiles(directory, $"{fileName}.pre-recovery-*")
+                     .Where(path => !path.Equals(newestCopy, StringComparison.OrdinalIgnoreCase))
+                     .OrderByDescending(File.GetLastWriteTimeUtc))
+            TryDelete(oldCopy);
+    }
+
+    /// <summary>内容ハッシュ名の展開PDFをアクセス順で整理し、現在のPDFは必ず保持します。</summary>
+    private void TrimMaterializedSourceCache(string directory, string protectedPath)
+    {
+        var fileLimit = Math.Max(1, MaterializedSourceCacheFileLimit);
+        var byteLimit = Math.Max(1, MaterializedSourceCacheByteLimit);
+        var files = Directory.EnumerateFiles(directory, "*.pdf", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastAccessTimeUtc)
+            .ThenByDescending(file => file.LastWriteTimeUtc)
+            .ToArray();
+        long retainedBytes = 0;
+        var retainedCount = 0;
+        foreach (var file in files)
+        {
+            var isProtected = file.FullName.Equals(protectedPath, StringComparison.OrdinalIgnoreCase);
+            var fits = retainedCount < fileLimit && retainedBytes <= byteLimit - Math.Min(file.Length, byteLimit);
+            if (isProtected || fits)
+            {
+                retainedCount++;
+                retainedBytes = checked(retainedBytes + file.Length);
+                continue;
+            }
+            TryDelete(file.FullName);
+        }
+    }
+
+    private static void TouchCacheEntry(string path)
+    {
+        try { File.SetLastAccessTimeUtc(path, DateTime.UtcNow); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static bool TargetExists(
+        ProjectTargetReference target,
+        IReadOnlyDictionary<Guid, OcrPage> pages,
+        IReadOnlyDictionary<Guid, (Guid Id, OcrTextRegion Region)> regions) => target.Kind switch
+        {
+            ProjectTargetKind.Document => true,
+            ProjectTargetKind.Page => target.PageId is { } pageId && pages.ContainsKey(pageId),
+            ProjectTargetKind.OcrRegion => target.ObjectId is { } regionId && regions.ContainsKey(regionId),
+            _ => true,
+        };
+
+    private static bool IsColorHex(string value) =>
+        value.Length == 7 && value[0] == '#' && value.AsSpan(1).ToArray().All(Uri.IsHexDigit);
+
+    private static bool IsSafeRelativeSourcePath(string value, bool allowParentSegments)
+    {
+        if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value) || value.Contains(':')) return false;
+        var segments = value.Replace('\\', '/').Split('/');
+        return segments.Length > 0 && segments.All(segment =>
+            !string.IsNullOrWhiteSpace(segment) &&
+            segment != "." &&
+            (allowParentSegments || segment != ".."));
+    }
+
+    /// <summary>ストリームをコピーし、読み取り累積量が上限を超えた時点で失敗します。</summary>
     private static async Task CopyWithLimitAsync(
         Stream input,
         Stream output,
@@ -539,10 +862,13 @@ public sealed class ProjectPackageService
         return string.Equals(Convert.ToHexString(hash), source.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>プロジェクト基準の相対パスを優先し、利用できない場合だけ旧形式の絶対パスを試します。</summary>
     private static string ResolveExternalSourcePath(SourcePdfReference source, string projectDirectory)
     {
         if (!string.IsNullOrWhiteSpace(source.RelativePath))
         {
+            if (!IsSafeRelativeSourcePath(source.RelativePath, allowParentSegments: true))
+                throw new InvalidDataException("The source PDF path is not a normalized relative path.");
             var relative = Path.GetFullPath(Path.Combine(projectDirectory, source.RelativePath));
             if (File.Exists(relative)) return relative;
         }

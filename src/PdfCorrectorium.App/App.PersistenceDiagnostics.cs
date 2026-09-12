@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Text;
 using System.Windows;
@@ -46,13 +47,55 @@ public partial class App
 
             var pdf = Path.Combine(directory, "source.pdf");
             WriteDocumentUiTestPdf(pdf);
+            await vm.LoadPdfForDiagnosticsAsync(pdf);
+            Check(vm.ProjectForDiagnostics?.PdfStorageMode == ProjectPdfStorageMode.Embedded,
+                "A newly opened PDF defaults to embedded storage in portable operation.");
+            Check(vm.IsSinglePageView && vm.IsPageByPageView &&
+                  vm.ProjectForDiagnostics?.EditorViewState is null && !vm.HasUnsavedChanges,
+                "A PDF without catalog view hints opens with the PDF default and does not create a project override.");
+
+            var catalogViewPdf = Path.Combine(directory, "catalog-view.pdf");
+            WriteDocumentUiTestPdf(catalogViewPdf, pageLayout: "/TwoColumnRight", direction: "/R2L");
+            await vm.LoadPdfForDiagnosticsAsync(catalogViewPdf);
+            Check(vm.IsFacingPagesView && vm.IsContinuousView &&
+                  vm.FacingPagesBindingDirection == FacingPageBindingDirection.RightBinding &&
+                  !vm.FacingPagesShowCoverSeparately &&
+                  vm.ProjectForDiagnostics?.EditorViewState is null && !vm.HasUnsavedChanges,
+                "A newly opened PDF follows PageLayout and Direction without treating the initial state as an edit.");
+
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.PageByPage;
+            vm.FacingPagesShowCoverSeparately = true;
+            vm.FacingPagesBindingDirection = FacingPageBindingDirection.LeftBinding;
+            var viewProjectPath = Path.Combine(directory, "saved-editor-view.pdfocrproj");
+            await vm.SaveProjectForDiagnosticsAsync(viewProjectPath, ProjectPdfStorageMode.Embedded);
+            var savedEditorView = (await packages.OpenAsync(viewProjectPath)).EditorViewState;
+            Check(savedEditorView is
+            {
+                PageLayout: ProjectEditorPageLayout.FacingPages,
+                PageFlow: ProjectEditorPageFlow.PageByPage,
+                ShowCoverSeparately: true,
+                BindingDirection: BindingDirection.LeftToRight,
+            },
+                "An intentional layout change is stored as a project-specific editor view.");
+            vm.DocumentViewMode = DocumentViewMode.SinglePage;
+            vm.DocumentPageFlowMode = DocumentPageFlowMode.Continuous;
+            await vm.LoadProjectForDiagnosticsAsync(viewProjectPath);
+            Check(vm.IsFacingPagesView && vm.IsPageByPageView &&
+                  vm.FacingPagesShowCoverSeparately &&
+                  vm.FacingPagesBindingDirection == FacingPageBindingDirection.LeftBinding &&
+                  !vm.HasUnsavedChanges,
+                "Reopening a project restores its explicit editor view without marking it modified.");
             var geometry = new TextGeometry { LocalBounds = new PdfRectangle(new PdfPoint(20, 250), new PdfSize(180, 20)), RotationCenter = new PdfPoint(110, 260) };
             var sourceRegion = new OcrTextRegion
             {
-                OriginalText = "ABCDEF", OriginalGeometry = geometry, EditedGeometry = geometry,
-                ParentRegionId = Guid.NewGuid(), FitMode = FitMode.Distribute,
+                OriginalText = "ABCDEF",
+                OriginalGeometry = geometry,
+                EditedGeometry = geometry,
+                ParentRegionId = Guid.NewGuid(),
+                FitMode = FitMode.Distribute,
                 Output = new OutputAttributes { IncludeInSearch = false, IncludeInCopy = false, IncludeInSpeech = false, IncludeInPdf = false },
-                FlowDirection = TextFlowDirection.RightToLeft, HasExplicitWritingMode = false,
+                FlowDirection = TextFlowDirection.RightToLeft,
+                HasExplicitWritingMode = false,
             };
             var project = new PdfCorrectoriumProject
             {
@@ -97,8 +140,26 @@ public partial class App
 
             await vm.LoadProjectForDiagnosticsAsync(input);
             var resaved = Path.Combine(directory, "resaved.pdfocrproj");
-            await vm.SaveProjectForDiagnosticsAsync(resaved);
+            await vm.SaveProjectForDiagnosticsAsync(resaved, ProjectPdfStorageMode.Embedded);
             var restoredProject = await packages.OpenAsync(resaved);
+            Check(restoredProject.PdfStorageMode == ProjectPdfStorageMode.Embedded && restoredProject.SourcePdf.IsEmbedded,
+                "Save-mode selection can write an embedded project in portable operation.");
+            using (var archive = ZipFile.OpenRead(resaved))
+                Check(archive.GetEntry("source/document.pdf") is not null,
+                    "Embedded project package physically contains source/document.pdf.");
+            var portableRelativePath = Path.Combine(directory, "portable-relative.pdfocrproj");
+            await vm.SaveProjectForDiagnosticsAsync(portableRelativePath, ProjectPdfStorageMode.Relative);
+            var portableRelative = await packages.OpenAsync(portableRelativePath);
+            Check(portableRelative.PdfStorageMode == ProjectPdfStorageMode.Relative && !portableRelative.SourcePdf.IsEmbedded,
+                "Save-mode selection can write a relative project in portable operation.");
+            Check(portableRelative.SourcePdf.RelativePath?.StartsWith("portable-relative.assets", StringComparison.OrdinalIgnoreCase) == true,
+                "Converting an embedded project to relative storage externalizes the PDF to a managed assets path.");
+            Check(Directory.Exists(Path.Combine(directory, "portable-relative.assets")),
+                "Embedded-to-relative conversion creates its adjacent assets directory.");
+            using (var archive = ZipFile.OpenRead(portableRelativePath))
+                Check(archive.GetEntry("source/document.pdf") is null,
+                    "Relative project package does not duplicate the managed PDF inside the archive.");
+            await vm.LoadProjectForDiagnosticsAsync(resaved);
             foreach (var restored in restoredProject.Pages.SelectMany(p => p.TextRegions))
             {
                 Check(restored.ParentRegionId == sourceRegion.ParentRegionId && restored.FitMode == sourceRegion.FitMode, "Parent and fit metadata survive loaded/unvisited page round-trip.");
@@ -163,6 +224,8 @@ public partial class App
             SetField("_lastUserActivityAtUtc", DateTimeOffset.UtcNow.AddSeconds(-31));
             await vm.AutoSaveIfDueAsync();
             var neverSavedRecovery = vm.AutoSaveRecoveryPath!;
+            for (var attempt = 0; attempt < 100 && !File.Exists(neverSavedRecovery); attempt++)
+                await Task.Delay(50);
             Check(File.Exists(neverSavedRecovery), "Never-saved project gets a recovery package.");
             var recovered = await packages.OpenAsync(neverSavedRecovery);
             Check(recovered.SourcePdf.IsEmbedded && recovered.DocumentMetadata?.Title == "New unsaved document", "Never-saved recovery embeds the source and document properties.");
@@ -184,6 +247,50 @@ public partial class App
             await vm.ExportPdfForDiagnosticsAsync(exported);
             var outputPreview = await new PdfPreviewService().RenderPageAsync(exported, 1);
             Check(outputPreview.TextRegions.All(r => !r.Text.Contains("ABCDEF")), "Cleared text does not reappear in extracted PDF output.");
+
+            var installedDirectory = Path.Combine(directory, "installed-mode");
+            var installedPaths = new ApplicationPaths(StorageMode.Installed,
+                Path.Combine(installedDirectory, "config"), Path.Combine(installedDirectory, "logs"),
+                Path.Combine(installedDirectory, "cache"), Path.Combine(installedDirectory, "work"));
+            ApplicationPathResolver.EnsureDirectories(installedPaths);
+            var installedVm = new MainWindowViewModel(packages, new PdfPreviewService(), new PdfExportService(),
+                new NdlOcrCompanionService(), new DiagnosticLog(installedPaths.LogDirectory), installedPaths, () => { });
+            await installedVm.LoadPdfForDiagnosticsAsync(pdf);
+            Check(installedVm.ProjectForDiagnostics?.PdfStorageMode == ProjectPdfStorageMode.Relative,
+                "A newly opened PDF defaults to relative storage in installed operation.");
+            var linkedProjectPath = Path.Combine(installedDirectory, "linked.pdfocrproj");
+            await installedVm.SaveProjectForDiagnosticsAsync(linkedProjectPath, ProjectPdfStorageMode.Relative);
+            var linkedProject = await packages.OpenAsync(linkedProjectPath);
+            Check(linkedProject.PdfStorageMode == ProjectPdfStorageMode.Relative && !linkedProject.SourcePdf.IsEmbedded,
+                "Save-mode selection can write relative PDF storage in installed operation.");
+            Check(linkedProject.SourcePdf.AbsolutePathHint is null &&
+                  linkedProject.SourcePdf.RelativePath == Path.GetRelativePath(installedDirectory, pdf),
+                "A normal relative save points to the original PDF from the project location.");
+            Check(!Directory.Exists(Path.Combine(installedDirectory, "linked.assets")),
+                "A normal relative save does not create an assets directory or copy the original PDF.");
+            using (var archive = ZipFile.OpenRead(linkedProjectPath))
+                Check(archive.GetEntry("source/document.pdf") is null,
+                    "Installed-mode project package does not duplicate the linked PDF inside the archive.");
+            var movedProjectDirectory = Path.Combine(installedDirectory, "copies");
+            Directory.CreateDirectory(movedProjectDirectory);
+            var movedLinkedProjectPath = Path.Combine(movedProjectDirectory, "linked-copy.pdfocrproj");
+            await installedVm.SaveProjectForDiagnosticsAsync(movedLinkedProjectPath, ProjectPdfStorageMode.Relative);
+            var movedLinkedProject = await packages.OpenAsync(movedLinkedProjectPath);
+            Check(movedLinkedProject.SourcePdf.RelativePath == Path.GetRelativePath(movedProjectDirectory, pdf),
+                "Save As recalculates an existing external PDF path from the new project location.");
+            Check(!Directory.Exists(Path.Combine(movedProjectDirectory, "linked-copy.assets")),
+                "Relative Save As does not create an assets directory for an existing external PDF.");
+            Check(await packages.VerifySourceAsync(movedLinkedProject.SourcePdf, movedProjectDirectory),
+                "The recalculated relative path still resolves and matches the original PDF fingerprint.");
+            var installedEmbeddedPath = Path.Combine(installedDirectory, "embedded.pdfocrproj");
+            await installedVm.SaveProjectForDiagnosticsAsync(installedEmbeddedPath, ProjectPdfStorageMode.Embedded);
+            var installedEmbedded = await packages.OpenAsync(installedEmbeddedPath);
+            Check(installedEmbedded.PdfStorageMode == ProjectPdfStorageMode.Embedded && installedEmbedded.SourcePdf.IsEmbedded,
+                "Save-mode selection can write embedded PDF storage in installed operation.");
+            using (var archive = ZipFile.OpenRead(installedEmbeddedPath))
+                Check(archive.GetEntry("source/document.pdf") is not null,
+                    "Installed embedded selection physically stores source/document.pdf.");
+            installedVm.ReleaseTransientResources();
 
             await File.WriteAllLinesAsync(Path.Combine(directory, "checks.txt"), checks);
             _diagnostics?.Write("persistence-test.passed", $"{checks.Count} checks passed. {directory}");

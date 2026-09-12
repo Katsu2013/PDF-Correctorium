@@ -13,6 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
+using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
 
@@ -49,6 +50,7 @@ public partial class App
             var settings = new ApplicationSettingsWindow(new ApplicationSettings(), "Portable", Path.Combine(output, "settings.json"));
             var search = new OcrSearchReplaceWindow(vm);
             var analysis = new PdfImageOptimizationAnalysis(1, 1, 100, 50, .5, 100, 50, "Fixture");
+            var projectSaveOptions = new ProjectSaveOptionsWindow(ProjectPdfStorageMode.Embedded);
             windows.AddRange([
                 settings, search, new DocumentPropertiesWindow(vm), new OcrQualityAnalysisWindow(vm),
                 new BatchCharacterAdjustmentWindow(2, 1, [1, 2]), new RepeatedRegionPropagationOptionsWindow(2, 1, [2]),
@@ -56,7 +58,17 @@ public partial class App
                 new DocumentImageOptimizationWindow(new PdfDocumentImageOptimizationAnalysis([analysis], 1, 100, 50)),
                 new ImageOptimizationPreviewWindow(BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] { 255, 255, 255, 255 }, 4), analysis, .1),
                 new BatchCharacterAdjustmentProgressWindow(2), new RepeatedRegionSearchProgressWindow(2),
+                new InputPdfIssuesWindow([new PdfInputIssue("fixture", PdfInputIssueSeverity.Warning, "Fixture", "Fixture", "Fixture")]),
+                new InternalLinkWindow(2, null, 2),
+                new ProjectCommentsWindow(new ProjectTargetReference { Kind = ProjectTargetKind.Document }, [], []),
+                projectSaveOptions,
             ]);
+            Check(projectSaveOptions.SelectedMode == ProjectPdfStorageMode.Embedded &&
+                  projectSaveOptions.EmbeddedModeRadioButton.IsChecked == true,
+                "Project save options initialize with the requested storage mode.");
+            projectSaveOptions.RelativeModeRadioButton.IsChecked = true;
+            Check(projectSaveOptions.SelectedMode == ProjectPdfStorageMode.Relative,
+                "Project save options switch the selected storage mode from the visible control.");
             async Task Layout(Window host)
             {
                 var root = (FrameworkElement)host.Content;
@@ -120,7 +132,7 @@ public partial class App
                         }
                         Check(elements.OfType<Button>().Where(b => b.IsCancel || b.Content is "OK" or "キャンセル" or "Cancel")
                             .All(b => KeyboardAccess.GetKey(b) is null && !(b.Content as string ?? "").Contains("(_")), host.GetType().Name + " OK/Cancel do not receive mnemonics.");
-                        if (host == settings || host is DocumentPropertiesWindow || host == search)
+                        if (host == settings || host is DocumentPropertiesWindow or ProjectSaveOptionsWindow || host == search)
                             Snapshot(host, host.GetType().Name + "-" + language + "-" + tab);
                     }
                 }
@@ -200,21 +212,21 @@ public partial class App
             keyboardRegion!.Text = "Keyboard test";
             vm.SetOverlaySelection([keyboardRegion], keyboardRegion);
             foreach (var language in new[] { "ja-JP", "en-US" })
-            foreach (var mode in new[] { 0, 1, 2 })
-            foreach (var unit in new[] { 0, 1, 2 })
-            {
-                LocalizationService.SetLanguage(language);
-                LocalizationService.Apply(main);
-                vm.EditorModeIndex = mode;
-                vm.EditUnitIndex = unit;
-                foreach (var navigationTab in new[] { 0, 1 })
-                {
-                    ((TabControl)main.FindName("KeyboardNavigationTabs")).SelectedIndex = navigationTab;
-                    await Layout(main);
-                    CheckActiveMainMnemonics(main, Check);
-                    CheckSemanticMnemonics(main, Check);
-                }
-            }
+                foreach (var mode in new[] { 0, 1, 2 })
+                    foreach (var unit in new[] { 0, 1, 2 })
+                    {
+                        LocalizationService.SetLanguage(language);
+                        LocalizationService.Apply(main);
+                        vm.EditorModeIndex = mode;
+                        vm.EditUnitIndex = unit;
+                        foreach (var navigationTab in new[] { 0, 1 })
+                        {
+                            ((TabControl)main.FindName("KeyboardNavigationTabs")).SelectedIndex = navigationTab;
+                            await Layout(main);
+                            CheckActiveMainMnemonics(main, Check);
+                            CheckSemanticMnemonics(main, Check);
+                        }
+                    }
             vm.EditorModeIndex = 0;
             vm.EditUnitIndex = 0;
             LocalizationService.SetLanguage("ja-JP");
@@ -249,25 +261,25 @@ public partial class App
                 return button;
             }).ToArray();
             foreach (var language in new[] { "ja-JP", "en-US" })
-            foreach (var empty in new[] { false, true })
-            {
-                LocalizationService.SetLanguage(language);
-                var custom = new ApplicationSettings { UiLanguage = language, AutoSaveEnabled = false };
-                for (var i = 0; i < pairs.Length; i++)
-                    typeof(ApplicationSettings).GetProperty(pairs[i].Item1)!.SetValue(custom, empty ? "" : "Ctrl+Shift+F" + (i + 1));
-                Check(await vm.ApplyApplicationSettingsAsync(custom), "Custom settings save to isolated test directory.");
-                await Layout(main);
-                for (var i = 0; i < pairs.Length; i++)
+                foreach (var empty in new[] { false, true })
                 {
-                    var expected = (string)typeof(MainWindowViewModel).GetProperty(pairs[i].Item2)!.GetValue(vm)!;
-                    Check(Equals(tooltipButtons[i].ToolTip, expected), pairs[i].Item2 + " binding refreshes immediately.");
-                    Check(empty ? !expected.Contains("Ctrl+") : expected.Contains("Ctrl+Shift+F" + (i + 1)), pairs[i].Item2 + " displays the current assignment, not a stale default.");
-                    var command = typeof(MainWindowViewModel).GetProperty(pairs[i].Item2.Replace("ToolTip", "Command"))!.GetValue(vm);
-                    var actualButtons = KeyboardElements(main).OfType<Button>().Where(b => ReferenceEquals(b.Command, command)).ToArray();
-                    Check(actualButtons.Length > 0 && actualButtons.All(b => Equals(b.ToolTip, expected)), pairs[i].Item2 + " is bound on the actual toolbar buttons.");
-                    if (empty) Check(expected.Contains(language == "en-US" ? "Unassigned" : "割り当てなし"), pairs[i].Item2 + " localizes the unassigned state.");
+                    LocalizationService.SetLanguage(language);
+                    var custom = new ApplicationSettings { UiLanguage = language, AutoSaveEnabled = false };
+                    for (var i = 0; i < pairs.Length; i++)
+                        typeof(ApplicationSettings).GetProperty(pairs[i].Item1)!.SetValue(custom, empty ? "" : "Ctrl+Shift+F" + (i + 1));
+                    Check(await vm.ApplyApplicationSettingsAsync(custom), "Custom settings save to isolated test directory.");
+                    await Layout(main);
+                    for (var i = 0; i < pairs.Length; i++)
+                    {
+                        var expected = (string)typeof(MainWindowViewModel).GetProperty(pairs[i].Item2)!.GetValue(vm)!;
+                        Check(Equals(tooltipButtons[i].ToolTip, expected), pairs[i].Item2 + " binding refreshes immediately.");
+                        Check(empty ? !expected.Contains("Ctrl+") : expected.Contains("Ctrl+Shift+F" + (i + 1)), pairs[i].Item2 + " displays the current assignment, not a stale default.");
+                        var command = typeof(MainWindowViewModel).GetProperty(pairs[i].Item2.Replace("ToolTip", "Command"))!.GetValue(vm);
+                        var actualButtons = KeyboardElements(main).OfType<Button>().Where(b => ReferenceEquals(b.Command, command)).ToArray();
+                        Check(actualButtons.Length > 0 && actualButtons.All(b => Equals(b.ToolTip, expected)), pairs[i].Item2 + " is bound on the actual toolbar buttons.");
+                        if (empty) Check(expected.Contains(language == "en-US" ? "Unassigned" : "割り当てなし"), pairs[i].Item2 + " localizes the unassigned state.");
+                    }
                 }
-            }
             // A live, existing tooltip binding must survive adding its Alt hint.
             var zoom = new Slider { DataContext = vm };
             zoom.SetBinding(FrameworkElement.ToolTipProperty, new Binding(nameof(vm.ZoomDisplay)));
@@ -293,7 +305,7 @@ public partial class App
         finally { LocalizationService.SetLanguage(originalLanguage); }
     }
 
-private static string MnemonicOf(FrameworkElement element)
+    private static string MnemonicOf(FrameworkElement element)
     {
         var caption = element switch
         {
@@ -316,10 +328,18 @@ private static string MnemonicOf(FrameworkElement element)
             if (key.Length == 0) continue;
             object target = element is Label label ? label.Target : element;
             if (target is UIElement { IsEnabled: false }) continue;
-            check(!keys.TryGetValue(key, out var other) || ReferenceEquals(other, target), "Loaded main view: " + key + " does not conflict with another active control.");
+            check(!keys.TryGetValue(key, out var other) || ReferenceEquals(other, target),
+                $"Loaded main view: {key} does not conflict ({DescribeKeyboardTarget(other)} / {DescribeKeyboardTarget(target)}).");
             keys[key] = target;
         }
     }
+
+    private static string DescribeKeyboardTarget(object? value) => value switch
+    {
+        FrameworkElement element when !string.IsNullOrWhiteSpace(element.Name) => element.GetType().Name + "#" + element.Name,
+        ContentControl content => content.GetType().Name + ":" + content.Content,
+        _ => value?.GetType().Name ?? "none",
+    };
 
     private static void CheckSemanticMnemonics(Window host, Action<bool, string> check)
     {
@@ -378,6 +398,25 @@ private static string MnemonicOf(FrameworkElement element)
         {
             Caption("文書全体を分析", "A"); Caption("選択箇所へ移動", "G");
         }
+        else if (host is InternalLinkWindow)
+        {
+            Caption("適用", "A"); Target("PageNumberBox", "P"); Target("ZoomBox", "Z"); Target("DescriptionBox", "D");
+        }
+        else if (host is ProjectCommentsWindow)
+        {
+            Caption("新規", "N"); Caption("削除", "D"); Caption("適用", "A");
+            Target("BodyBox", "B"); Target("ImportanceBox", "I"); Target("TagsBox", "T");
+        }
+        else if (host is ProjectSaveOptionsWindow)
+        {
+            Caption("保存", "S");
+            var embedded = (RadioButton)host.FindName("EmbeddedModeRadioButton");
+            var relative = (RadioButton)host.FindName("RelativeModeRadioButton");
+            check(MnemonicOf(embedded) == "P" && AutomationProperties.GetAccessKey(embedded) == "Alt+P",
+                "Portable project storage uses semantic mnemonic P.");
+            check(MnemonicOf(relative) == "N" && AutomationProperties.GetAccessKey(relative) == "Alt+N",
+                "Normal project storage uses semantic mnemonic N.");
+        }
         if (host is MainWindow)
         {
             var vm = (MainWindowViewModel)host.DataContext;
@@ -388,12 +427,29 @@ private static string MnemonicOf(FrameworkElement element)
             }
             var expected = new Dictionary<string, string>
             {
-                ["PDFを開く..."] = "O", ["プロジェクトを開く..."] = "P", ["NDLOCR-Liteデータを読み込む..."] = "I",
+                ["PDFを開く..."] = "O",
+                ["プロジェクトを開く..."] = "P",
+                ["NDLOCR-Liteデータを読み込む..."] = "I",
                 ["最近開いたファイル"] = "R",
-                ["文書のプロパティ..."] = "D", ["プロジェクトを上書き保存"] = "S", ["プロジェクトを別名で保存..."] = "A",
-                ["編集済みPDFを別名で出力..."] = "E", ["終了"] = "X", ["元に戻す"] = "U", ["やり直す"] = "R",
-                ["ページを挿入..."] = "I", ["選択ページを削除"] = "D", ["選択ページを左へ90°回転"] = "L", ["選択ページを右へ90°回転"] = "R",
-                ["しおりをインポート..."] = "I", ["しおりをエクスポート..."] = "E",
+                ["文書のプロパティ..."] = "D",
+                ["プロジェクトを上書き保存"] = "S",
+                ["プロジェクトを別名で保存..."] = "A",
+                ["編集済みPDFを別名で出力..."] = "E",
+                ["終了"] = "X",
+                ["元に戻す"] = "U",
+                ["やり直す"] = "R",
+                ["コメントとタグ..."] = "C",
+                ["ページを挿入..."] = "I",
+                ["選択ページを削除"] = "D",
+                ["選択ページを左へ90°回転"] = "L",
+                ["選択ページを右へ90°回転"] = "R",
+                ["ページリンクを設定..."] = "K",
+                ["リンク先へ移動"] = "G",
+                ["リンク移動前へ戻る"] = "B",
+                ["リンク移動を進める"] = "F",
+                ["ページリンクを削除"] = "E",
+                ["しおりをインポート..."] = "I",
+                ["しおりをエクスポート..."] = "E",
             };
             var menus = elements.OfType<MenuItem>().ToArray();
             foreach (var (caption, key) in expected)

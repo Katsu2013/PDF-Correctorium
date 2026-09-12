@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PdfCorrectorium.App.ViewModels"
+        xmlns:ocr="clr-namespace:PdfCorrectorium.App.Controls"
         Title="PDF Correctorium" Height="850" Width="1400" MinHeight="650" MinWidth="1050"
         WindowStartupLocation="CenterScreen" PreviewKeyDown="MainWindow_OnPreviewKeyDown" Closing="MainWindow_OnClosing" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Window.InputBindings>
@@ -273,6 +274,8 @@
                 <MenuItem x:Name="FindOcrTextMenuItem" Header="透明テキストを検索...(_F)" IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+F" Click="FindOcrTextMenuItem_OnClick" />
                 <MenuItem x:Name="ReplaceOcrTextMenuItem" Header="透明テキストを置換...(_H)" IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+H"/>
                 <Separator />
+                <MenuItem Header="コメントとタグ...(_C)" IsEnabled="{Binding HasDocument}" Click="CommentsAndTags_OnClick" AutomationProperties.AccessKey="Alt+C" />
+                <Separator />
                 <MenuItem x:Name="ApplicationSettingsMenuItem" Header="設定...(_P)" Click="ApplicationSettingsMenuItem_OnClick" />
             </MenuItem>
             <MenuItem x:Name="ViewMenu" Header="表示(_V)">
@@ -285,6 +288,30 @@
                 <MenuItem Header="ステータスバー(_S)"
                           IsCheckable="True"
                           IsChecked="{Binding ShowStatusBar, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+S"/>
+                <Separator />
+                <MenuItem Header="ページ表示(_L)" IsEnabled="{Binding HasDocument}" AutomationProperties.AccessKey="Alt+L">
+                    <MenuItem Header="ページ配置(_A)" AutomationProperties.AccessKey="Alt+A">
+                        <MenuItem Header="単一ページ(_1)" IsCheckable="True" IsChecked="{Binding IsSinglePageView, Mode=TwoWay}" AutomationProperties.AccessKey="Alt+1" />
+                        <MenuItem Header="見開き(_F)" IsCheckable="True" IsChecked="{Binding IsFacingPagesView, Mode=TwoWay}" AutomationProperties.AccessKey="Alt+F" />
+                    </MenuItem>
+                    <MenuItem Header="スクロール方式(_S)" AutomationProperties.AccessKey="Alt+S">
+                        <MenuItem Header="ページ切り替え(_P)" IsCheckable="True" IsChecked="{Binding IsPageByPageView, Mode=TwoWay}" AutomationProperties.AccessKey="Alt+P" />
+                        <MenuItem Header="連続スクロール(_C)" IsCheckable="True" IsChecked="{Binding IsContinuousView, Mode=TwoWay}" AutomationProperties.AccessKey="Alt+C" />
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="見開き表示の設定(_G)" IsEnabled="{Binding IsFacingPagesView}" AutomationProperties.AccessKey="Alt+G">
+                        <MenuItem Header="表紙を単独表示(_C)" IsCheckable="True"
+                                  IsChecked="{Binding FacingPagesShowCoverSeparately, Mode=TwoWay}"
+                                  AutomationProperties.AccessKey="Alt+C" />
+                        <Separator />
+                        <MenuItem Header="左綴じ(_L)" IsCheckable="True"
+                                  IsChecked="{Binding IsFacingPagesLeftBinding, Mode=TwoWay}"
+                                  AutomationProperties.AccessKey="Alt+L" />
+                        <MenuItem Header="右綴じ(_R)" IsCheckable="True"
+                                  IsChecked="{Binding IsFacingPagesRightBinding, Mode=TwoWay}"
+                                  AutomationProperties.AccessKey="Alt+R" />
+                    </MenuItem>
+                </MenuItem>
                 <Separator />
                 <MenuItem Header="プロパティの詳しい説明(_H)"
                           IsCheckable="True"
@@ -332,6 +359,17 @@
                 <MenuItem Header="PDF全体の画像を分析・最適化...(_O)"
                           Command="{Binding OptimizeDocumentImagesCommand}"
                           ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します"  AutomationProperties.AccessKey="Alt+O"/>
+                <Separator />
+                <MenuItem Header="ページリンクを設定...(_K)" Click="InternalLinkEdit_OnClick"
+                          IsEnabled="{Binding HasSelectedOverlay}" ToolTip="選択領域から別ページへの内部リンクを設定" AutomationProperties.AccessKey="Alt+K" />
+                <MenuItem Header="リンク先へ移動(_G)" Click="InternalLinkNavigate_OnClick"
+                          IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="選択領域に設定されたリンク先へ移動" AutomationProperties.AccessKey="Alt+G" />
+                <MenuItem Header="リンク移動前へ戻る(_B)" Click="InternalLinkBack_OnClick"
+                          IsEnabled="{Binding CanNavigateInternalLinkBack}" AutomationProperties.AccessKey="Alt+B" />
+                <MenuItem Header="リンク移動を進める(_F)" Click="InternalLinkForward_OnClick"
+                          IsEnabled="{Binding CanNavigateInternalLinkForward}" AutomationProperties.AccessKey="Alt+F" />
+                <MenuItem Header="ページリンクを削除(_E)" Click="InternalLinkDelete_OnClick"
+                          IsEnabled="{Binding HasInternalLinkForSelection}" AutomationProperties.AccessKey="Alt+E" />
             </MenuItem>
             <MenuItem x:Name="ValidationMenu" Header="検証(_A)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="現在のプロジェクトを検証(_V)" Click="ValidateProjectMenuItem_OnClick" />
@@ -557,6 +595,28 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="ページ全体" />
                         </StackPanel>
                     </Button>
+                    <ComboBox x:Name="DocumentViewModeSelector"
+                              IsEnabled="{Binding HasDocument}"
+                              Width="112" Margin="3,1"
+                              ItemsSource="{Binding DocumentViewModeOptions}"
+                              SelectedItem="{Binding SelectedDocumentViewModeOption, Mode=TwoWay}"
+                              DisplayMemberPath="DisplayName"
+                              Style="{StaticResource RoundedToolbarComboBoxStyle}"
+                              ToolTip="{Binding DocumentViewModeDescription}"
+                              kb:KeyboardAccess.Key="N"
+                              AutomationProperties.Name="ページ表示モード"
+                              AutomationProperties.AccessKey="Alt+N" />
+                    <ComboBox x:Name="DocumentPageFlowModeSelector"
+                              IsEnabled="{Binding HasDocument}"
+                              Width="124" Margin="3,1"
+                              ItemsSource="{Binding DocumentPageFlowModeOptions}"
+                              SelectedItem="{Binding SelectedDocumentPageFlowModeOption, Mode=TwoWay}"
+                              DisplayMemberPath="DisplayName"
+                              Style="{StaticResource RoundedToolbarComboBoxStyle}"
+                              ToolTip="ページ切り替え／連続スクロール"
+                              kb:KeyboardAccess.Key="2"
+                              AutomationProperties.Name="スクロール方式"
+                              AutomationProperties.AccessKey="Alt+2" />
                     <Separator Margin="4,0" />
                     <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUsePreview}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
                         <ComboBoxItem Content="行編集" />
@@ -638,7 +698,10 @@
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" >
             </Separator>
-            <StatusBarItem DockPanel.Dock="Right" Content="{Binding StorageModeText}" />
+            <StatusBarItem x:Name="ProjectStorageModeStatusItem"
+                           DockPanel.Dock="Right"
+                           Content="{Binding ProjectStorageModeStatusText}"
+                           Visibility="{Binding HasDocument, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <Separator DockPanel.Dock="Right" >
             </Separator>
             <StatusBarItem DockPanel.Dock="Right"
@@ -912,7 +975,41 @@
                     <DockPanel KeyboardNavigation.TabNavigation="Local">
                         <Grid KeyboardNavigation.TabIndex="0">
                             <ScrollViewer x:Name="PreviewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="4"
-                                          PreviewMouseWheel="PreviewScrollViewer_OnPreviewMouseWheel" SizeChanged="PreviewScrollViewer_OnSizeChanged">
+                                          PreviewMouseWheel="PreviewScrollViewer_OnPreviewMouseWheel"
+                                          ScrollChanged="PreviewScrollViewer_OnScrollChanged"
+                                          SizeChanged="PreviewScrollViewer_OnSizeChanged">
+                                <Grid HorizontalAlignment="Center" VerticalAlignment="Top">
+                                <Grid x:Name="PreviewDocumentLayoutHost" HorizontalAlignment="Center" VerticalAlignment="Top">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="PreviousPreviewPageHost" Background="White" BorderBrush="#91A0AE" BorderThickness="1"
+                                            Margin="6" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                            Visibility="{Binding HasPreviousPreview, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                            Tag="{Binding PreviousPreviewPageNumber}"
+                                            MouseLeftButtonUp="AdjacentPreviewPage_OnMouseLeftButtonUp"
+                                            ToolTip="クリックしてこのページを編集">
+                                        <Grid Width="{Binding PreviousPreviewPixelWidth}" Height="{Binding PreviousPreviewPixelHeight}">
+                                            <Grid.LayoutTransform><ScaleTransform ScaleX="{Binding ZoomFactor}" ScaleY="{Binding ZoomFactor}" /></Grid.LayoutTransform>
+                                            <Image Source="{Binding PreviousPreviewImage}" Stretch="Fill" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            <Border Background="#CC263746" CornerRadius="3" Padding="7,3" Margin="8" HorizontalAlignment="Left" VerticalAlignment="Top">
+                                                <TextBlock Text="{Binding PreviousPreviewPageNumber, StringFormat={}{0} ページ}" Foreground="White" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <!-- 空き側は位置だけを確保し、Acrobatと同様にページ面を描画しない。 -->
+                                    <Border x:Name="FacingBlankPageHost" Background="Transparent" BorderThickness="0"
+                                            Margin="6" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                            Width="{Binding PreviewPixelWidth}" Height="{Binding PreviewPixelHeight}"
+                                            IsHitTestVisible="False" Visibility="Collapsed">
+                                        <Border.LayoutTransform><ScaleTransform ScaleX="{Binding ZoomFactor}" ScaleY="{Binding ZoomFactor}" /></Border.LayoutTransform>
+                                    </Border>
                                 <Border x:Name="PreviewPageHost"
                                         Background="White"
                                         BorderBrush="#CBD3DA"
@@ -1203,100 +1300,17 @@
                                                                 </Style>
                                                             </Border.Style>
                                                         </Border>
-                                                        <ItemsControl x:Name="CharacterCellLayer" ItemsSource="{Binding CharacterCells}" IsHitTestVisible="False">
-                                                            <ItemsControl.ItemsPanel>
-                                                                <ItemsPanelTemplate>
-                                                                    <Canvas />
-                                                                </ItemsPanelTemplate>
-                                                            </ItemsControl.ItemsPanel>
-                                                            <ItemsControl.ItemContainerStyle>
-                                                                <Style TargetType="ContentPresenter">
-                                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                                                                </Style>
-                                                            </ItemsControl.ItemContainerStyle>
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Border Width="{Binding Width}" Height="{Binding Height}">
-                                                                        <Border.Style>
-                                                                            <Style TargetType="Border">
-                                                                                <Setter Property="Background" Value="Transparent" />
-                                                                                <Setter Property="BorderBrush" Value="Transparent" />
-                                                                                <Setter Property="BorderThickness" Value="{Binding DataContext.CharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                <Style.Triggers>
-                                                                                    <MultiDataTrigger>
-                                                                                        <MultiDataTrigger.Conditions>
-                                                                                            <Condition Binding="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
-                                                                                            <Condition Binding="{Binding DataContext.ShowUnselectedCharacterCellBorders, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
-                                                                                        </MultiDataTrigger.Conditions>
-                                                                                        <Setter Property="Background" Value="#0D64748B" />
-                                                                                        <Setter Property="BorderBrush" Value="#806B7280" />
-                                                                                    </MultiDataTrigger>
-                                                                                    <MultiDataTrigger>
-                                                                                        <MultiDataTrigger.Conditions>
-                                                                                            <Condition Binding="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
-                                                                                            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
-                                                                                        </MultiDataTrigger.Conditions>
-                                                                                        <Setter Property="Background" Value="#2000A6B2" />
-                                                                                        <Setter Property="BorderBrush" Value="#DD00838F" />
-                                                                                        <Setter Property="BorderThickness" Value="{Binding DataContext.CharacterRowCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                    </MultiDataTrigger>
-                                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                                        <Setter Property="Background" Value="#60FFD54F" />
-                                                                                        <Setter Property="BorderBrush" Value="#FFFF8A00" />
-                                                                                        <Setter Property="BorderThickness" Value="{Binding DataContext.SelectedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                        <Setter Property="ToolTip" Value="選択中の文字" />
-                                                                                    </DataTrigger>
-                                                                                    <DataTrigger Binding="{Binding IsLocked}" Value="True">
-                                                                                        <Setter Property="Background" Value="#285197D6" />
-                                                                                        <Setter Property="BorderBrush" Value="#E0286DA8" />
-                                                                                        <Setter Property="BorderThickness" Value="{Binding DataContext.LockedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                        <Setter Property="ToolTip" Value="位置と文字送り幅をロック済み" />
-                                                                                    </DataTrigger>
-                                                                                    <MultiDataTrigger>
-                                                                                        <MultiDataTrigger.Conditions>
-                                                                                            <Condition Binding="{Binding IsSelected}" Value="True" />
-                                                                                            <Condition Binding="{Binding IsLocked}" Value="True" />
-                                                                                        </MultiDataTrigger.Conditions>
-                                                                                        <Setter Property="Background" Value="#70FFD54F" />
-                                                                                        <Setter Property="BorderBrush" Value="#FFD84315" />
-                                                                                        <Setter Property="BorderThickness" Value="{Binding DataContext.SelectedLockedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                        <Setter Property="ToolTip" Value="選択中（位置と文字送り幅をロック済み）" />
-                                                                                    </MultiDataTrigger>
-                                                                                    <DataTrigger Binding="{Binding IsSearchMatch}" Value="True">
-                                                                                        <Setter Property="Background" Value="#70FFF1F2" />
-                                                                                        <Setter Property="BorderBrush" Value="#FFFF0000" />
-                                                                                        <Setter Property="BorderThickness" Value="{Binding DataContext.SelectedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                        <Setter Property="ToolTip" Value="検索で一致した文字" />
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </Border.Style>
-                                                                        <Viewbox Stretch="Fill" StretchDirection="Both" Margin="1">
-                                                                            <TextBlock Text="{Binding Text}"
-                                                                                       FontSize="100"
-                                                                                       LineHeight="100"
-                                                                                       LineStackingStrategy="BlockLineHeight"
-                                                                                       TextAlignment="Center"
-                                                                                       HorizontalAlignment="Center"
-                                                                                       VerticalAlignment="Center">
-                                                                                <TextBlock.Style>
-                                                                                    <Style TargetType="TextBlock">
-                                                                                        <Setter Property="Foreground" Value="{Binding DataContext.OcrOverlayTextBrush, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                                                        <Style.Triggers>
-                                                                                            <DataTrigger Binding="{Binding IsSearchMatch}" Value="True">
-                                                                                                <Setter Property="Foreground" Value="#FFD50000" />
-                                                                                                <Setter Property="FontWeight" Value="Bold" />
-                                                                                            </DataTrigger>
-                                                                                        </Style.Triggers>
-                                                                                    </Style>
-                                                                                </TextBlock.Style>
-                                                                            </TextBlock>
-                                                                        </Viewbox>
-                                                                    </Border>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
+                                                        <ocr:OcrCharacterLayer x:Name="CharacterCellLayer"
+                                                            Cells="{Binding CharacterCells}"
+                                                            TextBrush="{Binding DataContext.OcrOverlayTextBrush, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            IsCharacterEditMode="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            IsRegionSelected="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                            ShowUnselectedBorders="{Binding DataContext.ShowUnselectedCharacterCellBorders, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CellBorderThickness="{Binding DataContext.CharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            RowBorderThickness="{Binding DataContext.CharacterRowCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            SelectedBorderThickness="{Binding DataContext.SelectedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            LockedBorderThickness="{Binding DataContext.LockedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            SelectedLockedBorderThickness="{Binding DataContext.SelectedLockedCharacterCellBorderThickness, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                         <Canvas x:Name="CharacterAdvanceHandles" Visibility="{Binding DataContext.IsCharacterEditMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                 ClipToBounds="False">
                                                             <Thumb Canvas.Left="{Binding CharacterSelectionRight}"
@@ -1359,24 +1373,38 @@
                                                             </Border.RenderTransform>
                                                             <TextBlock Text="サイズの基準" Foreground="White" FontSize="10" FontWeight="SemiBold" />
                                                         </Border>
-                                                        <Border Background="#E6006A6A" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                                Margin="-10,-10,0,0" MinWidth="22" Height="22" Padding="5,1"
-                                                                Visibility="{Binding DataContext.IsReadingOrderMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                RenderTransformOrigin="0.5,0.5">
-                                                            <Border.RenderTransform>
-                                                                <ScaleTransform ScaleX="{Binding DataContext.InverseZoomFactor, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                                ScaleY="{Binding DataContext.InverseZoomFactor, RelativeSource={RelativeSource AncestorType=Window}}" />
-                                                            </Border.RenderTransform>
-                                                            <TextBlock Text="{Binding ReadingOrder}" Foreground="White" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                        </Border>
-                                                        <Thumb Tag="NW" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE" />
-                                                        <Thumb Tag="N" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Center" VerticalAlignment="Top" Cursor="SizeNS" />
-                                                        <Thumb Tag="NE" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW" />
-                                                        <Thumb Tag="W" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="SizeWE" />
-                                                        <Thumb Tag="E" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Cursor="SizeWE" />
-                                                        <Thumb Tag="SW" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW" />
-                                                        <Thumb Tag="S" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Cursor="SizeNS" />
-                                                        <Thumb Tag="SE" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" />
+                                                        <ContentControl x:Name="RegionResizeHandles" Focusable="False" IsTabStop="False">
+                                                            <ContentControl.Style>
+                                                                <Style TargetType="ContentControl">
+                                                                    <Setter Property="Template" Value="{x:Null}" />
+                                                                    <Style.Triggers>
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                                                                <Condition Binding="{Binding DataContext.IsLineEditMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+                                                                                <Condition Binding="{Binding DataContext.IsReviewMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="False" />
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter Property="Template">
+                                                                                <Setter.Value>
+                                                                                    <ControlTemplate TargetType="ContentControl">
+                                                                                        <Grid>
+                                                                                        <Thumb Tag="NW" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE" />
+                                                                                        <Thumb Tag="N" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Center" VerticalAlignment="Top" Cursor="SizeNS" />
+                                                                                        <Thumb Tag="NE" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW" />
+                                                                                        <Thumb Tag="W" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="SizeWE" />
+                                                                                        <Thumb Tag="E" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Cursor="SizeWE" />
+                                                                                        <Thumb Tag="SW" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW" />
+                                                                                        <Thumb Tag="S" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Cursor="SizeNS" />
+                                                                                        <Thumb Tag="SE" Style="{StaticResource ResizeHandleStyle}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" />
+                                                                                        </Grid>
+                                                                                    </ControlTemplate>
+                                                                                </Setter.Value>
+                                                                            </Setter>
+                                                                        </MultiDataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ContentControl.Style>
+                                                        </ContentControl>
                                                         <Border x:Name="RotationConnector" Width="2" Height="20" Background="#FFFFD400" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-20,0,0" Visibility="Collapsed" RenderTransformOrigin="0.5,1">
                                                             <Border.RenderTransform>
                                                                 <ScaleTransform ScaleX="{Binding DataContext.InverseZoomFactor, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -1459,8 +1487,93 @@
                                                     BorderBrush="#FFD32F2F"
                                                     BorderThickness="1" />
                                         </Canvas>
+                                        <!-- Reading-order badges live in their own foreground layer so region
+                                             borders and resize handles can never cover the sequence number. -->
+                                        <ItemsControl x:Name="ReadingOrderBadgeLayer"
+                                                      ItemsSource="{Binding OverlayItems}"
+                                                      IsHitTestVisible="False"
+                                                      Panel.ZIndex="100">
+                                            <ItemsControl.Style>
+                                                <Style TargetType="ItemsControl">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsOcrOverlayVisible}" Value="True" />
+                                                                <Condition Binding="{Binding IsReadingOrderMode}" Value="True" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ItemsControl.Style>
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <Canvas />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border x:Name="ReadingOrderBadge"
+                                                            Background="#FF006A6A"
+                                                            BorderBrush="White"
+                                                            BorderThickness="1"
+                                                            CornerRadius="11"
+                                                            Margin="-10,-10,0,0"
+                                                            MinWidth="22"
+                                                            Height="22"
+                                                            Padding="4,0"
+                                                            RenderTransformOrigin="0.5,0.5">
+                                                        <Border.RenderTransform>
+                                                            <ScaleTransform ScaleX="{Binding DataContext.InverseZoomFactor, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                            ScaleY="{Binding DataContext.InverseZoomFactor, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        </Border.RenderTransform>
+                                                        <TextBlock Text="{Binding ReadingOrder}"
+                                                                   Foreground="White"
+                                                                   FontWeight="Bold"
+                                                                   FontSize="11"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </Grid>
                                 </Border>
+                                    <Border x:Name="NextPreviewPageHost" Background="White" BorderBrush="#91A0AE" BorderThickness="1"
+                                            Margin="6" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                            Visibility="{Binding HasNextPreview, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                            Tag="{Binding NextPreviewPageNumber}"
+                                            MouseLeftButtonUp="AdjacentPreviewPage_OnMouseLeftButtonUp"
+                                            ToolTip="クリックしてこのページを編集">
+                                        <Grid Width="{Binding NextPreviewPixelWidth}" Height="{Binding NextPreviewPixelHeight}">
+                                            <Grid.LayoutTransform><ScaleTransform ScaleX="{Binding ZoomFactor}" ScaleY="{Binding ZoomFactor}" /></Grid.LayoutTransform>
+                                            <Image Source="{Binding NextPreviewImage}" Stretch="Fill" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            <Border Background="#CC263746" CornerRadius="3" Padding="7,3" Margin="8" HorizontalAlignment="Left" VerticalAlignment="Top">
+                                                <TextBlock Text="{Binding NextPreviewPageNumber, StringFormat={}{0} ページ}" Foreground="White" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                                    <!-- 連続表示では全ページ分の軽量な枠をここへ並べる。
+                                         画像は表示範囲周辺だけを遅延生成し、現在ページだけ
+                                         PreviewPageHost を差し込んで編集機能を維持する。 -->
+                                    <ocr:ContinuousPagePanel x:Name="ContinuousDocumentLayoutHost"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Top"
+                                                             Visibility="Collapsed" />
+                                </Grid>
                             </ScrollViewer>
 
                             <Border Width="620" Height="700" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -1524,6 +1637,28 @@
                                       ToolTip="操作説明の表示／非表示" />
                         </Grid>
                         <TextBlock Text="{Binding OverlaySummary}" Foreground="{StaticResource SecondaryTextBrush}" />
+                        <Separator Margin="0,14" />
+                        <Border Background="#FFF8E7" BorderBrush="#E7C66B" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10"
+                                Visibility="{Binding HasInputPdfIssues, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="確認(_W)" Click="InputPdfIssues_OnClick" Padding="8,3" Margin="8,0,0,0"
+                                        ToolTip="入力PDFのフォーム、署名、フォントなどの注意事項を表示" />
+                                <TextBlock Text="{Binding InputPdfIssueSummary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </DockPanel>
+                        </Border>
+                        <TextBlock Text="文書注釈" Style="{StaticResource PaneTitleStyle}" />
+                        <TextBlock Text="コメント、タグ、PDF内ページリンクを選択中の文字領域へ設定できます。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,7" />
+                        <UniformGrid Columns="2">
+                            <Button Content="コメント・タグ" Click="CommentsAndTags_OnClick" ToolTip="編集 メニュー → コメントとタグ (Alt+E, C)" Margin="0,0,3,0" />
+                            <Button Content="リンク設定" Click="InternalLinkEdit_OnClick" IsEnabled="{Binding HasSelectedOverlay}" ToolTip="ページ メニュー → ページリンクを設定 (Alt+P, K)" Margin="3,0,0,0" />
+                        </UniformGrid>
+                        <UniformGrid Columns="4" Margin="0,6,0,0">
+                            <Button Content="戻る" Click="InternalLinkBack_OnClick" IsEnabled="{Binding CanNavigateInternalLinkBack}" ToolTip="ページ メニュー → リンク移動前へ戻る (Alt+P, B)" Margin="0,0,2,0" />
+                            <Button Content="進む" Click="InternalLinkForward_OnClick" IsEnabled="{Binding CanNavigateInternalLinkForward}" ToolTip="ページ メニュー → リンク移動を進める (Alt+P, F)" Margin="2,0" />
+                            <Button Content="リンク先" Click="InternalLinkNavigate_OnClick" IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="ページ メニュー → リンク先へ移動 (Alt+P, G)" Margin="2,0" />
+                            <Button Content="リンク削除" Click="InternalLinkDelete_OnClick" IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="ページ メニュー → ページリンクを削除 (Alt+P, E)" Margin="2,0,0,0" />
+                        </UniformGrid>
                         <Separator Margin="0,14" />
                         <StackPanel x:Name="ReviewPanel" Visibility="{Binding IsReviewMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="校正・確認" Style="{StaticResource PaneTitleStyle}" />
@@ -1759,13 +1894,13 @@
                                 <TextBlock Text="選択した1文字に2文字以上を入力すると、そのセルを入力文字数で分割します。前後の文字送りは維持されます。"
                                      Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                      Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                <Label Content="文字の送り幅(_N)" Margin="0,8,0,0"  Padding="0" Target="{Binding ElementName=SelectedCharacterAdvanceTextBox}" />
+                                <Label Content="文字の送り幅(_Q)" Margin="0,8,0,0"  Padding="0" Target="{Binding ElementName=SelectedCharacterAdvanceTextBox}" />
                                 <TextBox x:Name="SelectedCharacterAdvanceTextBox"
                                      Text="{Binding SelectedCharacterAdvance, Mode=TwoWay, UpdateSourceTrigger=LostFocus, StringFormat=F1}"
                                      IsEnabled="{Binding CanEditSelectedCharacterAdvance}" PreviewKeyDown="NumericTextBox_OnPreviewKeyDown"
                                      LostKeyboardFocus="NumericTextBox_OnLostKeyboardFocus"
                                      PreviewMouseWheel="NumericTextBox_OnPreviewMouseWheel"
-                                     ToolTip="複数文字を選択している場合、固定されていないすべての選択文字を同じ送り幅へ変更します。" AutomationProperties.AccessKey="Alt+N"/>
+                                     ToolTip="複数文字を選択している場合、固定されていないすべての選択文字を同じ送り幅へ変更します。" AutomationProperties.AccessKey="Alt+Q"/>
                                 <TextBlock Text="横書きでは文字幅、縦書きでは文字高さです。複数選択時の数値入力は同じ幅に揃え、終端ハンドルは各文字を同じ量だけ増減します。"
                                         Foreground="#667085" TextWrapping="Wrap" Margin="0,3,0,0"
                                         Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />

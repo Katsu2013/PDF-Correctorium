@@ -22,18 +22,24 @@ public sealed record WorkspacePreset
         var normalized = settings.Normalize();
         return new WorkspacePreset
         {
-            Name = name.Trim(), ShowPageListPanel = normalized.ShowPageListPanel,
-            ShowPropertiesPanel = normalized.ShowPropertiesPanel, ShowStatusBar = normalized.ShowStatusBar,
+            Name = name.Trim(),
+            ShowPageListPanel = normalized.ShowPageListPanel,
+            ShowPropertiesPanel = normalized.ShowPropertiesPanel,
+            ShowStatusBar = normalized.ShowStatusBar,
             ShowPageThumbnails = normalized.ShowPageThumbnails,
-            PageListWidth = normalized.PageListWidth, PropertiesPanelWidth = normalized.PropertiesPanelWidth,
+            PageListWidth = normalized.PageListWidth,
+            PropertiesPanelWidth = normalized.PropertiesPanelWidth,
         };
     }
 
     public ApplicationSettings ApplyTo(ApplicationSettings settings) => (settings with
     {
-        ShowPageListPanel = ShowPageListPanel, ShowPropertiesPanel = ShowPropertiesPanel,
-        ShowStatusBar = ShowStatusBar, ShowPageThumbnails = ShowPageThumbnails,
-        PageListWidth = PageListWidth, PropertiesPanelWidth = PropertiesPanelWidth,
+        ShowPageListPanel = ShowPageListPanel,
+        ShowPropertiesPanel = ShowPropertiesPanel,
+        ShowStatusBar = ShowStatusBar,
+        ShowPageThumbnails = ShowPageThumbnails,
+        PageListWidth = PageListWidth,
+        PropertiesPanelWidth = PropertiesPanelWidth,
     }).Normalize();
 
     // Local settings are tolerant of older/malformed entries; file import validates before normalizing.

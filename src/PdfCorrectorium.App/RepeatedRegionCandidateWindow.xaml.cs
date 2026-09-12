@@ -266,14 +266,20 @@ public partial class RepeatedRegionCandidateWindow : Window
             var deletedGrid = new Grid();
             deletedGrid.Children.Add(new Line
             {
-                X1 = 0, Y1 = 0, X2 = 1, Y2 = 1,
+                X1 = 0,
+                Y1 = 0,
+                X2 = 1,
+                Y2 = 1,
                 Stretch = Stretch.Fill,
                 Stroke = new SolidColorBrush(borderColor),
                 StrokeThickness = 2,
             });
             deletedGrid.Children.Add(new Line
             {
-                X1 = 1, Y1 = 0, X2 = 0, Y2 = 1,
+                X1 = 1,
+                Y1 = 0,
+                X2 = 0,
+                Y2 = 1,
                 Stretch = Stretch.Fill,
                 Stroke = new SolidColorBrush(borderColor),
                 StrokeThickness = 2,

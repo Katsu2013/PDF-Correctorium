@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">dev.139 プロジェクト保存・注釈機能</title>
+  <desc id="desc">ポータブルモードと通常モードを切り替える保存設定、入力PDF注意、コメントとタグ、ページ内部リンクの現行画面構成を示す模式図。</desc>
+  <style>
+    text{font-family:'Yu Gothic UI','Meiryo','Segoe UI',sans-serif;fill:#263746}.title{font-size:25px;font-weight:600}.head{font-size:18px;font-weight:600}.body{font-size:15px}.small{font-size:13px;fill:#667085}.accent{fill:#d72c30}.panel{fill:#fff;stroke:#b8c1ce;stroke-width:1.5}.button{fill:#fff;stroke:#9ca8b6}.notice{fill:#fff8e7;stroke:#e7c66b}.link{stroke:#d72c30;stroke-width:2;fill:none}
+  </style>
+  <rect width="1200" height="760" fill="#f5f6f8"/>
+  <text x="34" y="45" class="title">dev.139 プロジェクト保存・注釈機能</text>
+  <text x="34" y="70" class="small">現行UIの模式図 / 2026-09-09。実画面のピクセル再現ではありません。</text>
+
+  <rect x="35" y="100" width="530" height="245" rx="6" class="panel"/>
+  <text x="60" y="135" class="head">プロジェクトの保存設定</text>
+  <circle cx="76" cy="178" r="8" fill="#d72c30"/><text x="98" y="184" class="body">ポータブルモード — PDFをプロジェクト内に保存</text>
+  <text x="98" y="211" class="small">1ファイルで移動可能。source/document.pdf を格納。</text>
+  <circle cx="76" cy="252" r="8" fill="#fff" stroke="#798697"/><text x="98" y="258" class="body">通常モード — 元PDFを現在位置から参照</text>
+  <text x="98" y="285" class="small">通常はコピーなし。.assetsは変換・作業PDFだけ。</text>
+  <rect x="425" y="301" width="105" height="30" rx="4" class="button"/><text x="456" y="322" class="body">保存</text>
+
+  <rect x="600" y="100" width="565" height="245" rx="6" class="panel"/>
+  <text x="625" y="135" class="head">メイン画面・右ペイン</text>
+  <rect x="625" y="158" width="515" height="58" rx="4" class="notice"/>
+  <text x="642" y="183" class="body">入力PDFの注意事項: 3件</text>
+  <rect x="1045" y="171" width="75" height="30" rx="4" class="button"/><text x="1060" y="192" class="body">確認</text>
+  <text x="625" y="249" class="head">文書注釈</text>
+  <rect x="625" y="266" width="145" height="34" rx="4" class="button"/><text x="646" y="289" class="body">コメント・タグ</text>
+  <rect x="781" y="266" width="125" height="34" rx="4" class="button"/><text x="808" y="289" class="body">リンク設定</text>
+  <text x="625" y="326" class="small">戻る　進む　リンク先　リンク削除（同じ操作をページメニューから実行可能）</text>
+
+  <rect x="35" y="380" width="530" height="320" rx="6" class="panel"/>
+  <text x="60" y="415" class="head">コメントとタグ</text>
+  <text x="60" y="451" class="small">対象: 選択中のOCR領域</text>
+  <rect x="60" y="472" width="205" height="150" rx="4" fill="#f7f8fa" stroke="#b8c1ce"/>
+  <text x="78" y="500" class="body">校正メモ</text><text x="78" y="528" class="small">重要 / 未解決</text>
+  <text x="292" y="482" class="body">コメント本文</text><rect x="292" y="492" width="240" height="72" rx="4" class="button"/>
+  <text x="292" y="590" class="body">重要度　　高</text>
+  <text x="292" y="623" class="body">タグ　　　要確認, 人名</text>
+  <text x="292" y="656" class="body">☐ 解決済みにする</text>
+
+  <rect x="600" y="380" width="565" height="320" rx="6" class="panel"/>
+  <text x="625" y="415" class="head">ページリンク</text>
+  <rect x="650" y="470" width="155" height="65" rx="3" fill="#ffdd6544" stroke="#d72c30"/>
+  <text x="675" y="509" class="body">選択OCR領域</text>
+  <path d="M808 502 C865 502 870 502 925 502" class="link"/><path d="M913 493 L925 502 L913 511" class="link"/>
+  <rect x="930" y="455" width="190" height="95" rx="4" fill="#fff" stroke="#798697"/>
+  <text x="978" y="493" class="head">移動先ページ</text><text x="1006" y="526" class="body">12</text>
+  <text x="625" y="585" class="body">Ctrl+クリックで移動　／　戻る・進む</text>
+  <text x="625" y="615" class="body">PDF出力: Link注釈 + GoTo移動先</text>
+  <text x="625" y="659" class="small">既存リンク編集・自動ページ番号認識・任意矩形・外部リンクは未実装。</text>
+</svg>

@@ -1,5 +1,5 @@
-using System.Text;
 using System.IO;
+using System.Text;
 
 namespace PdfCorrectorium.App;
 
@@ -35,7 +35,12 @@ internal sealed class StartupDiagnostics
             try
             {
                 Directory.CreateDirectory(directory);
-                var path = Path.Combine(directory, $"startup-{DateTime.Now:yyyyMMdd}.log");
+                // A process-specific file prevents two application instances from
+                // racing on the same daily log while still keeping related logs
+                // adjacent and easy to identify.
+                var path = Path.Combine(
+                    directory,
+                    $"startup-{DateTime.Now:yyyyMMdd}-p{Environment.ProcessId}.log");
                 var diagnostics = new StartupDiagnostics(path);
                 diagnostics.Write("diagnostics.ready", $"Base directory: {applicationDirectory}");
                 return diagnostics;
@@ -59,7 +64,26 @@ internal sealed class StartupDiagnostics
         var line = $"{DateTimeOffset.Now:O}\t{eventId}\t{sanitized}{Environment.NewLine}";
         lock (_gate)
         {
-            File.AppendAllText(LogPath, line, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            try
+            {
+                using var stream = new FileStream(
+                    LogPath,
+                    FileMode.Append,
+                    FileAccess.Write,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var writer = new StreamWriter(
+                    stream,
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                writer.Write(line);
+            }
+            catch (IOException)
+            {
+                // Diagnostics must never prevent the application from starting.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The log location may become unavailable after initialization.
+            }
         }
         return LogPath;
     }

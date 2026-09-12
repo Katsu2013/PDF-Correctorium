@@ -149,6 +149,8 @@ public static class CharacterAdvanceEstimator
         return new CharacterAdvanceEstimationResult(advances, leadingOffset, estimatedExtent, confidence, message, inkCoverages);
     }
 
+    /// <summary>投影エネルギーから実文字範囲を推定し、端の余白を必要最小限だけ除外します。</summary>
+    /// <remarks>短すぎる範囲や閾値で文字を失う範囲は安全側に倒して元の全範囲を返します。</remarks>
     private static (int Start, int End) FindContentSpan(IReadOnlyList<double> energy, int count, int crossLength)
     {
         var ordered = energy.Order().ToArray();
@@ -183,6 +185,8 @@ public static class CharacterAdvanceEstimator
         return converted;
     }
 
+    /// <summary>回転したページ画像を、OCR領域のローカル座標へ再サンプリングします。</summary>
+    /// <remarks>逆変換した画素座標は画像境界へクランプし、領域外参照を防ぎます。</remarks>
     private static byte[] SampleRectifiedRegion(
         byte[] source,
         int sourceWidth,
@@ -215,32 +219,35 @@ public static class CharacterAdvanceEstimator
         return result;
     }
 
+    /// <summary>OCR領域の外周を優先して背景色を推定します。</summary>
+    /// <remarks>太い字形が領域の大部分を占めても、字形色を背景色と誤認しにくいようにします。</remarks>
     private static (double Blue, double Green, double Red) EstimateDominantColor(byte[] pixels, int width, int height)
     {
         var histogram = new Dictionary<int, (int Count, long Blue, long Green, long Red)>();
         var step = Math.Max(1, (int)Math.Sqrt(width * height / 16000d));
         var border = Math.Clamp((int)Math.Ceiling(Math.Min(width, height) * 0.09), 1, Math.Max(1, Math.Min(width, height) / 3));
         for (var y = 0; y < height; y += step)
-        for (var x = 0; x < width; x += step)
-        {
-            // Large bold glyphs can occupy most of a line. Sampling the complete rectangle
-            // would then identify the glyph color as the background. Page backgrounds are
-            // much more likely to be represented around the OCR rectangle's perimeter.
-            if (x >= border && x < width - border && y >= border && y < height - border) continue;
-            var offset = (y * width + x) * 4;
-            var blue = pixels[offset];
-            var green = pixels[offset + 1];
-            var red = pixels[offset + 2];
-            var key = (red >> 4) << 8 | (green >> 4) << 4 | blue >> 4;
-            histogram.TryGetValue(key, out var bin);
-            histogram[key] = (bin.Count + 1, bin.Blue + blue, bin.Green + green, bin.Red + red);
-        }
+            for (var x = 0; x < width; x += step)
+            {
+                // Large bold glyphs can occupy most of a line. Sampling the complete rectangle
+                // would then identify the glyph color as the background. Page backgrounds are
+                // much more likely to be represented around the OCR rectangle's perimeter.
+                if (x >= border && x < width - border && y >= border && y < height - border) continue;
+                var offset = (y * width + x) * 4;
+                var blue = pixels[offset];
+                var green = pixels[offset + 1];
+                var red = pixels[offset + 2];
+                var key = (red >> 4) << 8 | (green >> 4) << 4 | blue >> 4;
+                histogram.TryGetValue(key, out var bin);
+                histogram[key] = (bin.Count + 1, bin.Blue + blue, bin.Green + green, bin.Red + red);
+            }
         var dominant = histogram.Values.MaxBy(bin => bin.Count);
         return dominant.Count == 0
             ? (255, 255, 255)
             : ((double)dominant.Blue / dominant.Count, (double)dominant.Green / dominant.Count, (double)dominant.Red / dominant.Count);
     }
 
+    /// <summary>背景色との差分とエッジを、書字方向に沿った1次元エネルギーへ集約します。</summary>
     private static double[] BuildForegroundProjection(
         byte[] pixels,
         int width,
@@ -281,6 +288,7 @@ public static class CharacterAdvanceEstimator
         return result;
     }
 
+    /// <summary>投影値を外れ値の影響を抑えて正規化し、局所平均で平滑化します。</summary>
     private static double[] NormalizeProjection(IReadOnlyList<double> projection)
     {
         var ordered = projection.Order().ToArray();
@@ -301,6 +309,8 @@ public static class CharacterAdvanceEstimator
         return smoothed;
     }
 
+    /// <summary>字種ごとの幅事前値と画像エネルギーを使い、文字境界を動的計画法で決定します。</summary>
+    /// <remarks>各セルの幅、境界の谷、字種事前値、インク量を合算したコストが最小の経路を採用します。</remarks>
     private static int[] FindBoundaries(
         IReadOnlyList<double> energy,
         IReadOnlyList<string> elements,
@@ -440,6 +450,7 @@ public static class CharacterAdvanceEstimator
         return result;
     }
 
+    /// <summary>文字セル内のインク量が、その字種に期待される占有率を満たすかをペナルティ化します。</summary>
     private static double CellContentPenalty(
         int start,
         int end,
@@ -668,6 +679,7 @@ public static class CharacterAdvanceEstimator
             : element[0];
     }
 
+    /// <summary>境界周辺の局所エネルギーを求め、文字間の谷が深いほど低コストにします。</summary>
     private static double BoundaryEnergy(IReadOnlyList<double> energy, int position, double averageWidth)
     {
         var radius = Math.Max(1, (int)Math.Round(averageWidth * 0.07));
@@ -678,6 +690,7 @@ public static class CharacterAdvanceEstimator
         return total / (end - start + 1);
     }
 
+    /// <summary>境界の谷の明瞭さとセル幅の極端さから推定結果の信頼度を算出します。</summary>
     private static double CalculateConfidence(IReadOnlyList<double> energy, IReadOnlyList<int> boundaries)
     {
         if (boundaries.Count <= 2) return 0.5;

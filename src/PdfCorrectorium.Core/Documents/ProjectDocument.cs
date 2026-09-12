@@ -1,4 +1,89 @@
+using PdfCorrectorium.Core.Geometry;
+
 namespace PdfCorrectorium.Core.Documents;
+
+/// <summary>プロジェクトが編集対象PDFを保持する方法です。</summary>
+public enum ProjectPdfStorageMode
+{
+    /// <summary>旧形式。<see cref="SourcePdfReference.IsEmbedded"/>から読み替えます。</summary>
+    Legacy = 0,
+    /// <summary>PDFを.pdfocrproj内へ内包するポータブルモードです。</summary>
+    Embedded = 1,
+    /// <summary>プロジェクトの保存場所を基準に外部PDFを相対参照する通常モードです。</summary>
+    Relative = 2,
+}
+
+/// <summary>コメント等が参照する文書内対象の種類です。</summary>
+public enum ProjectTargetKind { Document, Page, OcrRegion, Bookmark, Ruby, ReadingOrder, ValidationIssue }
+/// <summary>コメントの解決状態です。</summary>
+public enum ProjectCommentState { Open, Resolved }
+/// <summary>コメントの重要度です。</summary>
+public enum ProjectCommentImportance { None, Low, Normal, High, Critical }
+
+/// <summary>文書、ページ、OCR領域等を固定IDで参照します。</summary>
+public sealed record ProjectTargetReference
+{
+    public ProjectTargetKind Kind { get; init; } = ProjectTargetKind.Document;
+    public Guid? PageId { get; init; }
+    public Guid? ObjectId { get; init; }
+    public int? CharacterStart { get; init; }
+    public int? CharacterLength { get; init; }
+    public string? ExternalKey { get; init; }
+}
+
+/// <summary>プロジェクト内で共有するタグ定義です。</summary>
+public sealed record ProjectTag
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public string Name { get; init; } = string.Empty;
+    public string ColorHex { get; init; } = "#64748B";
+    public string Description { get; init; } = string.Empty;
+}
+
+/// <summary>任意の文書対象へ付けるコメントとタグです。</summary>
+public sealed record ProjectComment
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public required ProjectTargetReference Target { get; init; }
+    public string Body { get; init; } = string.Empty;
+    public ProjectCommentState State { get; init; } = ProjectCommentState.Open;
+    public ProjectCommentImportance Importance { get; init; } = ProjectCommentImportance.Normal;
+    public IReadOnlyList<Guid> TagIds { get; init; } = [];
+    public string? Author { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>出力PDFにも保存する文書内ページリンクです。</summary>
+public sealed record PdfInternalLink
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public Guid SourcePageId { get; init; }
+    public Guid? SourceRegionId { get; init; }
+    public PdfRectangle? SourceBounds { get; init; }
+    public Guid DestinationPageId { get; init; }
+    public PdfPoint? DestinationPosition { get; init; }
+    public double? DestinationZoomPercent { get; init; }
+    public string Description { get; init; } = string.Empty;
+    public bool IsEnabled { get; init; } = true;
+}
+
+/// <summary>
+/// 編集中の論理ページを、変更しない元PDFの物理ページへ対応付けます。
+/// </summary>
+/// <remarks>
+/// 並べ替えと削除は配列の順序、回転は<see cref="RotationDegrees"/>だけを変更します。
+/// これにより、ページ操作のたびにPDF全体を複製する必要がありません。
+/// </remarks>
+public sealed record ProjectPageReference
+{
+    /// <summary>コメントや内部リンクから参照される不変のページIDです。</summary>
+    public Guid PageId { get; init; } = Guid.NewGuid();
+    /// <summary>元PDF内の1から始まる物理ページ番号です。</summary>
+    public int SourcePageNumber { get; init; }
+    /// <summary>元ページへ追加適用する時計回りの回転角度です。</summary>
+    public int RotationDegrees { get; init; }
+}
 
 /// <summary>
 /// PDFビューアでページを進める方向を表します。
@@ -6,7 +91,7 @@ namespace PdfCorrectorium.Core.Documents;
 /// </summary>
 public enum BindingDirection { LeftToRight, RightToLeft }
 /// <summary>PDFを開いた直後に使用するページレイアウトを表します。</summary>
-public enum InitialPageMode { SinglePage, Continuous, FacingPages }
+public enum InitialPageMode { SinglePage, Continuous, FacingPages, ContinuousFacingPages }
 
 /// <summary>
 /// PDFカタログのページレイアウトおよびViewerPreferencesへ反映する表示設定です。
@@ -19,6 +104,22 @@ public sealed record ViewerSettings
     public InitialPageMode PageMode { get; init; } = InitialPageMode.FacingPages;
     /// <summary>見開き時に1ページ目を表紙として単独表示するかを指定します。</summary>
     public bool ShowCoverSeparately { get; init; } = true;
+}
+
+/// <summary>プロジェクト内で使用する編集画面のページ配置です。</summary>
+public enum ProjectEditorPageLayout { SinglePage, FacingPages }
+/// <summary>プロジェクト内で使用する編集画面のスクロール方式です。</summary>
+public enum ProjectEditorPageFlow { PageByPage, Continuous }
+
+/// <summary>
+/// 利用者が文書の初期表示とは異なる編集表示を明示的に選んだ場合だけ保存する上書きです。
+/// </summary>
+public sealed record ProjectEditorViewState
+{
+    public ProjectEditorPageLayout PageLayout { get; init; } = ProjectEditorPageLayout.SinglePage;
+    public ProjectEditorPageFlow PageFlow { get; init; } = ProjectEditorPageFlow.PageByPage;
+    public bool ShowCoverSeparately { get; init; } = true;
+    public BindingDirection BindingDirection { get; init; } = BindingDirection.LeftToRight;
 }
 
 /// <summary>
@@ -99,8 +200,14 @@ public sealed record PdfCorrectoriumProject
     public string Name { get; init; } = "Untitled";
     /// <summary>編集対象となる元PDFの参照・検証情報です。</summary>
     public required SourcePdfReference SourcePdf { get; init; }
+    /// <summary>PDFを内包するか、同一フォルダー以下から相対参照するかを保持します。</summary>
+    public ProjectPdfStorageMode PdfStorageMode { get; init; } = ProjectPdfStorageMode.Legacy;
     /// <summary>PDFを開いた直後のページ表示設定です。</summary>
     public ViewerSettings ViewerSettings { get; init; } = new();
+    /// <summary>
+    /// 編集画面で利用者が明示的に選んだ表示状態です。nullの場合は<see cref="ViewerSettings"/>に従います。
+    /// </summary>
+    public ProjectEditorViewState? EditorViewState { get; init; }
     /// <summary>PDF出力時に使用する仕様バージョンです。既定では編集内容に応じて自動決定します。</summary>
     public PdfOutputVersion OutputPdfVersion { get; init; } = PdfOutputVersion.Automatic;
     /// <summary>
@@ -114,8 +221,19 @@ public sealed record PdfCorrectoriumProject
     public string? DocumentLanguage { get; init; }
     /// <summary>ページごとのOCR、ルビ、読み順、画像最適化設定です。</summary>
     public IReadOnlyList<OcrPage> Pages { get; init; } = [];
+    /// <summary>
+    /// 表示・出力するページ順と、各ページの元PDF内番号および追加回転です。
+    /// 空の場合は旧形式として、元PDFの全ページを同じ順序で使用します。
+    /// </summary>
+    public IReadOnlyList<ProjectPageReference> PageSequence { get; init; } = [];
     /// <summary>編集可能なPDFしおりの階層です。</summary>
     public IReadOnlyList<PdfBookmark> Bookmarks { get; init; } = [];
+    /// <summary>文書、ページ、OCR領域等へ付けたコメントです。</summary>
+    public IReadOnlyList<ProjectComment> Comments { get; init; } = [];
+    /// <summary>コメントへ付与できるプロジェクト共通タグです。</summary>
+    public IReadOnlyList<ProjectTag> Tags { get; init; } = [];
+    /// <summary>アプリ内移動と出力PDFのGoTo注釈に使用する内部リンクです。</summary>
+    public IReadOnlyList<PdfInternalLink> InternalLinks { get; init; } = [];
     /// <summary>元PDFからしおりを読み込み済みかを示します。</summary>
     public bool BookmarksInitialized { get; init; }
     /// <summary>PDF出力時にしおりツリーを再構築する必要があるかを示します。</summary>

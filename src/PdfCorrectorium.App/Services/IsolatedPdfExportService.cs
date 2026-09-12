@@ -289,7 +289,7 @@ internal sealed class IsolatedPdfExportService(
         "starting" => "起動準備",
         "project-opened" => "編集内容の読込後",
         "exporting" => "PDFの生成または検証中",
-            "editing" => "変更ページの反映中",
+        "editing" => "変更ページの反映中",
         "saving" => "一時PDFの保存中",
         "calibrating" => "文字位置の校正中",
         "spacing" => "文字送りの反映中",

@@ -50,6 +50,7 @@ public partial class App : Application
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--ocr-rendering-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--settings-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--recent-files-test", StringComparer.OrdinalIgnoreCase);
@@ -113,7 +114,7 @@ public partial class App : Application
             var renderTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--render-test", StringComparison.OrdinalIgnoreCase));
             if (renderTestIndex >= 0)
             {
-                RunRenderTest(e.Args, renderTestIndex);
+                await RunRenderTestAsync(e.Args, renderTestIndex);
                 return;
             }
 
@@ -175,6 +176,13 @@ public partial class App : Application
             var window = new MainWindow();
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
+
+            var ocrRenderingIndex = Array.FindIndex(e.Args, value => value.Equals("--ocr-rendering-test", StringComparison.OrdinalIgnoreCase));
+            if (ocrRenderingIndex >= 0)
+            {
+                await RunOcrRenderingTestAsync(window, e.Args, ocrRenderingIndex);
+                return;
+            }
 
             var fileLaunchTestsIndex = Array.FindIndex(e.Args, value => value.Equals("--file-launch-tests", StringComparison.OrdinalIgnoreCase));
             if (fileLaunchTestsIndex >= 0)
@@ -254,6 +262,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         PdfNativeWorkerClient.Shared.Shutdown();
+        PdfNativeWorkerClient.Background.Shutdown();
         _diagnostics?.Write("shutdown", $"Exit code: {e.ApplicationExitCode}");
         base.OnExit(e);
     }
@@ -342,7 +351,7 @@ public partial class App : Application
         propertiesWindow.Close();
         var settingsWindow = new ApplicationSettingsWindow(
             viewModel.CurrentApplicationSettings,
-            viewModel.StorageModeText,
+            viewModel.ApplicationStorageModeText,
             viewModel.SettingsFilePath);
         if (settingsWindow.Content is not FrameworkElement settingsContent)
             throw new InvalidOperationException("The application settings dialog has no content.");
@@ -430,7 +439,7 @@ public partial class App : Application
         Shutdown(0);
     }
 
-    private void RunRenderTest(string[] arguments, int optionIndex)
+    private async Task RunRenderTestAsync(string[] arguments, int optionIndex)
     {
         if (arguments.Length <= optionIndex + 2)
             throw new ArgumentException("--render-test requires an input PDF and an output PNG path.");
@@ -439,7 +448,7 @@ public partial class App : Application
         var pageNumber = arguments.Length > optionIndex + 3 && int.TryParse(arguments[optionIndex + 3], out var requestedPage)
             ? requestedPage
             : 1;
-        var result = new PdfPreviewService().RenderPageAsync(inputPath, pageNumber).GetAwaiter().GetResult();
+        var result = await new PdfPreviewService().RenderPageAsync(inputPath, pageNumber);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(result.Image));
@@ -748,14 +757,14 @@ public partial class App : Application
         var estimationPixels = Enumerable.Repeat((byte)255, 60 * 20 * 4).ToArray();
         for (var pixel = 3; pixel < estimationPixels.Length; pixel += 4) estimationPixels[pixel] = 255;
         foreach (var (left, right) in new[] { (2, 9), (15, 37), (43, 57) })
-        for (var y = 3; y < 17; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 60 + x) * 4;
-            estimationPixels[offset] = 0;
-            estimationPixels[offset + 1] = 0;
-            estimationPixels[offset + 2] = 0;
-        }
+            for (var y = 3; y < 17; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 60 + x) * 4;
+                    estimationPixels[offset] = 0;
+                    estimationPixels[offset + 1] = 0;
+                    estimationPixels[offset + 2] = 0;
+                }
         var estimationImage = BitmapSource.Create(60, 20, 96, 96, PixelFormats.Bgra32, null, estimationPixels, 60 * 4);
         estimationImage.Freeze();
         var multiLinePixels = Enumerable.Repeat((byte)255, 60 * 50 * 4).ToArray();
@@ -764,20 +773,22 @@ public partial class App : Application
                      (3, 17, 2, 9), (3, 17, 15, 37), (3, 17, 43, 57),
                      (28, 42, 2, 14), (28, 42, 20, 27), (28, 42, 34, 57),
                  })
-        for (var y = top; y <= bottom; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 60 + x) * 4;
-            multiLinePixels[offset] = 0;
-            multiLinePixels[offset + 1] = 0;
-            multiLinePixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 60 + x) * 4;
+                    multiLinePixels[offset] = 0;
+                    multiLinePixels[offset + 1] = 0;
+                    multiLinePixels[offset + 2] = 0;
+                }
         var multiLineImage = BitmapSource.Create(60, 50, 96, 96, PixelFormats.Bgra32, null, multiLinePixels, 60 * 4);
         multiLineImage.Freeze();
         var firstSelectedLine = new OverlayRegionViewModel(new PdfTextOverlayRegion(
-            "ABC", 0, 0, 60, 20, true, CharacterAdvances: [20, 20, 20])) { ReadingOrder = 10 };
+            "ABC", 0, 0, 60, 20, true, CharacterAdvances: [20, 20, 20]))
+        { ReadingOrder = 10 };
         var secondSelectedLine = new OverlayRegionViewModel(new PdfTextOverlayRegion(
-            "DEF", 0, 25, 60, 20, true, CharacterAdvances: [20, 20, 20])) { ReadingOrder = 11 };
+            "DEF", 0, 25, 60, 20, true, CharacterAdvances: [20, 20, 20]))
+        { ReadingOrder = 11 };
         viewModel.OverlayItems.Add(firstSelectedLine);
         viewModel.OverlayItems.Add(secondSelectedLine);
         viewModel.PreviewImage = multiLineImage;
@@ -830,14 +841,14 @@ public partial class App : Application
                      (9, 10, 39, 57),  // Japanese prolonged mark: low ink and full-em advance
                      (3, 16, 65, 77),  // B-like body
                  })
-        for (var y = top; y <= bottom; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 80 + x) * 4;
-            dashPixels[offset] = 0;
-            dashPixels[offset + 1] = 0;
-            dashPixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 80 + x) * 4;
+                    dashPixels[offset] = 0;
+                    dashPixels[offset + 1] = 0;
+                    dashPixels[offset + 2] = 0;
+                }
         var dashImage = BitmapSource.Create(80, 20, 96, 96, PixelFormats.Bgra32, null, dashPixels, 80 * 4);
         dashImage.Freeze();
         var dashRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("A-ーB", 0, 0, 80, 20, true));
@@ -948,14 +959,14 @@ public partial class App : Application
             throw new InvalidOperationException("Inserted text did not preserve the prefix and locked suffix advances.");
         var verticalSuffixPixels = Enumerable.Repeat((byte)255, 20 * 60 * 4).ToArray();
         foreach (var (top, bottom) in new[] { (2, 9), (15, 37), (43, 57) })
-        for (var y = top; y <= bottom; y++)
-        for (var x = 3; x < 17; x++)
-        {
-            var offset = (y * 20 + x) * 4;
-            verticalSuffixPixels[offset] = 0;
-            verticalSuffixPixels[offset + 1] = 0;
-            verticalSuffixPixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = 3; x < 17; x++)
+                {
+                    var offset = (y * 20 + x) * 4;
+                    verticalSuffixPixels[offset] = 0;
+                    verticalSuffixPixels[offset + 1] = 0;
+                    verticalSuffixPixels[offset + 2] = 0;
+                }
         var verticalSuffixImage = BitmapSource.Create(20, 60, 96, 96, PixelFormats.Bgra32, null, verticalSuffixPixels, 20 * 4);
         verticalSuffixImage.Freeze();
         var verticalSuffixRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion(
@@ -974,14 +985,14 @@ public partial class App : Application
             throw new InvalidOperationException("Vertical suffix-only adjustment changed the fixed prefix or lost proportional suffix heights.");
         var extendedPixels = Enumerable.Repeat((byte)255, 120 * 20 * 4).ToArray();
         foreach (var (left, right) in new[] { (2, 9), (15, 37), (43, 57) })
-        for (var y = 3; y < 17; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 120 + x) * 4;
-            extendedPixels[offset] = 0;
-            extendedPixels[offset + 1] = 0;
-            extendedPixels[offset + 2] = 0;
-        }
+            for (var y = 3; y < 17; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 120 + x) * 4;
+                    extendedPixels[offset] = 0;
+                    extendedPixels[offset + 1] = 0;
+                    extendedPixels[offset + 2] = 0;
+                }
         var extendedImage = BitmapSource.Create(120, 20, 96, 96, PixelFormats.Bgra32, null, extendedPixels, 120 * 4);
         extendedImage.Freeze();
         var extendedRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("ABC", 0, 0, 120, 20, true));
@@ -1001,14 +1012,14 @@ public partial class App : Application
             throw new InvalidOperationException("Numeric mouse-wheel adjustment failed.");
         var verticalPixels = Enumerable.Repeat((byte)255, 20 * 120 * 4).ToArray();
         foreach (var (top, bottom) in new[] { (2, 9), (15, 37), (43, 57) })
-        for (var y = top; y <= bottom; y++)
-        for (var x = 3; x < 17; x++)
-        {
-            var offset = (y * 20 + x) * 4;
-            verticalPixels[offset] = 0;
-            verticalPixels[offset + 1] = 0;
-            verticalPixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = 3; x < 17; x++)
+                {
+                    var offset = (y * 20 + x) * 4;
+                    verticalPixels[offset] = 0;
+                    verticalPixels[offset + 1] = 0;
+                    verticalPixels[offset + 2] = 0;
+                }
         var verticalImage = BitmapSource.Create(20, 120, 96, 96, PixelFormats.Bgra32, null, verticalPixels, 20 * 4);
         verticalImage.Freeze();
         var verticalEstimateRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("縦書字", 0, 0, 20, 120, true, IsVertical: true));
@@ -1020,14 +1031,14 @@ public partial class App : Application
         var boldPixels = Enumerable.Repeat((byte)238, 120 * 40 * 4).ToArray();
         for (var pixel = 3; pixel < boldPixels.Length; pixel += 4) boldPixels[pixel] = 255;
         foreach (var (left, right) in new[] { (3, 32), (38, 74), (80, 116) })
-        for (var y = 3; y < 37; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 120 + x) * 4;
-            boldPixels[offset] = 20;
-            boldPixels[offset + 1] = 20;
-            boldPixels[offset + 2] = 20;
-        }
+            for (var y = 3; y < 37; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 120 + x) * 4;
+                    boldPixels[offset] = 20;
+                    boldPixels[offset + 1] = 20;
+                    boldPixels[offset + 2] = 20;
+                }
         var boldImage = BitmapSource.Create(120, 40, 96, 96, PixelFormats.Bgra32, null, boldPixels, 120 * 4);
         boldImage.Freeze();
         var boldRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("の手術", 0, 0, 120, 40, true));
@@ -1044,14 +1055,14 @@ public partial class App : Application
                      (62, 70), (76, 87),      // 「な」
                      (92, 98), (108, 115),    // 「い」
                  })
-        for (var y = 4; y < 26; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 120 + x) * 4;
-            splitStrokePixels[offset] = 0;
-            splitStrokePixels[offset + 1] = 0;
-            splitStrokePixels[offset + 2] = 0;
-        }
+            for (var y = 4; y < 26; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 120 + x) * 4;
+                    splitStrokePixels[offset] = 0;
+                    splitStrokePixels[offset + 1] = 0;
+                    splitStrokePixels[offset + 2] = 0;
+                }
         var splitStrokeImage = BitmapSource.Create(120, 30, 96, 96, PixelFormats.Bgra32, null, splitStrokePixels, 120 * 4);
         splitStrokeImage.Freeze();
         var splitStrokeRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("いけない", 0, 0, 120, 30, true));
@@ -1070,14 +1081,14 @@ public partial class App : Application
                      (62, 87, 4, 25),                                   // 「次」
                      (92, 101, 5, 24), (108, 116, 10, 20),              // 「へ」
                  })
-        for (var y = top; y <= bottom; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 120 + x) * 4;
-            punctuationPixels[offset] = 0;
-            punctuationPixels[offset + 1] = 0;
-            punctuationPixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 120 + x) * 4;
+                    punctuationPixels[offset] = 0;
+                    punctuationPixels[offset + 1] = 0;
+                    punctuationPixels[offset + 2] = 0;
+                }
         var punctuationImage = BitmapSource.Create(120, 30, 96, 96, PixelFormats.Bgra32, null, punctuationPixels, 120 * 4);
         punctuationImage.Freeze();
         var punctuationRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("に、次へ", 0, 0, 120, 30, true));
@@ -1097,14 +1108,14 @@ public partial class App : Application
                      (84, 87, 4, 25), (75, 87, 22, 25),  // 」: sparse ink at the trailing edge
                      (94, 116, 4, 25),                    // 値
                  })
-        for (var y = top; y <= bottom; y++)
-        for (var x = left; x <= right; x++)
-        {
-            var offset = (y * 120 + x) * 4;
-            bracketPixels[offset] = 0;
-            bracketPixels[offset + 1] = 0;
-            bracketPixels[offset + 2] = 0;
-        }
+            for (var y = top; y <= bottom; y++)
+                for (var x = left; x <= right; x++)
+                {
+                    var offset = (y * 120 + x) * 4;
+                    bracketPixels[offset] = 0;
+                    bracketPixels[offset + 1] = 0;
+                    bracketPixels[offset + 2] = 0;
+                }
         var bracketImage = BitmapSource.Create(120, 30, 96, 96, PixelFormats.Bgra32, null, bracketPixels, 120 * 4);
         bracketImage.Freeze();
         var bracketRegion = new OverlayRegionViewModel(
@@ -1116,6 +1127,12 @@ public partial class App : Application
             Math.Abs(bracketAdvances.Sum() - bracketEstimate.Extent) > 0.001)
             throw new InvalidOperationException(
                 $"A Japanese bracket captured an adjacent glyph: {string.Join(", ", bracketAdvances.Select(value => value.ToString("0.0")))}.");
+        // Later reading-order assertions describe the original two-region fixture.
+        // Character-adjustment cases above add independent lines (including order 0);
+        // leaving them here changes the expected sequence even in the dev.140 build.
+        viewModel.OverlayItems.Remove(proportionalRegion);
+        viewModel.OverlayItems.Remove(firstSelectedLine);
+        viewModel.OverlayItems.Remove(secondSelectedLine);
         viewModel.EditUnitIndex = (int)OcrEditUnit.Line;
         viewModel.SetOverlaySelection([referenceRegion, targetRegion], referenceRegion);
         viewModel.SelectedReviewStatus = ReviewStatus.Verified;
@@ -1370,7 +1387,9 @@ public partial class App : Application
             if (reopened.PageCount <= 0 || reopened.Image.PixelWidth <= 0)
                 throw new InvalidDataException("The exported PDF could not be rendered.");
             var rotatedCharacters = reopened.TextRegions
-                .Where(item => Math.Abs(item.RotationDegrees - 4) < 0.75)
+                .Where(item => AngleDistance(
+                    item.RotationDegrees,
+                    region.RotationDegrees + (region.IsVertical ? 90d : 0d)) < 0.75)
                 .ToArray();
             if (rotatedCharacters.Length < 2)
                 throw new InvalidDataException("The exported PDF rotation did not round-trip through PDF coordinates.");
@@ -1383,7 +1402,9 @@ public partial class App : Application
                     $"The exported PDF writing direction did not round-trip through character positions. " +
                     $"Expected vertical={region.IsVertical}; horizontal span={horizontalSpan:0.##}; vertical span={verticalSpan:0.##}.");
             var addedCharacters = reopened.TextRegions
-                .Where(item => Math.Abs(item.RotationDegrees - 11) < 0.75)
+                .Where(item => AngleDistance(
+                    item.RotationDegrees,
+                    addedRegion.RotationDegrees + 90d) < 0.75)
                 .ToArray();
             if (addedCharacters.Length < 2)
                 throw new InvalidDataException("The added vertical invisible text did not round-trip through PDF output.");
@@ -1431,7 +1452,11 @@ public partial class App : Application
                 throw new InvalidOperationException("A newly opened PDF was incorrectly marked as modified.");
             var region = viewModel.OverlayItems.FirstOrDefault()
                 ?? throw new InvalidDataException("The test PDF did not produce an OCR overlay.");
-            region.Text = "保存テスト";
+            // Exercise text persistence with glyphs known to exist in the
+            // source font. Font substitution is intentionally not part of this
+            // project-format round-trip diagnostic.
+            var diagnosticText = region.OriginalText + region.OriginalText;
+            region.Text = diagnosticText;
             region.Left += 8;
             region.Width += 12;
             region.RotationDegrees = 7.5;
@@ -1478,7 +1503,7 @@ public partial class App : Application
             }
             if (savedRegion.ReviewStatus != ReviewStatus.NeedsReview)
                 throw new InvalidDataException("The review status did not round-trip through the project file.");
-            if (savedRegion.EffectiveText != "保存テスト" || !savedRegion.IsModified || savedRegion.EditedGeometry.RotationDegrees != 7.5 ||
+            if (savedRegion.EffectiveText != diagnosticText || !savedRegion.IsModified || savedRegion.EditedGeometry.RotationDegrees != 7.5 ||
                 savedRegion.WritingMode != savedWritingMode || !savedRegion.HasExplicitWritingMode ||
                 savedRegion.OriginalWritingMode == savedRegion.WritingMode ||
                 savedRegion.EditedGeometry.CharacterAdvances.Count != region.TextElementCount ||
@@ -1520,11 +1545,47 @@ public partial class App : Application
             var sourcePath = project.SourcePdf.IsEmbedded
                 ? await packages.MaterializeEmbeddedSourceAsync(projectPath, project.SourcePdf, paths.CacheDirectory)
                 : packages.ResolveSourcePath(project.SourcePdf, projectDirectory);
-            var export = await new PdfExportService().ExportAsync(sourcePath, outputPath, project);
-            var reopened = await new PdfPreviewService().RenderPageAsync(outputPath, 1, 640);
-            if (reopened.PageCount != project.SourcePdf.PageCount || reopened.Image.PixelWidth <= 0)
-                throw new InvalidDataException("The project export could not be reopened and rendered.");
-            return export;
+            string? materializedDirectory = null;
+            try
+            {
+                var exportSourcePath = sourcePath;
+                var exportProject = project;
+                var sequence = ProjectPageSequence.Normalize(
+                    project.PageSequence,
+                    project.Pages,
+                    project.SourcePdf.PageCount ?? project.PageSequence.Count);
+                if (!ProjectPageSequence.IsPhysicalIdentity(
+                        sequence,
+                        project.SourcePdf.PageCount ?? sequence.Count))
+                {
+                    materializedDirectory = Path.Combine(
+                        paths.WorkspaceDirectory,
+                        "project-export-test",
+                        Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(materializedDirectory);
+                    exportSourcePath = Path.Combine(materializedDirectory, "document.pdf");
+                    await new PdfPageManagementService().MaterializeAsync(sourcePath, sequence, exportSourcePath);
+                    exportProject = project with
+                    {
+                        SourcePdf = project.SourcePdf with { PageCount = sequence.Count },
+                        PageSequence = ProjectPageSequence.AsMaterialized(sequence),
+                    };
+                }
+
+                var export = await new PdfExportService().ExportAsync(exportSourcePath, outputPath, exportProject);
+                var reopened = await new PdfPreviewService().RenderPageAsync(outputPath, 1, 640);
+                if (reopened.PageCount != sequence.Count || reopened.Image.PixelWidth <= 0)
+                    throw new InvalidDataException("The project export could not be reopened and rendered.");
+                return export;
+            }
+            finally
+            {
+                if (materializedDirectory is not null)
+                {
+                    try { Directory.Delete(materializedDirectory, recursive: true); }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+                }
+            }
         }).GetAwaiter().GetResult();
         _diagnostics?.Write(
             "project-export-test.pass",
@@ -1585,6 +1646,8 @@ public partial class App : Application
                     throw new InvalidDataException($"Bookmark {extension} import/export did not preserve the hierarchy.");
             }
             var file = new FileInfo(inputPath);
+            var pageId = Guid.NewGuid();
+            var internalLinkId = Guid.NewGuid();
             var project = new PdfCorrectoriumProject
             {
                 Name = Path.GetFileNameWithoutExtension(inputPath),
@@ -1601,8 +1664,32 @@ public partial class App : Application
                 DocumentMetadata = expectedMetadata,
                 OutputPdfVersion = PdfOutputVersion.Pdf15,
                 DocumentLanguage = "ja-JP",
+                Pages =
+                [
+                    new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 },
+                ],
+                InternalLinks =
+                [
+                    new PdfInternalLink
+                    {
+                        Id = internalLinkId,
+                        SourcePageId = pageId,
+                        SourceBounds = new PdfRectangle(new PdfPoint(20, 20), new PdfSize(120, 24)),
+                        DestinationPageId = pageId,
+                        Description = "診断用ページリンク",
+                    },
+                ],
             };
             await new PdfExportService().ExportAsync(inputPath, outputPath, project);
+            var qpdfPath = PdfBookmarkService.ResolveQpdfPath() ?? throw new InvalidDataException("qpdf was not found.");
+            var linkJson = await ExternalProcessRunner.RunAsync(
+                qpdfPath,
+                ["--json-output=2", outputPath, "-"],
+                TimeSpan.FromMinutes(2),
+                CancellationToken.None);
+            if (!linkJson.StandardOutput.Contains("pdfcorrectorium-link-" + internalLinkId.ToString("N"), StringComparison.Ordinal) ||
+                !linkJson.StandardOutput.Contains("/Link", StringComparison.Ordinal))
+                throw new InvalidDataException("The internal page link was not written as a PDF Link annotation.");
             var pdf14OutputPath = Path.Combine(
                 Path.GetDirectoryName(outputPath)!,
                 Path.GetFileNameWithoutExtension(outputPath) + ".pdf14.pdf");
@@ -2019,6 +2106,19 @@ public partial class App : Application
         }
 
         ReportFatal("An unexpected UI error occurred.", e.Exception);
+    }
+
+    /// <summary>Wrap-aroundを考慮した2角度間の最短距離を返します。</summary>
+    private static double AngleDistance(double first, double second)
+    {
+        static double Normalize(double value)
+        {
+            var normalized = value % 360d;
+            return normalized < 0d ? normalized + 360d : normalized;
+        }
+
+        var distance = Math.Abs(Normalize(first) - Normalize(second));
+        return Math.Min(distance, 360d - distance);
     }
 
     /// <summary>

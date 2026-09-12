@@ -1,0 +1,50 @@
+<Window x:Class="PdfCorrectorium.App.ProjectSaveOptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+        Title="プロジェクトの保存設定" Width="560" Height="320" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="18" KeyboardNavigation.TabNavigation="Cycle">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="プロジェクトと元PDFの保存方法を選択してください。"
+                   TextWrapping="Wrap"
+                   Foreground="{StaticResource SecondaryTextBrush}"
+                   Margin="0,0,0,12" />
+
+        <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="5" Padding="14">
+            <StackPanel>
+                <RadioButton x:Name="EmbeddedModeRadioButton"
+                             GroupName="ProjectStorageMode"
+                             Content="ポータブルモード(_P) — PDFをプロジェクト内に保存"
+                             automation:AutomationProperties.AccessKey="Alt+P"
+                             Checked="StorageMode_OnChecked"
+                             Margin="0,0,0,4" />
+                <TextBlock Text="プロジェクトファイル1つで移動・共有できます。"
+                           TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}"
+                           Margin="24,0,0,14" />
+
+                <RadioButton x:Name="RelativeModeRadioButton"
+                             GroupName="ProjectStorageMode"
+                             Content="通常モード(_N) — 元PDFを現在の場所から参照"
+                             automation:AutomationProperties.AccessKey="Alt+N"
+                             Checked="StorageMode_OnChecked"
+                             Margin="0,0,0,4" />
+                <TextBlock Text="通常は元PDFをコピーしません。元PDFとプロジェクトの位置関係を変えると参照できなくなります。"
+                           TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}"
+                           Margin="24,0,0,0" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="キャンセル" IsCancel="True" MinWidth="104" />
+            <Button Content="保存(_S)" IsDefault="True" MinWidth="104" Margin="8,0,0,0" Click="Save_OnClick" />
+        </StackPanel>
+    </Grid>
+</Window>
