@@ -347,13 +347,19 @@ public partial class App
                   ((Border)main.FindName("FacingBlankPageHost")).Visibility == Visibility.Collapsed &&
                   vm.NextPreviewPageNumber == 2,
                 "Without a separate cover, right-bound facing view pairs pages 1 and 2 in right-to-left order.");
-            vm.NavigateFromAdjacentPreview(2);
+            var visibleCompanionBeforeNavigation = vm.NextPreviewImage;
+            vm.NextPageCommand.Execute(null);
+            Check(vm.SelectedPage?.PageNumber == 1 && vm.HasNextPreview &&
+                  ReferenceEquals(vm.NextPreviewImage, visibleCompanionBeforeNavigation),
+                "Facing-page navigation retains the complete current spread while the destination spread is prepared.");
             for (var attempt = 0; attempt < 200 && (vm.SelectedPage?.PageNumber != 2 || !vm.HasPreviousPreview); attempt++) await Task.Delay(10);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 0 &&
                   Grid.GetColumn((Border)main.FindName("PreviousPreviewPageHost")) == 1 &&
                   vm.PreviousPreviewPageNumber == 1,
                 "Selecting the second page retains the right-bound page pair and correct companion.");
+            Check(!vm.HasNextPreview,
+                "Prepared facing-page navigation replaces both page slots together without leaving a stale companion.");
             vm.FacingPagesBindingDirection = FacingPageBindingDirection.LeftBinding;
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1 &&

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <title>dev.157 墨消しスポイト・Del削除・未選択ホイール</title>
+  <desc>PDFページから色を取得するスポイト、選択範囲のDel削除、全編集モード共通の未選択ホイールスクロールを示す現行UI模式図。</desc>
+  <rect width="1280" height="760" fill="#f5f7fa"/>
+  <text x="64" y="62" font-family="Yu Gothic, sans-serif" font-size="28" font-weight="700" fill="#243447">墨消しスポイトと共通ホイール操作（dev.157）</text>
+  <text x="64" y="94" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">色取得は現在ページの元画像、スクロールは未選択時のワークエリアを対象にします。</text>
+
+  <rect x="64" y="128" width="742" height="520" rx="8" fill="#ffffff" stroke="#c6ced8" stroke-width="2"/>
+  <rect x="94" y="158" width="682" height="460" fill="#303b47"/>
+  <rect x="170" y="190" width="530" height="396" fill="#ffffff" stroke="#d9dde3"/>
+  <rect x="210" y="230" width="450" height="86" rx="4" fill="#f2d6b3"/>
+  <text x="234" y="270" font-family="Yu Gothic, sans-serif" font-size="23" fill="#263746">背景色をページ画像から取得</text>
+  <text x="234" y="300" font-family="Yu Gothic, sans-serif" font-size="17" fill="#526273">OCR枠・墨消し表示を含めず、元の描画像素を参照</text>
+  <circle cx="452" cy="272" r="19" fill="none" stroke="#d32f2f" stroke-width="3"/>
+  <line x1="424" y1="272" x2="480" y2="272" stroke="#d32f2f" stroke-width="2"/>
+  <line x1="452" y1="244" x2="452" y2="300" stroke="#d32f2f" stroke-width="2"/>
+  <path d="M510 335 C560 355 575 390 575 430" fill="none" stroke="#1565c0" stroke-width="4" marker-end="url(#arrow)"/>
+  <rect x="330" y="410" width="270" height="56" fill="#f2d6b3" stroke="#ffffff" stroke-width="4"/>
+  <text x="354" y="445" font-family="Yu Gothic, sans-serif" font-size="19" font-weight="700" fill="#263746">取得色 #F2D6B3 を適用</text>
+  <rect x="330" y="492" width="270" height="44" rx="5" fill="#fff0f0" stroke="#d32f2f"/>
+  <text x="377" y="520" font-family="Yu Gothic, sans-serif" font-size="18" font-weight="700" fill="#8f1f1f">選択中に Del で削除</text>
+
+  <rect x="836" y="128" width="380" height="520" rx="8" fill="#ffffff" stroke="#c6ced8" stroke-width="2"/>
+  <text x="866" y="173" font-family="Yu Gothic, sans-serif" font-size="22" font-weight="700" fill="#243447">墨消しプロパティ</text>
+  <line x1="866" y1="190" x2="1186" y2="190" stroke="#d9dde3"/>
+  <text x="866" y="226" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">墨消し色</text>
+  <rect x="866" y="240" width="270" height="34" rx="3" fill="#ffffff" stroke="#9da8b5"/>
+  <text x="880" y="263" font-family="Consolas, monospace" font-size="16" fill="#263746">#F2D6B3</text>
+  <rect x="1144" y="240" width="42" height="34" fill="#f2d6b3" stroke="#9da8b5"/>
+  <rect x="866" y="298" width="320" height="42" rx="5" fill="#ffffff" stroke="#aeb8c4"/>
+  <circle cx="894" cy="319" r="9" fill="none" stroke="#263746" stroke-width="2"/>
+  <line x1="900" y1="325" x2="910" y2="335" stroke="#263746" stroke-width="3"/>
+  <text x="932" y="326" font-family="Yu Gothic, sans-serif" font-size="17" fill="#263746">スポイトで取得 (Alt+I)</text>
+  <text x="866" y="380" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">1. スポイトを選択</text>
+  <text x="866" y="410" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">2. 現在のPDFページをクリック</text>
+  <text x="866" y="440" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">3. 選択範囲または次の範囲へ適用</text>
+  <text x="866" y="470" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">Esc: 取得操作だけを中止</text>
+  <rect x="866" y="510" width="320" height="102" rx="5" fill="#eaf2fb" stroke="#6f9cca"/>
+  <text x="884" y="540" font-family="Yu Gothic, sans-serif" font-size="17" font-weight="700" fill="#24527a">未選択時のホイール</text>
+  <text x="884" y="568" font-family="Yu Gothic, sans-serif" font-size="15" fill="#355f82">全編集モード：ワークエリアを上下スクロール</text>
+  <text x="884" y="594" font-family="Yu Gothic, sans-serif" font-size="15" fill="#355f82">Ctrl+ホイール：従来どおり表示倍率を変更</text>
+
+  <rect x="64" y="680" width="1152" height="46" rx="6" fill="#e9eef5"/>
+  <text x="84" y="709" font-family="Yu Gothic, sans-serif" font-size="16" fill="#34495e">入力欄にフォーカスがある場合、Delは文字削除を優先します。スポイトは表示用オーバーレイではなくページ画像を採色します。</text>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1565c0"/></marker></defs>
+</svg>

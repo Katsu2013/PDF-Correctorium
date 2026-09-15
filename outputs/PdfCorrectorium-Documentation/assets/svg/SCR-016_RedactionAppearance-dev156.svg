@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <title>dev.156 墨消し範囲の色・表示・削除</title>
+  <desc>作成済みの墨消し範囲を選択し、色の変更、編集画面だけの半透明・不透明切替、Undo可能な削除を行う現行UIの模式図。</desc>
+  <rect width="1280" height="760" fill="#f5f7fa"/>
+  <text x="64" y="62" font-family="Yu Gothic, sans-serif" font-size="28" font-weight="700" fill="#243447">墨消し範囲の色・表示・削除（dev.156）</text>
+  <text x="64" y="94" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">ページ上または一覧で範囲を選択し、右ペインから後編集します。</text>
+
+  <rect x="64" y="128" width="772" height="520" rx="8" fill="#ffffff" stroke="#c6ced8" stroke-width="2"/>
+  <rect x="94" y="158" width="712" height="460" fill="#303b47"/>
+  <rect x="176" y="190" width="548" height="396" fill="#ffffff" stroke="#d9dde3"/>
+  <text x="205" y="238" font-family="Yu Gothic, sans-serif" font-size="23" fill="#263746">氏名：山田 太郎　顧客番号：A-12345</text>
+  <text x="205" y="285" font-family="Yu Gothic, sans-serif" font-size="23" fill="#263746">住所：東京都〇〇区〇〇 1-2-3</text>
+  <text x="205" y="332" font-family="Yu Gothic, sans-serif" font-size="23" fill="#263746">連絡先：03-1234-5678</text>
+  <rect x="196" y="254" width="410" height="66" fill="#000000" fill-opacity="0.62" stroke="#ffffff" stroke-width="4"/>
+  <rect x="191" y="249" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="396" y="249" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="601" y="249" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="191" y="282" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="601" y="282" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="191" y="315" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="396" y="315" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <rect x="601" y="315" width="10" height="10" fill="#ffffff" stroke="#d32f2f" stroke-width="2"/>
+  <text x="226" y="370" font-family="Yu Gothic, sans-serif" font-size="18" font-weight="700" fill="#b42318">黒の中面を白くする操作面は重ねない</text>
+  <text x="226" y="402" font-family="Yu Gothic, sans-serif" font-size="17" fill="#526273">半透明：下の内容を確認しながら範囲調整</text>
+  <text x="226" y="432" font-family="Yu Gothic, sans-serif" font-size="17" fill="#526273">不透明：PDF出力時の塗り色に近い見た目</text>
+
+  <rect x="868" y="128" width="348" height="520" rx="8" fill="#ffffff" stroke="#c6ced8" stroke-width="2"/>
+  <text x="898" y="173" font-family="Yu Gothic, sans-serif" font-size="22" font-weight="700" fill="#243447">墨消しプロパティ</text>
+  <line x1="898" y1="190" x2="1186" y2="190" stroke="#d9dde3"/>
+  <text x="898" y="226" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">墨消し色</text>
+  <rect x="898" y="240" width="244" height="34" rx="3" fill="#ffffff" stroke="#9da8b5"/>
+  <text x="912" y="263" font-family="Consolas, monospace" font-size="16" fill="#263746">#000000</text>
+  <rect x="1150" y="240" width="36" height="34" fill="#000000" stroke="#9da8b5"/>
+  <g transform="translate(898 289)">
+    <rect x="0" y="0" width="42" height="28" fill="#000000"/><rect x="48" y="0" width="42" height="28" fill="#ffffff" stroke="#aeb8c4"/>
+    <rect x="96" y="0" width="42" height="28" fill="#d32f2f"/><rect x="144" y="0" width="42" height="28" fill="#1565c0"/>
+    <rect x="192" y="0" width="42" height="28" fill="#388e3c"/><rect x="240" y="0" width="42" height="28" fill="#f9a825"/>
+  </g>
+  <text x="898" y="353" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">編集画面での表示</text>
+  <circle cx="914" cy="380" r="8" fill="#ffffff" stroke="#687787"/><circle cx="914" cy="380" r="4" fill="#d32f2f"/>
+  <text x="932" y="386" font-family="Yu Gothic, sans-serif" font-size="16" fill="#263746">半透明</text>
+  <circle cx="1042" cy="380" r="8" fill="#ffffff" stroke="#687787"/>
+  <text x="1060" y="386" font-family="Yu Gothic, sans-serif" font-size="16" fill="#263746">不透明</text>
+  <text x="898" y="432" font-family="Yu Gothic, sans-serif" font-size="16" fill="#526273">このページ：1件</text>
+  <rect x="898" y="448" width="288" height="46" rx="4" fill="#fff0f0" stroke="#d9a4a4"/>
+  <rect x="914" y="463" width="20" height="16" fill="#000000"/>
+  <text x="947" y="478" font-family="Yu Gothic, sans-serif" font-size="16" fill="#263746">196, 254　410×66</text>
+  <rect x="898" y="518" width="138" height="42" rx="5" fill="#ffffff" stroke="#d32f2f"/>
+  <rect x="1048" y="518" width="138" height="42" rx="5" fill="#ffffff" stroke="#aeb8c4"/>
+  <text x="912" y="545" font-family="Yu Gothic, sans-serif" font-size="15" fill="#8f1f1f">選択範囲を削除</text>
+  <text x="1064" y="545" font-family="Yu Gothic, sans-serif" font-size="15" fill="#263746">ページ内を全解除</text>
+  <rect x="898" y="580" width="288" height="42" rx="5" fill="#eaf7f0" stroke="#47a475"/>
+  <text x="914" y="607" font-family="Yu Gothic, sans-serif" font-size="15" fill="#35634d">色変更・削除は Undo / Redo 対象</text>
+
+  <rect x="64" y="680" width="1152" height="46" rx="6" fill="#e9eef5"/>
+  <text x="84" y="709" font-family="Yu Gothic, sans-serif" font-size="16" fill="#34495e">半透明／不透明は編集画面だけの表示設定です。PDF出力は選択色で常に不透明に確定します。</text>
+</svg>

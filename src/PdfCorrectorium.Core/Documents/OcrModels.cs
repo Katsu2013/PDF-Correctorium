@@ -110,6 +110,7 @@ public sealed record OcrTextRegion
     /// <exception cref="ArgumentException">幾何情報に非有限値、ゼロ以下の倍率などが含まれる場合。</exception>
     public OcrTextRegion EditGeometry(TextGeometry geometry)
     {
+        ArgumentNullException.ThrowIfNull(geometry);
         var errors = geometry.Validate();
         if (errors.Count > 0)
             throw new ArgumentException(string.Join(", ", errors), nameof(geometry));

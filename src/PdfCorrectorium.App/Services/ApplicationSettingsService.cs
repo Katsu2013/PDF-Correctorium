@@ -333,6 +333,11 @@ public sealed class ApplicationSettingsService
             {
                 await Task.Delay(50, cancellationToken).ConfigureAwait(false);
             }
+            catch (IOException ex)
+            {
+                throw new TimeoutException(
+                    "設定ファイルが別のプロセスまたはアプリケーションインスタンスによりロックされています。しばらく待ってから再度お試しください。", ex);
+            }
         }
     }
 

@@ -18,6 +18,10 @@ public interface IEditCommand
 /// <summary>
 /// 不変な<see cref="PdfCorrectoriumProject"/>に対するUndo／Redoスタックを管理します。
 /// </summary>
+/// <remarks>
+/// 内部の<see cref="Stack{T}"/>はスレッドセーフではありません。
+/// すべてのメソッドはUIディスパッチャースレッドからのみ呼び出してください。
+/// </remarks>
 /// <param name="capacity">保持するUndo操作の最大件数。</param>
 public sealed class EditHistory(int capacity = 100)
 {

@@ -47,6 +47,18 @@ public partial class MainWindow : Window
     private bool _isMarqueeSelecting;
     /// <summary>囲み矩形を新規OCR領域として確定する操作中であることを示します。</summary>
     private bool _isAddingOcrRegion;
+    /// <summary>囲み矩形を墨消し範囲として確定する操作中であることを示します。</summary>
+    private bool _isAddingRedaction;
+    /// <summary>位置またはサイズをドラッグ調整している墨消し範囲です。</summary>
+    private RedactionOverlayViewModel? _transformedRedaction;
+    /// <summary>現在ページ画像から次の墨消し色を1点取得する操作中です。</summary>
+    private bool _isPickingRedactionColor;
+    /// <summary>Undoを1操作にまとめるために保持する、墨消し調整開始時の範囲です。</summary>
+    private Rect _redactionTransformStartBounds;
+    /// <summary>墨消し調整中に累積したドラッグ量です。</summary>
+    private Vector _redactionTransformDelta;
+    /// <summary>MoveまたはN/NE/E/SE/S/SW/W/NWのリサイズ位置です。</summary>
+    private string _redactionTransformHandle = "Move";
     /// <summary>囲み選択または領域追加を開始したプレビュー座標です。</summary>
     private Point _marqueeStart;
     /// <summary>保存確認が完了し、次のClosingイベントで終了を許可するフラグです。</summary>
@@ -592,10 +604,34 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Escape && _isPickingRedactionColor)
+        {
+            StopRedactionColorPicking(announceCancellation: true);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape && ViewModel.IsRedactionMode)
+        {
+            CancelRedactionTransform();
+            CancelPointerRectangle();
+            ViewModel.EditorMode = EditorInteractionMode.OcrEditing;
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Escape && ViewModel.IsAddOcrRegionMode)
         {
             CancelPointerRectangle();
             ViewModel.IsAddOcrRegionMode = false;
+            e.Handled = true;
+            return;
+        }
+        if (ShouldDeleteSelectedRedaction(
+                e.Key,
+                ViewModel.IsRedactionMode,
+                ViewModel.DeleteSelectedRedactionCommand.CanExecute(null),
+                Keyboard.FocusedElement))
+        {
+            ViewModel.DeleteSelectedRedactionCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -1072,7 +1108,7 @@ public partial class MainWindow : Window
 
     private void OverlayCanvas_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var primary = e.AddedItems.Cast<OverlayRegionViewModel>().LastOrDefault();
+        var primary = e.AddedItems.OfType<OverlayRegionViewModel>().LastOrDefault();
         SynchronizeOverlaySelection(primary);
     }
 
@@ -1099,6 +1135,23 @@ public partial class MainWindow : Window
         // Preview events run before ListBox selection changes. Commit the
         // property editor while its binding still points at the old region.
         CommitPendingEditorBindings();
+        if (ViewModel.IsRedactionMode)
+        {
+            if (FindAncestor<Thumb>(e.OriginalSource as DependencyObject) is { DataContext: RedactionOverlayViewModel }) return;
+            ViewModel.SelectedRedaction = null;
+            _isAddingRedaction = true;
+            _marqueeStart = e.GetPosition(OverlayCanvas);
+            Canvas.SetLeft(MarqueeSelectionRectangle, _marqueeStart.X);
+            Canvas.SetTop(MarqueeSelectionRectangle, _marqueeStart.Y);
+            MarqueeSelectionRectangle.Width = 0;
+            MarqueeSelectionRectangle.Height = 0;
+            MarqueeSelectionRectangle.Background = new SolidColorBrush(Color.FromArgb(92, 30, 30, 30));
+            MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(190, 30, 30));
+            MarqueeSelectionRectangle.Visibility = Visibility.Visible;
+            OverlayCanvas.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
         if (ViewModel.IsAddOcrRegionMode)
         {
             _isAddingOcrRegion = true;
@@ -1128,7 +1181,7 @@ public partial class MainWindow : Window
 
     private void OverlayCanvas_OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if ((!_isMarqueeSelecting && !_isAddingOcrRegion) || e.LeftButton != MouseButtonState.Pressed) return;
+        if ((!_isMarqueeSelecting && !_isAddingOcrRegion && !_isAddingRedaction) || e.LeftButton != MouseButtonState.Pressed) return;
         var current = e.GetPosition(OverlayCanvas);
         var left = Math.Min(_marqueeStart.X, current.X);
         var top = Math.Min(_marqueeStart.Y, current.Y);
@@ -1141,6 +1194,24 @@ public partial class MainWindow : Window
 
     private void OverlayCanvas_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isAddingRedaction)
+        {
+            _isAddingRedaction = false;
+            if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
+            var end = e.GetPosition(OverlayCanvas);
+            var bounds = new Rect(
+                Math.Min(_marqueeStart.X, end.X),
+                Math.Min(_marqueeStart.Y, end.Y),
+                Math.Abs(end.X - _marqueeStart.X),
+                Math.Abs(end.Y - _marqueeStart.Y));
+            ResetPointerRectangle();
+            if (bounds.Width < 8 || bounds.Height < 8 || ViewModel.AddManualRedaction(bounds) is null)
+            {
+                ViewModel.StatusMessageForInteraction("追加範囲が小さすぎるため、墨消し範囲を作成しませんでした。");
+            }
+            e.Handled = true;
+            return;
+        }
         if (_isAddingOcrRegion)
         {
             _isAddingOcrRegion = false;
@@ -1206,6 +1277,7 @@ public partial class MainWindow : Window
     private void CancelPointerRectangle()
     {
         _isAddingOcrRegion = false;
+        _isAddingRedaction = false;
         _isMarqueeSelecting = false;
         if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
         ResetPointerRectangle();
@@ -1218,9 +1290,171 @@ public partial class MainWindow : Window
         MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(24, 117, 209));
     }
 
+    private void RedactionColorButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string color }) ViewModel.SetRedactionColor(color);
+    }
+
+    private void RedactionEyedropperButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton button) return;
+        _isPickingRedactionColor = button.IsChecked == true && ViewModel.IsRedactionMode && ViewModel.HasPreview;
+        button.SetCurrentValue(ToggleButton.IsCheckedProperty, _isPickingRedactionColor);
+        PreviewPageHost.Cursor = _isPickingRedactionColor ? Cursors.Cross : null;
+        ViewModel.StatusMessageForInteraction(_isPickingRedactionColor
+            ? "スポイトを有効にしました。現在のPDFページから取得する色をクリックしてください。Escで中止できます。"
+            : "スポイトを中止しました。");
+    }
+
+    private void PreviewPageHost_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isPickingRedactionColor) return;
+        var point = e.GetPosition(OverlayCanvas);
+        var colorHex = TrySamplePreviewColor(
+            ViewModel.PreviewImage,
+            point,
+            new Size(ViewModel.PreviewPixelWidth, ViewModel.PreviewPixelHeight));
+        if (colorHex is null)
+        {
+            ViewModel.StatusMessageForInteraction("この位置から色を取得できませんでした。PDFページ内をクリックしてください。");
+        }
+        else
+        {
+            var updatesSelection = ViewModel.SelectedRedaction is not null;
+            ViewModel.SetRedactionColor(colorHex);
+            StopRedactionColorPicking(announceCancellation: false);
+            ViewModel.StatusMessageForInteraction(updatesSelection
+                ? $"スポイトで取得した {colorHex} を選択中の墨消し範囲へ適用しました。Undoで元に戻せます。"
+                : $"スポイトで取得した {colorHex} を新しい墨消し範囲の色に設定しました。");
+        }
+        e.Handled = true;
+    }
+
+    private void StopRedactionColorPicking(bool announceCancellation)
+    {
+        if (!_isPickingRedactionColor && RedactionEyedropperButton.IsChecked != true) return;
+        _isPickingRedactionColor = false;
+        RedactionEyedropperButton.SetCurrentValue(ToggleButton.IsCheckedProperty, false);
+        PreviewPageHost.ClearValue(CursorProperty);
+        if (announceCancellation) ViewModel.StatusMessageForInteraction("スポイトを中止しました。");
+    }
+
+    /// <summary>表示座標を元画像の画素へ変換し、アルファ値に依存しないRGB色を返します。</summary>
+    internal static string? TrySamplePreviewColor(ImageSource? source, Point point, Size logicalSize)
+    {
+        if (source is not System.Windows.Media.Imaging.BitmapSource bitmap ||
+            bitmap.PixelWidth <= 0 || bitmap.PixelHeight <= 0 ||
+            logicalSize.Width <= 0 || logicalSize.Height <= 0 ||
+            point.X < 0 || point.Y < 0 || point.X >= logicalSize.Width || point.Y >= logicalSize.Height)
+            return null;
+        var x = Math.Clamp((int)Math.Floor(point.X * bitmap.PixelWidth / logicalSize.Width), 0, bitmap.PixelWidth - 1);
+        var y = Math.Clamp((int)Math.Floor(point.Y * bitmap.PixelHeight / logicalSize.Height), 0, bitmap.PixelHeight - 1);
+        var converted = bitmap.Format == System.Windows.Media.PixelFormats.Bgra32
+            ? bitmap
+            : new System.Windows.Media.Imaging.FormatConvertedBitmap(bitmap, System.Windows.Media.PixelFormats.Bgra32, null, 0);
+        var pixel = new byte[4];
+        converted.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+        return $"#{pixel[2]:X2}{pixel[1]:X2}{pixel[0]:X2}";
+    }
+
+    private static bool IsTextEntryFocused(IInputElement? focusedElement)
+    {
+        if (focusedElement is not DependencyObject focused) return false;
+        return focused is TextBoxBase or PasswordBox ||
+               FindAncestor<TextBoxBase>(focused) is not null ||
+               FindAncestor<PasswordBox>(focused) is not null;
+    }
+
+    internal static bool ShouldDeleteSelectedRedaction(
+        Key key,
+        bool isRedactionMode,
+        bool canDeleteSelection,
+        IInputElement? focusedElement) =>
+        key == Key.Delete && isRedactionMode && canDeleteSelection && !IsTextEntryFocused(focusedElement);
+
+    /// <summary>ドラッグ開始前の単純なクリックでも墨消し範囲を選択可能にします。</summary>
+    private void RedactionOverlay_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!ViewModel.IsRedactionMode || sender is not FrameworkElement { DataContext: RedactionOverlayViewModel item }) return;
+        ViewModel.SelectedRedaction = item;
+        FindAncestor<Thumb>(e.OriginalSource as DependencyObject)?.Focus();
+    }
+
+    private void RedactionThumb_OnDragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (!ViewModel.IsRedactionMode || sender is not Thumb { DataContext: RedactionOverlayViewModel item } thumb) return;
+        _transformedRedaction = item;
+        _redactionTransformStartBounds = item.Bounds;
+        _redactionTransformDelta = new Vector();
+        _redactionTransformHandle = thumb.Tag as string ?? "Move";
+        ViewModel.SelectedRedaction = item;
+        thumb.Focus();
+        e.Handled = true;
+    }
+
+    private void RedactionThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (_transformedRedaction is null) return;
+        _redactionTransformDelta += new Vector(e.HorizontalChange, e.VerticalChange);
+        var bounds = CalculateRedactionTransform(
+            _redactionTransformStartBounds,
+            _redactionTransformHandle,
+            _redactionTransformDelta,
+            ViewModel.PreviewPixelWidth,
+            ViewModel.PreviewPixelHeight);
+        ViewModel.PreviewRedactionBounds(_transformedRedaction.Id, bounds);
+        e.Handled = true;
+    }
+
+    private void RedactionThumb_OnDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_transformedRedaction is null) return;
+        var id = _transformedRedaction.Id;
+        var original = _redactionTransformStartBounds;
+        _transformedRedaction = null;
+        if (e.Canceled) ViewModel.CancelRedactionBounds(id);
+        else ViewModel.CommitRedactionBounds(id, original);
+        e.Handled = true;
+    }
+
+    private void CancelRedactionTransform()
+    {
+        if (_transformedRedaction is null) return;
+        var id = _transformedRedaction.Id;
+        _transformedRedaction = null;
+        ViewModel.CancelRedactionBounds(id);
+    }
+
+    /// <summary>選択したハンドルに応じて、ページ内かつ最小8pxの範囲へ変換します。</summary>
+    internal static Rect CalculateRedactionTransform(Rect start, string handle, Vector delta, double canvasWidth, double canvasHeight)
+    {
+        var maximumWidth = Math.Max(1d, canvasWidth);
+        var maximumHeight = Math.Max(1d, canvasHeight);
+        var minimumWidth = Math.Min(8d, maximumWidth);
+        var minimumHeight = Math.Min(8d, maximumHeight);
+        if (handle == "Move")
+        {
+            return new Rect(
+                Math.Clamp(start.Left + delta.X, 0d, Math.Max(0d, maximumWidth - start.Width)),
+                Math.Clamp(start.Top + delta.Y, 0d, Math.Max(0d, maximumHeight - start.Height)),
+                Math.Min(start.Width, maximumWidth),
+                Math.Min(start.Height, maximumHeight));
+        }
+
+        var left = start.Left;
+        var right = start.Right;
+        var top = start.Top;
+        var bottom = start.Bottom;
+        if (handle.Contains('W')) left = Math.Clamp(start.Left + delta.X, 0d, right - minimumWidth);
+        if (handle.Contains('E')) right = Math.Clamp(start.Right + delta.X, left + minimumWidth, maximumWidth);
+        if (handle.Contains('N')) top = Math.Clamp(start.Top + delta.Y, 0d, bottom - minimumHeight);
+        if (handle.Contains('S')) bottom = Math.Clamp(start.Bottom + delta.Y, top + minimumHeight, maximumHeight);
+        return new Rect(left, top, right - left, bottom - top);
+    }
+
     private void SynchronizeOverlaySelection(OverlayRegionViewModel? primary)
     {
-        var selected = OverlayCanvas.SelectedItems.Cast<OverlayRegionViewModel>().ToArray();
+        var selected = OverlayCanvas.SelectedItems.OfType<OverlayRegionViewModel>().ToArray();
         ViewModel.SetOverlaySelection(selected, primary);
     }
 
@@ -1684,11 +1918,39 @@ public partial class MainWindow : Window
 
     private void PreviewScrollViewer_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
-        _previewFitMode = PreviewFitMode.None;
-        var command = e.Delta > 0 ? ViewModel.ZoomInCommand : ViewModel.ZoomOutCommand;
-        if (command.CanExecute(null)) command.Execute(null);
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            _previewFitMode = PreviewFitMode.None;
+            var command = e.Delta > 0 ? ViewModel.ZoomInCommand : ViewModel.ZoomOutCommand;
+            if (command.CanExecute(null)) command.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        if (!ViewModel.CanUsePreview || ViewModel.HasOverlaySelection || ViewModel.SelectedRedaction is not null) return;
+        var target = CalculateUnselectedWheelOffset(
+            PreviewScrollViewer.VerticalOffset,
+            e.Delta,
+            SystemParameters.WheelScrollLines,
+            PreviewScrollViewer.ViewportHeight,
+            PreviewScrollViewer.ScrollableHeight);
+        if (Math.Abs(target - PreviewScrollViewer.VerticalOffset) < 0.01) return;
+        PreviewScrollViewer.ScrollToVerticalOffset(target);
         e.Handled = true;
+    }
+
+    internal static double CalculateUnselectedWheelOffset(
+        double currentOffset,
+        int wheelDelta,
+        int wheelScrollLines,
+        double viewportHeight,
+        double scrollableHeight)
+    {
+        if (wheelDelta == 0 || scrollableHeight <= 0) return Math.Clamp(currentOffset, 0, Math.Max(0, scrollableHeight));
+        var distancePerDetent = wheelScrollLines < 0
+            ? Math.Max(1, viewportHeight)
+            : Math.Max(1, wheelScrollLines) * 16d;
+        var target = currentOffset - wheelDelta / 120d * distancePerDetent;
+        return Math.Clamp(target, 0, Math.Max(0, scrollableHeight));
     }
 
     /// <summary>左右のスケールによらず、矢印キーは1%、PageUp/Downは10%ずつ倍率を変更します。</summary>
@@ -1942,6 +2204,11 @@ public partial class MainWindow : Window
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if ((e.PropertyName == nameof(MainWindowViewModel.EditorMode) ||
+             e.PropertyName == nameof(MainWindowViewModel.PreviewImage)) &&
+            _isPickingRedactionColor && (!ViewModel.IsRedactionMode || !ViewModel.HasPreview))
+            StopRedactionColorPicking(announceCancellation: false);
+
         if (e.PropertyName is nameof(MainWindowViewModel.DocumentViewMode) or
             nameof(MainWindowViewModel.DocumentPageFlowMode) or
             nameof(MainWindowViewModel.FacingPagesShowCoverSeparately) or

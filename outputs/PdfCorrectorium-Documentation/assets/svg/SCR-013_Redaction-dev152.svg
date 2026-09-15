@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">dev.152 墨消し画面と安全なPDF出力</title>
+  <desc id="desc">選択文字、OCR領域、任意矩形から墨消し範囲を作り、対象ページ全体を安全な画像へ変換して出力する現行UIと処理の模式図。</desc>
+  <style>
+    text{font-family:'Yu Gothic UI','Meiryo','Segoe UI',sans-serif;fill:#263746}.title{font-size:24px;font-weight:600}.h{font-size:18px;font-weight:600}.t{font-size:15px}.s{font-size:13px}.muted{fill:#667085}.accent{fill:#d72c30}.panel{fill:#fff;stroke:#b8c1ce}.button{fill:#fff;stroke:#9aa6b2}.note{fill:#fff8e7;stroke:#e0a126}
+  </style>
+  <rect width="1280" height="760" fill="#f5f6f8"/>
+  <text x="28" y="40" class="title">墨消し（dev.152）</text>
+  <text x="28" y="68" class="t muted">画面上の色面は指定確認用。機密情報の除去は別名PDF出力時に確定します。</text>
+  <rect x="28" y="92" width="820" height="500" rx="4" class="panel"/>
+  <rect x="46" y="110" width="784" height="48" fill="#fff" stroke="#d8dee6"/>
+  <rect x="64" y="120" width="108" height="28" rx="3" class="button"/><text x="77" y="140" class="t">選択を墨消し</text>
+  <rect x="180" y="120" width="106" height="28" rx="3" class="button"/><text x="196" y="140" class="t">矩形を追加</text>
+  <rect x="304" y="120" width="68" height="28" rx="3" fill="#102030"/><text x="317" y="140" class="t" fill="#fff" style="fill:#fff">#102030</text>
+  <rect x="46" y="174" width="554" height="398" fill="#343e49"/>
+  <rect x="92" y="194" width="462" height="356" fill="#fff" stroke="#b8c1ce"/>
+  <text x="132" y="260" class="h">個人情報を含む見出し</text>
+  <text x="132" y="316" class="t">氏名：校正 太郎</text>
+  <text x="132" y="354" class="t">住所：東京都……</text>
+  <rect x="123" y="287" width="248" height="45" fill="#102030" fill-opacity=".72" stroke="#d72c30" stroke-width="2"/>
+  <text x="128" y="282" class="s accent">墨消し範囲 1</text>
+  <rect x="618" y="174" width="194" height="398" fill="#fff" stroke="#d8dee6"/>
+  <text x="636" y="208" class="h">墨消し</text>
+  <text x="636" y="239" class="s muted">現在ページ: 1件</text>
+  <text x="636" y="278" class="t">色</text><rect x="636" y="288" width="158" height="30" rx="3" class="button"/><text x="648" y="308" class="t">#102030</text>
+  <circle cx="650" cy="345" r="11" fill="#000"/><circle cx="682" cy="345" r="11" fill="#fff" stroke="#88939f"/><circle cx="714" cy="345" r="11" fill="#d72c30"/><circle cx="746" cy="345" r="11" fill="#2563eb"/>
+  <rect x="636" y="378" width="158" height="30" rx="3" class="button"/><text x="660" y="398" class="t">選択範囲を追加</text>
+  <rect x="636" y="416" width="158" height="30" rx="3" class="button"/><text x="665" y="436" class="t">矩形を追加</text>
+  <rect x="636" y="464" width="158" height="46" rx="3" fill="#f2f4f7" stroke="#b8c1ce"/><text x="646" y="483" class="s">1: 77, 113</text><text x="646" y="501" class="s">248 × 45</text>
+  <text x="28" y="627" class="h">確定出力</text>
+  <rect x="28" y="646" width="1188" height="82" rx="4" class="note"/>
+  <text x="50" y="678" class="t">対象ページを描画 → 1ポイントの安全余白付きで塗りつぶす → 元の文字・画像・注釈を削除 → 画像1枚へ置換 → qpdf整理 → 文字抽出0件と再描画を検証</text>
+  <text x="50" y="707" class="s muted">範囲外の透明OCR文字は保持します。注釈・構造・ベクターと接触文字行は失われ、元PDF・プロジェクトには元情報が残ります。</text>
+  <rect x="882" y="116" width="334" height="448" rx="4" class="panel"/>
+  <text x="906" y="152" class="h">プロジェクト形式1.5</text>
+  <text x="906" y="188" class="t">保存するもの</text>
+  <text x="924" y="220" class="t">・固定ページID</text><text x="924" y="250" class="t">・PDFポイント矩形</text><text x="924" y="280" class="t">・#RRGGBB色</text><text x="924" y="310" class="t">・任意のOCR由来情報</text>
+  <text x="906" y="360" class="t">保存しないもの</text>
+  <text x="924" y="392" class="t">・墨消し後のページ画像</text><text x="924" y="422" class="t">・プレビュー座標</text><text x="924" y="452" class="t">・一時PDFの複製</text>
+  <text x="906" y="506" class="s muted">範囲はUndo/Redo可能。</text><text x="906" y="530" class="s muted">元PDFは変更しません。</text>
+</svg>

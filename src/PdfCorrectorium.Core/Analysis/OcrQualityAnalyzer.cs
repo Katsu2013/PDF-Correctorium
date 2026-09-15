@@ -233,6 +233,7 @@ public sealed class OcrQualityAnalyzer
 
     private static IReadOnlyList<int> FindOccurrences(string text, string keyword, StringComparison comparison)
     {
+        if (string.IsNullOrEmpty(text)) return [];
         var results = new List<int>();
         for (var index = 0; index <= text.Length - keyword.Length;)
         {
@@ -247,6 +248,7 @@ public sealed class OcrQualityAnalyzer
     private static bool TryMeasureTextRange(OcrQualitySample sample, int startIndex, int length, out double span)
     {
         span = 0;
+        if (string.IsNullOrEmpty(sample.Text)) return false;
         var offsets = StringInfo.ParseCombiningCharacters(sample.Text);
         if (offsets.Length == 0 || startIndex < 0 || length <= 0 || startIndex + length > sample.Text.Length)
             return false;

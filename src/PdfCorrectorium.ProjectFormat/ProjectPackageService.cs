@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -232,19 +233,36 @@ public sealed class ProjectPackageService
 
             // 復元前の現行ファイルも別名で保持し、復元操作自体が失敗しても戻せるようにする。
             var recoveryCopy = fullPath + $".pre-recovery-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}";
-            if (File.Exists(fullPath)) File.Copy(fullPath, recoveryCopy, overwrite: false);
+            try
+            {
+                if (File.Exists(fullPath)) File.Copy(fullPath, recoveryCopy, overwrite: false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 破損ファイルの退避に失敗しても、バックアップからの復元は続行する。
+            }
             TrimRecoveryCopies(fullPath, recoveryCopy);
             // 固定名を使わず、同時復元や共有フォルダー上の既存ファイルとの競合を避ける。
             var temporaryPath = fullPath + $".{Guid.NewGuid():N}.restore.tmp";
-            File.Copy(candidate, temporaryPath, overwrite: false);
-            var restoredValidation = await ValidateAsync(temporaryPath, cancellationToken);
-            if (!restoredValidation.IsValid)
+            try
             {
-                File.Delete(temporaryPath);
-                continue;
-            }
+                File.Copy(candidate, temporaryPath, overwrite: false);
+                var restoredValidation = await ValidateAsync(temporaryPath, cancellationToken);
+                if (!restoredValidation.IsValid)
+                {
+                    try { File.Delete(temporaryPath); } catch { }
+                    continue;
+                }
 
-            File.Move(temporaryPath, fullPath, overwrite: true);
+                File.Move(temporaryPath, fullPath, overwrite: true);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch
+            {
+                // 一時ファイルの残留を防ぐ。File.Moveが成功した場合はファイルが移動済みのため削除不要。
+                try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); } catch { }
+                throw;
+            }
             return candidate;
         }
 
@@ -332,6 +350,22 @@ public sealed class ProjectPackageService
         await using var stream = info.OpenRead();
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return string.Equals(Convert.ToHexString(hash), source.Sha256, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>明示指定されたPDFが、参照情報に記録されたサイズとSHA-256に一致するか確認します。</summary>
+    /// <remarks>
+    /// 相対パスの解決を行わないため、別プロセスへ元PDFパスを明示的に渡す出力処理で使用します。
+    /// パス文字列ではなく内容を照合し、準備した編集情報を別のPDFへ誤適用しません。
+    /// </remarks>
+    public async Task<bool> VerifySourceFileAsync(
+        SourcePdfReference source,
+        string pdfPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(pdfPath);
+        EnsureSourceReferenceIsSafe(source);
+        return await FileMatchesSourceAsync(Path.GetFullPath(pdfPath), source, cancellationToken);
     }
 
     /// <summary>
@@ -482,7 +516,7 @@ public sealed class ProjectPackageService
                 var manifest = await ReadJsonAsync<ProjectManifest>(archive, "manifest.json", cancellationToken);
                 var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
                 var legacySourceEntry = archive.GetEntry("source/source-reference.json");
-                if (manifest.FormatVersion != ProjectManifest.CurrentVersion && legacySourceEntry is null)
+                if (manifest.FormatVersion is not ("1.4" or ProjectManifest.CurrentVersion) && legacySourceEntry is null)
                     issues.Add(new("sourceReference.missing", "The source reference is missing.", true));
                 var source = legacySourceEntry is null
                     ? project.SourcePdf
@@ -492,7 +526,7 @@ public sealed class ProjectPackageService
                 try { EnsureSourceReferenceIsSafe(source); }
                 catch (InvalidDataException ex) { issues.Add(new("sourceReference.invalid", ex.Message, true)); }
                 var normalizedProject = NormalizeStorageMode(project, manifest.FormatVersion);
-                if (manifest.FormatVersion is "1.2" or "1.3" or ProjectManifest.CurrentVersion)
+                if (manifest.FormatVersion is "1.2" or "1.3" or "1.4" or ProjectManifest.CurrentVersion)
                 {
                     if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Embedded && !source.IsEmbedded)
                         issues.Add(new("sourceStorage.mismatch", "The embedded storage mode does not match the source reference.", true));
@@ -502,7 +536,7 @@ public sealed class ProjectPackageService
                         issues.Add(new("sourcePath.missing", "A relative project must contain a relative PDF path.", true));
                     else if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Relative &&
                              !IsSafeRelativeSourcePath(source.RelativePath!,
-                                 allowParentSegments: manifest.FormatVersion is "1.3" or ProjectManifest.CurrentVersion))
+                                 allowParentSegments: manifest.FormatVersion is "1.3" or "1.4" or ProjectManifest.CurrentVersion))
                         issues.Add(new("sourcePath.unsafe", manifest.FormatVersion == "1.2"
                             ? "A version 1.2 relative PDF path must stay below the project directory."
                             : "A relative PDF path must be normalized and must not be rooted or drive-qualified.", true));
@@ -612,7 +646,7 @@ public sealed class ProjectPackageService
             Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
             !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0 ||
             Limits.MaximumCommentCount <= 0 || Limits.MaximumTagCount <= 0 ||
-            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumCommentCharacters <= 0 ||
+            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumRedactionCount <= 0 || Limits.MaximumCommentCharacters <= 0 ||
             Limits.MaximumTagNameCharacters <= 0)
             throw new InvalidOperationException("Project package resource limits must be positive finite values.");
     }
@@ -636,6 +670,8 @@ public sealed class ProjectPackageService
             issues.Add(new("tags.limit", "The project contains too many tags.", true));
         if (project.InternalLinks.Count > Limits.MaximumInternalLinkCount)
             issues.Add(new("links.limit", "The project contains too many internal links.", true));
+        if (project.Redactions.Count > Limits.MaximumRedactionCount)
+            issues.Add(new("redactions.limit", "The project contains too many redaction regions.", true));
 
         var pages = project.Pages.ToDictionary(page => page.Id);
         foreach (var item in project.PageSequence.Select((page, index) => (Page: page, Number: index + 1)))
@@ -682,16 +718,51 @@ public sealed class ProjectPackageService
             if (link.DestinationZoomPercent is { } zoom && (!double.IsFinite(zoom) || zoom is < 25 or > 400))
                 issues.Add(new("links.zoom", "An internal-link destination zoom is outside 25–400 percent.", true));
         }
+
+        var redactionIds = new HashSet<Guid>();
+        foreach (var redaction in project.Redactions)
+        {
+            if (!redactionIds.Add(redaction.Id))
+                issues.Add(new("redactions.duplicateId", "Duplicate redaction IDs were found.", true));
+            if (!pages.TryGetValue(redaction.PageId, out var page))
+            {
+                issues.Add(new("redactions.page", "A redaction refers to a missing page.", true));
+                continue;
+            }
+            if (!redaction.Bounds.IsValid || redaction.Bounds.Left < 0 || redaction.Bounds.Bottom < 0 ||
+                (page.WidthPoints > 0 && redaction.Bounds.Right > page.WidthPoints + 0.01) ||
+                (page.HeightPoints > 0 && redaction.Bounds.Top > page.HeightPoints + 0.01))
+                issues.Add(new("redactions.bounds", "A redaction contains invalid or out-of-page bounds.", true));
+            if (!IsColorHex(redaction.ColorHex))
+                issues.Add(new("redactions.color", "A redaction color is invalid.", true));
+            (Guid Id, OcrTextRegion Region)? source = null;
+            if (redaction.SourceRegionId is { } sourceRegionId)
+            {
+                if (!regions.TryGetValue(sourceRegionId, out var sourceRegion) || sourceRegion.Id != redaction.PageId)
+                    issues.Add(new("redactions.region", "A redaction refers to a missing OCR region.", false));
+                else
+                    source = sourceRegion;
+            }
+            var hasCharacterStart = redaction.SourceCharacterStart.HasValue;
+            var hasCharacterLength = redaction.SourceCharacterLength.HasValue;
+            if (hasCharacterStart != hasCharacterLength || redaction.SourceCharacterStart is < 0 ||
+                redaction.SourceCharacterLength is <= 0)
+                issues.Add(new("redactions.characters", "A redaction contains an invalid character range.", true));
+            else if (hasCharacterStart && source is { } referencedRegion &&
+                     redaction.SourceCharacterStart!.Value + redaction.SourceCharacterLength!.Value >
+                     new StringInfo(referencedRegion.Region.EffectiveText).LengthInTextElements)
+                issues.Add(new("redactions.characters", "A redaction character range exceeds its OCR region.", true));
+        }
     }
 
-    /// <summary>形式1.4の論理ページ対応が元PDFとOCRページに整合するか検査します。</summary>
+    /// <summary>形式1.4以降の論理ページ対応が元PDFとOCRページに整合するか検査します。</summary>
     private static void ValidatePageSequence(
         PdfCorrectoriumProject project,
         SourcePdfReference source,
         string formatVersion,
         List<ProjectValidationIssue> issues)
     {
-        if (formatVersion != ProjectManifest.CurrentVersion) return;
+        if (formatVersion is not ("1.4" or ProjectManifest.CurrentVersion)) return;
         if (project.PageSequence.Count == 0)
         {
             if (source.PageCount is > 0 || project.Pages.Count > 0)

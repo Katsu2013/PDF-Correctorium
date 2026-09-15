@@ -2,7 +2,7 @@
 
 本書群は、PDF Correctorium Version 1.0 の実装・レビュー・OSS公開に用いる設計基準である。
 
-現行dev.148では、ページ配置（単一／見開き）とスクロール方式（切り替え／連続）を独立させ、連続見開きにも対応する。表紙や末尾の空き側は白紙面を描画せず、全ページ画像を保持しない仮想配置を単一／見開きで共有する。dev.143で導入した固定ページID付きの論理ページ列も維持し、表示変更や回転のたびにPDFを複製しない。[画面設計](docs/03_Screens/03-01_ScreenSpecification.md)、[アーキテクチャ](docs/04_Architecture/04-01_Architecture.md)、[最新検証](docs/11_Test/11-01_TestStrategy.md)を参照する。
+現行dev.161では、墨消しページを元の表示内容から直接300 DPI・JPEG品質99で画像化し、墨消し範囲外の不可視OCR文字を検索・コピー用レイヤーとして保持する。部分的に重なる文字行は行全体を落とさず、安全余白と交差した文字だけを除去して左右の文字列断片を再構成する。出力後は文字境界単位で範囲内に抽出可能な文字がないことを検証する。画像最適化では画素判定を一度の走査へ統合して並列化し、長文書の中間確定回数もメモリ上限を保ったまま削減する。[非機能要求](docs/01_Requirements/01-02_NonFunctionalAndPlatform.md)、[PDF編集仕様](docs/06_PDF/06-01_PdfEditing.md)、[最新検証](docs/11_Test/11-01_TestStrategy.md)を参照する。
 
 dev.141ではOCR文字描画を領域単位へ集約し、文字セルの再計算を抑制した。領域サイズ変更ハンドルも選択中だけ生成する。[描画方式と検証範囲](../../OCR-RENDERING.md)を参照する。
 
@@ -14,7 +14,7 @@ dev.124では版番号を共通ビルド設定へ一元化し、数値版・画�
 
 2026-08-30の現行ソース（dev.123へ更新する前の配布物dev.122）との整合性監査を反映し、その後の改訂状況を各文書へ追記している。要求文はVersion 1.0の目標を表し、実装済みであることを意味しない。各文書の「現行実装」または「実装状況」を実装判定の根拠とし、全体の既知問題はリポジトリ直下の[実装状況](../../IMPLEMENTATION_STATUS.md)で管理する。
 
-Markdownファイルを正本とする。`PDF-Correctorium-Design-Documentation.pdf`は2026-08-09時点の発行スナップショットであり、今回の追記を含まない。最新仕様として配布するには、Markdownからの再生成と全ページの確認が別途必要である。
+Markdownファイルを正本とする。`PDF-Correctorium-Design-Documentation.pdf`は2026-09-15にdev.161のMarkdownと12点のSVG図版から再生成し、代表ページと全ページの描画成立を確認した発行スナップショットである。再生成にはリポジトリの`tools/BuildDocumentationPdf.py`を用いる。
 
 ## 2026-08-30の反映内容
 
@@ -26,13 +26,13 @@ Markdownファイルを正本とする。`PDF-Correctorium-Design-Documentation.
 
 上記は本文追記時点の記録。その後dev.123で図版5件を整備し、上記5件を修正、操作停止後の自動保存と未保存プロジェクトの復旧用保存を追加した。現在の結果は[実装状況](../../IMPLEMENTATION_STATUS.md)と[テスト戦略](docs/11_Test/11-01_TestStrategy.md)を参照する。未実装の大規模機能は引き続き残件である。
 
-新規保存はプロジェクト形式1.4となり、dev.142以前では開けない。現行dev.143は旧形式1.0/1.1/1.2/1.3も読み込める。旧ビルドを使う場合はバックアップを保持する。
+新規保存はプロジェクト形式1.5となり、墨消し指定を理解しないdev.151以前では開けない。現行dev.161は旧形式1.0/1.1/1.2/1.3/1.4も読み込める。旧ビルドを使う場合はバックアップを保持する。
 
 > OCR済みPDFの透明テキスト、配置、読み順、文字方向、回転、ルビおよび文書構造を、安全かつ効率よく編集できるプロジェクト管理型PDF編集ソフト。
 
 ## 文書の読み順
 
-2026-09-01の追加要望4件は[追加機能の検討一覧](docs/13_Roadmap/13-02_FutureFeatureRequests.md)に集約した。FUT-002の確定範囲はdev.133、FUT-004の単一／見開きと切り替え／連続の4通り・表紙・左右綴じはdev.148までに実装済みで、各項目の残余範囲とFUT-001/003は未実装として区別する。
+2026-09-01の追加要望4件は[追加機能の検討一覧](docs/13_Roadmap/13-02_FutureFeatureRequests.md)に集約した。FUT-001の墨消しはdev.152、FUT-002の確定範囲はdev.133、FUT-004の単一／見開きと切り替え／連続の4通り・表紙・左右綴じはdev.149までに実装済みで、FUT-003と各項目の残余範囲は未実装として区別する。
 
 1. [プロジェクト概要](docs/00_Project/00-01_ProjectOverview.md)
 2. [設計思想](docs/00_Project/00-02_DesignPhilosophy.md)
@@ -76,7 +76,12 @@ dev.139ではメイン画面と校正画面のステータス表示を`PDF保存
 - [dev.139 プロジェクト保存・注釈機能](assets/svg/SCR-011_ProjectAnnotations-dev133.svg)
 - [dev.147 見開き表示の表紙・左右綴じ](assets/svg/SCR-012_FacingPageLayouts-dev147.svg)
 - [プロジェクト診断・修復（将来案・未実装）](assets/svg/SCR-003_ProjectDiagnostics_Wireframe.svg)
+- [墨消し画面と安全なPDF出力（dev.152）](assets/svg/SCR-013_Redaction-dev152.svg)
+- [OCR編集／墨消しの排他モード切替（dev.153）](assets/svg/SCR-014_EditingModeSwitch-dev153.svg)
+- [墨消し範囲の移動・サイズ変更（dev.154）](assets/svg/SCR-015_RedactionResize-dev154.svg)
+- [墨消し範囲の色・表示・削除（dev.156）](assets/svg/SCR-016_RedactionAppearance-dev156.svg)
+- [墨消しのスポイト・Delete・ホイール操作（dev.157）](assets/svg/SCR-017_RedactionEyedropperAndWheel-dev157.svg)
 
 ## 文書の状態
 
-初版要求ベースラインに、dev.148までの実装差分・検証結果と残件を追記した状態。ライブラリの正確なバージョン、PDF適合範囲、未完了のUI・復旧・OCRプロバイダー境界は、実装とADRの更新に合わせて確定する。要求を現行の不具合に合わせて緩和したものではない。
+初版要求ベースラインに、dev.161までの実装差分・検証結果と残件を追記した状態。ライブラリの正確なバージョン、PDF適合範囲、未完了のUI・復旧・OCRプロバイダー境界は、実装とADRの更新に合わせて確定する。要求を現行の不具合に合わせて緩和したものではない。

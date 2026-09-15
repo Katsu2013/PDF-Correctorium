@@ -24,6 +24,7 @@ public sealed record ProjectPackageLimits
     public int MaximumCommentCount { get; init; } = 100_000;
     public int MaximumTagCount { get; init; } = 4_096;
     public int MaximumInternalLinkCount { get; init; } = 100_000;
+    public int MaximumRedactionCount { get; init; } = 100_000;
     public int MaximumCommentCharacters { get; init; } = 32_768;
     public int MaximumTagNameCharacters { get; init; } = 128;
 }

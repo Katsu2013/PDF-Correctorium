@@ -145,6 +145,8 @@ public partial class ImageOptimizationPreviewWindow : Window
     private void DrawOverlay()
     {
         if (!IsLoaded || PreviewHost.ActualWidth <= 0 || PreviewHost.ActualHeight <= 0) return;
+        foreach (var child in OverlayCanvas.Children.OfType<Rectangle>())
+            child.MouseLeftButtonDown -= RegionRectangle_OnMouseLeftButtonDown;
         OverlayCanvas.Children.Clear();
         var imageAspect = _pageImage.PixelWidth / (double)Math.Max(1, _pageImage.PixelHeight);
         var hostAspect = PreviewHost.ActualWidth / PreviewHost.ActualHeight;

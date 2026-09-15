@@ -58,10 +58,14 @@ public partial class ProjectCommentsWindow : Window
         _loading = true;
         try
         {
-            BodyBox.Text = comment?.Body ?? string.Empty;
+            var body = comment?.Body ?? string.Empty;
+            if (!string.Equals(BodyBox.Text, body, StringComparison.Ordinal))
+                BodyBox.Text = body;
             ImportanceBox.SelectedIndex = comment is null ? 2 : (int)comment.Importance;
             ResolvedBox.IsChecked = comment?.State == ProjectCommentState.Resolved;
-            TagsBox.Text = comment is null ? string.Empty : string.Join(", ", _tags.Where(tag => comment.TagIds.Contains(tag.Id)).Select(tag => tag.Name));
+            var tags = comment is null ? string.Empty : string.Join(", ", _tags.Where(tag => comment.TagIds.Contains(tag.Id)).Select(tag => tag.Name));
+            if (!string.Equals(TagsBox.Text, tags, StringComparison.Ordinal))
+                TagsBox.Text = tags;
         }
         finally { _loading = false; }
     }

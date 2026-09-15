@@ -1,6 +1,139 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.151
+## Current repository snapshot: v1.0.0-dev.161
+
+### Character-precise redaction and large-document export acceleration (2026-09-15)
+
+- When a redaction intersects only part of an invisible OCR text object, the exporter now removes the intersecting characters plus the existing one-point safety margin instead of discarding the entire line. Unaffected text objects remain unchanged; the left and right fragments of a partially intersecting object are rebuilt as invisible searchable text with the original font, color and union of the surviving character bounds.
+- The post-export security check still examines every extracted character box and refuses to finalize any output that leaves searchable text in a protected area. Objects or glyphs that cannot be represented safely are omitted rather than retained speculatively. The permanent isolated diagnostic now proves that both sides of `LEFT0123456789RIGHT` survive while the covered centre does not.
+- Full-page image analysis now classifies row, column and internal-grid occupancy in one pixel pass. The managed pixel buffer is processed in independent row bands while all PDFium document/object calls remain serialized. Each source bitmap is also created once and reused for crop/JPEG candidates, and the common highest-quality candidate is tried before the bounded fallback search.
+- A production-equivalent project containing 450 pages, 14,275 modified OCR regions, 443 applicable image optimizations and one redaction completed under the 2 GiB worker limit in 153.6 seconds. The same 118,694,840-byte result previously took 164.4 seconds immediately before row-band parallelization (about 6.6% faster); it reopened, rendered and passed qpdf. Page 6 retained searchable text on both sides of the redaction and no searchable character inside it. Result: `outputs/.verification/dev161-actual-project-export-20260915-parallel`.
+- Focused isolated redaction and image-optimization diagnostics passed, and all three outputs passed qpdf. Result: `outputs/.verification/dev161-focused-20260915-002740857`.
+- The repository-root Release solution build completed from the existing locked restore with no warnings or errors. Contract 28, document-UI 190, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, file-launch 80, pre-publication versioning 17 and dependency-lock 2 checks passed. Editor and smoke diagnostics exited 0. Results: `outputs/.verification/dev161-regression-20260915-002928569` and `outputs/.verification/versioning-dev161-20260915-003102115`.
+- The design PDF was regenerated as 112 pages from the dev.161 Markdown and 12 SVG diagrams. qpdf, all-page rendering at a common size, extracted-text presence on every page and representative visual review passed. Result: `outputs/.verification/design-pdf-dev161-certified-20260915-072252452`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.161-win-x64-20260915-072011`. Product version `1.0.0-dev.161`, numeric version `1.0.0.161`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `3D03721BF0F9A9D971573443552AC5384ECAF4B83E896E56DC79239A6242CD8F`. Published versioning 18 and dependency-lock checks passed. Packaged document-UI 190, keyboard 4,074, settings 101, isolated character-level redaction and smoke diagnostics passed; the generated redaction PDF also passed qpdf. Results: `outputs/.verification/dev161-packaged-20260915-072102415` and `outputs/.verification/versioning-dev161-published-20260915-072033483`.
+
+## Previous repository snapshot: v1.0.0-dev.160
+
+### Searchable OCR preservation and higher-quality redaction output (2026-09-14)
+
+- Redacted pages no longer discard edited invisible OCR outside every marked range. The exporter preserves only invisible text objects (`Tr=3` or zero fill alpha) that stay outside every redaction plus its one-point safety margin; any text line touching a redaction is removed as a whole.
+- Output validation now checks every extracted character boundary against the redaction ranges. Searchable text elsewhere on the page is therefore allowed, while any extractable character in a protected range still rejects the output.
+- Redacted pages bypass ordinary page-image optimization so their source imagery is not JPEG-encoded twice. Flattening now uses 300 DPI and JPEG quality 99, bounded at 14,000 pixels on the long edge and approximately 96 megapixels for predictable worker memory use.
+- The permanent isolated redaction diagnostic adds edited invisible OCR outside the marked area, enables page-image optimization to detect accidental double processing, and requires the OCR to survive, the optimized-image count to remain zero, the redaction color to be present and the flattened image to be at least 295 DPI.
+- Focused source verification produced a 2,481 x 3,508 image at 300 DPI, preserved the edited `PDFPDF` OCR text outside the redaction, removed extractable text from the protected area, skipped the page-image optimization, reopened and rendered the PDF, and passed qpdf. Result: `outputs/.verification/dev160-redaction-certified-20260914-221423433`.
+
+- Release compilation completed with no warnings or errors. Contract 28, document-UI 190, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, file-launch 80, pre-publication versioning 17 and dependency-lock 2 checks passed. Editor and smoke diagnostics exited 0. Result: `outputs/.verification/dev160-regression-20260914-221606852`; versioning result: `outputs/.verification/versioning-20260914-221738914`.
+- The design PDF was regenerated as 111 pages from the dev.160 Markdown and 12 SVG diagrams. qpdf, 111-page rendering, same-size validation, near-blank detection and representative visual review passed. Result: `outputs/.verification/design-pdf-dev160-final-20260914-222313927`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.160-win-x64-20260914-221819`. Product version `1.0.0-dev.160`, numeric version `1.0.0.160`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `5097A55BD2D02D067AC49954D54F2F5F069E83733868AE9BE45404F63DD11EF3`. Published versioning 18 and dependency-lock checks passed. Packaged document-UI 190, keyboard 4,074, settings 101, redaction and smoke diagnostics passed; its redaction output retained `PDFPDF`, stored a 2,481 x 3,508 image at 300 DPI and passed qpdf. Result: `outputs/.verification/dev160-packaged-20260914-221902710`; published versioning result: `outputs/.verification/versioning-20260914-221836277`.
+
+## Previous repository snapshot: v1.0.0-dev.159
+
+### Bounded-memory large-PDF export and observable progress (2026-09-14)
+
+- PDFium no longer retains all modified page and image resources until a large export finishes. The worker checkpoints after at most 96 pages or when process private memory reaches 768 MiB, compacts the checkpoint with qpdf, reopens it, verifies the page count and then continues. This keeps headroom below the existing 2 GiB per-process safety limit without weakening resource isolation.
+- Checkpoint/cleanup work is reported as an explicit progress phase. Character-spacing fallback rows also advance progress instead of appearing stalled, while repeated fallback warnings are summarized by total count and up to eight samples rather than producing multi-megabyte UI/state/log payloads.
+- The permanent project-export diagnostic now uses the same isolated worker and output-commit path as the interactive UI instead of calling the in-process exporter directly.
+- The previously failing 450-page project with 14,275 modified regions, 444 image-optimized pages and one redaction completed under the production 2 GiB job limit in 158.1 seconds. The 118,059,146-byte output reopened as 450 pages, rendered and passed qpdf; the diagnostic log shrank from approximately 1.5 MiB to 1,446 bytes. Result: `outputs/.verification/dev159-actual-project-export-final-20260914-095105731`.
+
+- Release compilation completed with no warnings or errors. Contract 28, document-UI 190, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, file-launch 80, pre-publication versioning 17 and dependency-lock 2 checks passed. Editor, smoke, output-commit, isolated redaction and the production-equivalent 450-page project export exited 0. Results: `outputs/.verification/dev159-regression-20260914-152614645`, `outputs/.verification/dev159-versioning-20260914-152541062`, `outputs/.verification/dev159-redaction-20260914-152735509`, `outputs/.verification/dev159-actual-project-export-final-20260914-095105731`.
+- The design PDF was regenerated as 110 pages from the dev.159 Markdown and 12 SVG diagrams. qpdf, 110-page rendering, same-size validation, near-blank detection and representative visual review passed.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.159-win-x64-20260914-152918`. Product version `1.0.0-dev.159`, numeric version `1.0.0.159`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `3B4348A0A2961EB0FD20148FC928F697489A8E1CCE3D825D3B08E0FC45768D21`. Packaged document-UI 190, keyboard 4,074, settings 101, smoke, dependency lock and published versioning 18 checks passed. The packaged binary also completed the same 450-page production-equivalent export in 165.4 seconds and its output passed qpdf. Results: `outputs/.verification/dev159-packaged-20260914-153013409` and `outputs/.verification/dev159-packaged-versioning-20260914-152943314`.
+
+## Previous repository snapshot: v1.0.0-dev.158
+
+### Portable-project redaction export recovery and output finalization safety (2026-09-14)
+
+- Fixed the interactive isolated-export path for portable projects. The temporary worker package now carries a validated relative transport reference to the exact prepared PDF instead of trying to save an embedded-source project with embedding disabled and no relative path. This resolves `sourcePath.missing: A relative project must contain a relative PDF path.` without duplicating a large source PDF.
+- The worker independently verifies the explicit source file size and SHA-256 against the transport package before editing. A changed or substituted source is rejected before output begins.
+- Progress and terminal worker states now pass through one serialized writer and unique temporary files. This removes the race in which a progress notification and completion notification could both replace `state.json.tmp`, causing `UnauthorizedAccessException` after a successfully generated PDF.
+- PDF output replacement uses operation-owned staging and backup files. A successful replacement no longer leaves a fixed `.bak` containing the previous PDF, overwrites no user-managed backup, and is not reported as failed merely because an antivirus scanner briefly holds the already-committed cache copy.
+- Export now rejects any result where fewer redaction marks were applied than requested. Cleanup failures can no longer hide the original generation or validation error.
+- Release compilation completed with no warnings or errors. Contract 28, document-UI 190, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, pre-publication versioning 17 and dependency-lock 2 checks passed. Editor, smoke, output-commit and isolated redaction diagnostics exited 0. Results: `outputs/.verification/dev158-regression-20260914-091604523`, `outputs/.verification/dev158-focused-20260914-091245711`, `outputs/.verification/dev158-versioning-final-20260914-092128462`.
+- The original 450-page, 130,064,014-byte source together with its portable autosave project exported 14,275 modified regions, 444 optimized images and one redaction on one page to a 118,219,112-byte PDF. The redacted page changed from 1,101 extracted text characters to no content beyond the page delimiter, rendered successfully, and both the focused and actual outputs passed qpdf. Results: `outputs/.verification/dev158-actual-redaction-20260914-090352687`.
+- The design PDF was regenerated as 109 pages from the dev.158 Markdown and 12 SVG diagrams. qpdf, full-page rendering and near-blank detection passed; results: `outputs/.verification/design-pdf-dev158-certified-20260914-092443624`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.158-win-x64-20260914-092151`. Product version `1.0.0-dev.158`, numeric version `1.0.0.158`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `3A493628B6C926FAEC107FCB3176B1D0B511BCD80490BB3206DD0419E0E07B26`. Packaged document-UI 190, keyboard 4,074, settings 101, isolated redaction, smoke, dependency lock and published versioning 18 checks passed at `outputs/.verification/packaged-dev158-20260914-092223431` and `outputs/.verification/packaged-versioning-dev158-20260914-092301011`.
+
+## Previous repository snapshot: v1.0.0-dev.157
+
+### Redaction eyedropper, direct Delete and unselected wheel scrolling (2026-09-13)
+
+- A redaction selected on the page or in the current-page list can now be removed with the Delete key regardless of which non-text control has focus. Text boxes and password fields retain normal character deletion, preventing a color-field edit from deleting the selected mark.
+- The redaction property pane adds a one-shot eyedropper. It samples the underlying current-page bitmap rather than overlay visuals, converts preview coordinates to source pixels, and applies the RGB color to the selected mark or to the next mark when none is selected. Escape cancels only the eyedropper before the normal redaction-mode Escape behavior.
+- In every editor mode, an ordinary mouse wheel over the work area scrolls the preview when neither OCR nor redaction content is selected. System line/page scroll settings are respected and offsets remain bounded. Ctrl+wheel continues to control zoom.
+- Clicking empty page space before drawing a new redaction clears the previous redaction selection, making the unselected scrolling state explicit and avoiding accidental edits to the previous mark.
+- Release compilation completed with no warnings or errors. Repository-root verification passed contract 28, document-UI 190, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, pre-publication versioning 17 and dependency-lock 2 checks. Editor, direct redaction export/reopen and smoke diagnostics exited 0; qpdf found no syntax or stream errors in the redaction output and regenerated 107-page design PDF. Results: `outputs/.verification/dev157-final-20260913-231820293` and `outputs/.verification/design-pdf-dev157-final-20260913-232623421`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.157-win-x64-20260913-232218`. Product version `1.0.0-dev.157`, numeric version `1.0.0.157`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `67208597005BD8E4D34DCFDBE3FDA4B8E238C9692A0ABA499BDD1A9F5A3BA27B`. Packaged document-UI 190, keyboard 4,074, settings 101, direct redaction, smoke, dependency lock and published versioning 18 checks passed at `outputs/.verification/packaged-dev157-20260913-232246756`.
+
+## Previous repository snapshot: v1.0.0-dev.156
+
+### Editable redaction appearance and removal (2026-09-13)
+
+- Clicking an existing redaction on the page or in the current-page list selects it. Changing the color text or a preset now updates that selected mark, persists the new RGB value and records one Undo/Redo edit; with no selection, the same controls continue to set the color for the next mark.
+- The redaction property pane now offers translucent and opaque editor-preview modes. This is deliberately session-only UI state: PDF export remains fully opaque in the mark's stored color and the project format remains 1.5.
+- The move Thumb now has a transparent visual template, so it no longer covers a black redaction with the default white WPF Thumb surface. The preview border itself supplies the selected color.
+- The Edit menu and property pane expose an explicit selected-redaction delete action. Page clicks establish selection before dragging, Delete remains keyboard-operable through the focused Thumb, and deletion is restorable through Undo.
+- Release compilation completed with no warnings or errors. The focused WPF document diagnostic passes 187 checks and keyboard diagnostics pass 4,074 checks, including selected-color persistence/Undo, true black fill, opacity switching, selection-enabled deletion and deletion Undo.
+
+Repository-root verification passed contract 28, document-UI 187, keyboard 4,074, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 101, recent-files 76, pre-publication versioning 17 and dependency-lock 2 checks. Editor, direct redaction export/reopen and smoke diagnostics exited 0; qpdf found no syntax or stream errors in the regenerated 104-page design PDF. Results: `outputs/.verification/final-dev156-20260913-222734052`, focused UI results: `outputs/.verification/dev156-redaction-20260913-210016338`, final document render results: `outputs/.verification/design-pdf-dev156-final-20260913-223649622`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.156-win-x64-20260913-223316`. Product version `1.0.0-dev.156`, numeric version `1.0.0.156`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `3182D89AEB6DE290BE58F6E8B9D0F72CAD06B3A202CA2B922EE357B68DAD9316`. Packaged document-UI 187, keyboard 4,074, settings 101, direct redaction, smoke, dependency lock and published versioning 18 checks passed at `outputs/.verification/packaged-dev156-20260913-223343836`, `outputs/.verification/packaged-settings-dev156-retry-20260913-223445004`, and `outputs/.verification/packaged-redaction-dev156-20260913-223503912`.
+
+## Previous repository snapshot: v1.0.0-dev.155
+
+### Atomic facing-page navigation (2026-09-13)
+
+- Previous/next navigation in page-by-page facing mode now renders the destination page and its companion before changing the selected page. The currently complete spread therefore stays visible during preparation instead of temporarily collapsing to one page.
+- The prepared main and companion previews are applied in the same dispatcher turn. Existing OCR interaction remains attached only to the selected main page, and the old companion is removed without leaving a stale page slot.
+- Changing the document, page selection, layout, flow, cover placement or binding direction cancels obsolete preparation. Foreground and background PDF workers prepare the editable and passive pages independently without blocking the WPF dispatcher.
+- Release compilation completed with no warnings or errors. Contract tests pass 28/28 and the settings/facing-view diagnostic passes 101 checks, including retention of the current spread during preparation and atomic replacement.
+
+Source verification: `outputs/.verification/settings-dev155-final-20260913092016172`, `outputs/.verification/document-ui-dev155-20260913093112863`, and `outputs/.verification/versioning-dev155-20260913093112863`. Source smoke exited 0.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.155-win-x64-20260913-183150`. Product version `1.0.0-dev.155`, numeric version `1.0.0.155`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `B71CCFEFF694E6BEF5D47381EDD1F91FF9F36341D29BD5BC0732D8A03C93EFAF`. Packaged settings/facing-view 101, smoke and published versioning 18 checks passed at `outputs/.verification/packaged-settings-dev155-20260913093213181` and `outputs/.verification/packaged-versioning-dev155-20260913093213181`.
+
+## Previous repository snapshot: v1.0.0-dev.154
+
+### Adjustable redaction geometry (2026-09-13)
+
+- A redaction remains editable after creation. Clicking or dragging its filled area selects and moves it; eight edge/corner handles resize it within the current page, with an 8-pixel minimum preview size.
+- Pointer movement changes only the lightweight overlay. The project model and Undo stack are updated once when the drag finishes, avoiding one history entry and one project rewrite per mouse event.
+- Move/resize is recorded in PDF-point coordinates through the existing project-annotation history. Undo/Redo therefore restores exact redaction geometry, and canceling an interrupted drag restores the persisted bounds.
+- The redaction layer accepts input only while redaction mode is active. Returning to OCR editing makes the layer non-interactive so it cannot block OCR selection or geometry editing.
+- Release compilation completed with no warnings or errors. The WPF document diagnostic passes 179 checks, including eight resize handles, move/resize bounds, deferred persistence and one-entry Undo/Redo.
+
+Repository-root verification passed contract 28, document-UI 179, keyboard 4,070, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 99, recent-files 76, pre-publication versioning 17 and dependency-lock 2 checks. Editor and smoke diagnostics exited 0. Direct redaction project/export/reopen also exited 0 and qpdf found no syntax or stream errors. Results: `outputs/.verification/final-dev154-20260913-171428158`, `outputs/.verification/redaction-dev154-20260913-171612137`, and `outputs/.verification/versioning-dev154-20260913-171548811`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.154-win-x64-20260913-171719`. Product version `1.0.0-dev.154`, numeric version `1.0.0.154`, title/About, project-manifest application version, distribution label and managed/native dependency metadata agree. SDK 10.0.400; source fingerprint `E19C3397926BC528FCEEC92EBE1EE0FBD979A069B4717F2122E25C0D227D0854`. Packaged document-UI 179, keyboard 4,070, redaction, smoke and published versioning 18 checks passed at `outputs/.verification/packaged-dev154-20260913-171752733`.
+
+## Previous repository snapshot: v1.0.0-dev.153
+
+### Exclusive OCR-editing and redaction modes (2026-09-13)
+
+- The editor mode is now a typed, mutually exclusive state with OCR editing, reading-order editing, review, and redaction values. Redaction is no longer an independent temporary flag layered on top of OCR editing.
+- The toolbar exposes dedicated OCR-editing and redaction selectors, and the existing mode dropdown contains all four modes. Their selected state always follows the same ViewModel value.
+- Entering redaction mode disables OCR-region creation, deletion, movement, resizing, rotation and character-width operations. The pointer becomes a redaction crosshair, consecutive drags can mark multiple ranges, and Escape returns to OCR editing.
+- The right pane changes between OCR properties and redaction properties. Redaction mode shows only its instructions, color, preselected-text action and current-page redaction list; OCR selection/property editors are hidden.
+- Release compilation completed with no warnings or errors. The WPF document diagnostic passes 171 checks, including exclusive mode state, command guards, synchronized toolbar/dropdown state, dedicated property-pane visibility and consecutive marking. Project reload preserves the active interaction mode, while the no-document state disables every document operation.
+
+### Secure redaction and project format 1.5 (2026-09-13)
+
+- Users can create redaction ranges from selected characters, selected OCR regions, or an arbitrary dragged rectangle. The right pane and Edit menu expose color input and presets, range creation, current-page range selection/removal, and current-page clearing.
+- Redaction edits share the existing project annotation Undo/Redo history. Range geometry uses PDF point coordinates and follows stable page IDs rather than transient page numbers.
+- PDF output treats a redacted page as a security boundary: it renders the completed page, paints the requested ranges with a one-point safety margin, removes the page's original text, image and annotation objects, and writes one replacement page image. Output validation rejects a redacted page if any extractable characters remain.
+- This conservative method intentionally removes search/copy and existing annotations from the whole affected page. The editable project, source PDF, autosaves and backups are not sanitized and can retain confidential data; only the separately exported redacted PDF is intended for distribution.
+- Project format 1.5 adds the persisted `Redactions` collection and requires application dev.152. Formats 1.0–1.4 remain readable. Current product/numeric versions are 1.0.0-dev.153 / 1.0.0.153; no data-format change was needed for the UI-only mode refinement.
+
+Repository-root Release build succeeded with 0 warnings/errors. Contract 28, document-UI 171, keyboard 4,070, persistence 59, page-history 39, review 69, OCR-rendering 29, settings 99, recent-files 76, pre-publication versioning 17 and dependency-lock 2 checks passed. Editor and smoke diagnostics exited 0. Direct redaction save/Undo/Redo/export/reopen succeeded and qpdf found no syntax or stream errors in the result. Source results: `outputs/.verification/final-dev153-20260913-153426304`; redaction results: `outputs/.verification/redaction-dev153-20260913-153607604`; versioning results: `outputs/.verification/versioning-dev153-20260913-153532080`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.153-win-x64-20260913-153621`. Product version `1.0.0-dev.153`, numeric version `1.0.0.153`, title/About, project-manifest application version, distribution label and managed/native dependency metadata agree. SDK 10.0.400; source fingerprint `A5877F074F8214A5CF7630BDED652BB0DC3CEBEA0A97584F98866944CCEC0F0D`. Packaged versioning 18, document-UI 171, keyboard 4,070, redaction and smoke checks passed at `outputs/.verification/packaged-dev153-20260913-153653038`. The design PDF was regenerated from current Markdown and nine SVG figures as a dev.153 snapshot; every page was rendered for visual QA and qpdf found no syntax or stream errors.
+
+## Previous repository snapshot: v1.0.0-dev.151
 
 ### Reliability, concurrency and verification hardening (2026-09-12)
 
@@ -330,7 +463,7 @@ Final verification: Release solution build succeeded with 0 warnings/errors; 16 
 
 Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.124-win-x64-20260830-183553`. Its `build-info.json` records source/binary hashes, SDK 10.0.400 and the matching product/numeric versions. Git fields are null because repository metadata was unavailable. The running pre-existing user instance was found to be the dev.122 build dated `20260830-143634`; it was not closed or replaced automatically.
 
-### Current remaining scope
+### Remaining scope recorded at the dev.124 milestone
 
 The five safety fixes from dev.123 remain implemented. Page-structure Undo was completed in dev.129; the larger Version 1.0 feature gaps listed below remain unfinished.
 
@@ -358,9 +491,9 @@ Final verification on 2026-08-30: repository-root Release build succeeded with 0
 - At dev.123, page insertion, deletion, reordering and rotation did not support Undo and cleared earlier OCR Undo history. dev.129 resolves this FR-104 gap; the statement is retained as historical milestone evidence.
 - The five dev.122 audit defects listed below were addressed in dev.123; their old descriptions are retained only as historical evidence.
 
-### Remaining Version 1.0 gaps
+### Remaining Version 1.0 gaps recorded at the dev.123 milestone
 
-Google Vision and in-application OCR/provider contracts; ruby editing; comments, tags, diffs, hierarchical review aggregation and audit history; migration/repair/read-only/rescue UI and versioned schemas; plugin contracts; freely docking/floating panes and a command palette; export-strategy selection, complete input warnings and multi-engine validation remain unfinished. Recovery-package discovery at startup is also not implemented. The old design PDF remains a dated snapshot. This increment is not completion of all unimplemented scope.
+At dev.123, Google Vision and in-application OCR/provider contracts; ruby editing; comments, tags, diffs, hierarchical review aggregation and audit history; migration/repair/read-only/rescue UI and versioned schemas; plugin contracts; freely docking/floating panes and a command palette; export-strategy selection, complete input warnings and multi-engine validation remained unfinished. Comments and tags were later implemented in dev.133, while selectable-color redaction is implemented in dev.152. Recovery-package discovery at startup is still not implemented. At that milestone the design PDF was still a dated snapshot; the current PDF was regenerated for dev.152. This historical increment did not complete all unimplemented scope.
 
 ## Previous audited snapshot: v1.0.0-dev.122
 

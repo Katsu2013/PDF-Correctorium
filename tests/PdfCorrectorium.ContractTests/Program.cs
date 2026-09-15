@@ -38,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("OCR quality analyzer finds keyword-width outliers", KeywordWidthAnomalyAsync),
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
+    ("Project format 1.5 preserves and validates redactions", RedactionRoundTripAsync),
 };
 
 static async Task ExternalRelativeSourceAsync()
@@ -280,8 +281,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.4", ProjectManifest.CurrentVersion, "Logical page sequences require format 1.4.");
-    Equal("1.0.0-dev.143", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.4 must name the first compatible reader.");
+    Equal("1.5", ProjectManifest.CurrentVersion, "Redaction projects require format 1.5.");
+    Equal("1.0.0-dev.152", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.5 must name the first compatible reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -335,7 +336,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.4", manifest["formatVersion"]!.GetValue<string>(), "New containers require logical page-sequence support.");
+            Equal("1.5", manifest["formatVersion"]!.GetValue<string>(), "New containers require redaction support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();
@@ -849,6 +850,101 @@ static async Task PortablePathsAsync()
         var paths = ApplicationPathResolver.Resolve(directory);
         Equal(StorageMode.Portable, paths.Mode, "portable.marker must enable portable storage.");
         True(paths.ConfigurationDirectory.StartsWith(directory, StringComparison.OrdinalIgnoreCase), "Portable data must remain under the app directory.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task RedactionRoundTripAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllBytesAsync(pdf, "%PDF-1.4\n%%EOF"u8.ToArray());
+        var package = new ProjectPackageService();
+        var source = await package.CreateSourceReferenceAsync(pdf, directory);
+        var pageId = Guid.NewGuid();
+        var regionId = Guid.NewGuid();
+        var project = new PdfCorrectoriumProject
+        {
+            SourcePdf = source,
+            PdfStorageMode = ProjectPdfStorageMode.Relative,
+            PageSequence = [new ProjectPageReference { PageId = pageId, SourcePageNumber = 1 }],
+            Pages =
+            [
+                new OcrPage
+                {
+                    Id = pageId,
+                    PageNumber = 1,
+                    WidthPoints = 595,
+                    HeightPoints = 842,
+                    TextRegions =
+                    [
+                        new OcrTextRegion
+                        {
+                            Id = regionId,
+                            PageId = pageId,
+                            OriginalText = "secret",
+                            OriginalGeometry = CreateGeometry(0),
+                            EditedGeometry = CreateGeometry(0),
+                        },
+                    ],
+                },
+            ],
+            Redactions =
+            [
+                new PdfRedaction
+                {
+                    PageId = pageId,
+                    Bounds = new PdfRectangle(new PdfPoint(95, 195), new PdfSize(230, 34)),
+                    ColorHex = "#102030",
+                    SourceRegionId = regionId,
+                    SourceCharacterStart = 0,
+                    SourceCharacterLength = 6,
+                },
+            ],
+        };
+        var path = Path.Combine(directory, "redaction.pdfocrproj");
+        await package.SaveAsync(path, project);
+        var reopened = await package.OpenAsync(path);
+        Equal(1, reopened.Redactions.Count, "A redaction must survive project round-trip.");
+        Equal("#102030", reopened.Redactions[0].ColorHex, "The selected redaction color must survive project round-trip.");
+        True((await package.ValidateAsync(path)).IsValid, "A bounded redaction project must validate.");
+        True(await package.VerifySourceFileAsync(source with { IsEmbedded = true, RelativePath = null }, pdf),
+            "An explicitly supplied export source must match its recorded size and fingerprint regardless of project storage mode.");
+
+        await File.AppendAllTextAsync(pdf, "changed");
+        True(!await package.VerifySourceFileAsync(source, pdf),
+            "An explicitly supplied export source changed after snapshot creation must be rejected.");
+
+        var invalidPath = Path.Combine(directory, "invalid-redaction.pdfocrproj");
+        var invalidRejected = false;
+        try
+        {
+            await package.SaveAsync(invalidPath, project with
+            {
+                Redactions = [project.Redactions[0] with { ColorHex = "not-a-color" }],
+            });
+        }
+        catch (InvalidDataException)
+        {
+            invalidRejected = true;
+        }
+        True(invalidRejected, "An invalid redaction color must be rejected before save completes.");
+
+        invalidRejected = false;
+        try
+        {
+            await package.SaveAsync(invalidPath, project with
+            {
+                Redactions = [project.Redactions[0] with { SourceCharacterLength = 99 }],
+            });
+        }
+        catch (InvalidDataException)
+        {
+            invalidRejected = true;
+        }
+        True(invalidRejected, "A redaction character range outside its OCR region must be rejected.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }

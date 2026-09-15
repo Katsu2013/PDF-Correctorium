@@ -134,8 +134,58 @@ public static class LocalizationService
         ["段落編集"] = "Paragraph Editing",
         ["文字編集"] = "Character Editing",
         ["OCR編集"] = "OCR Editing",
+        ["OCR編集モード"] = "OCR Editing Mode",
+        ["墨消しプロパティ"] = "Redaction Properties",
+        ["墨消しモード"] = "Redaction Mode",
+        ["墨消しモードへ切り替え"] = "Switch to Redaction Mode",
         ["読み順編集"] = "Reading Order",
         ["校正・確認"] = "Proofreading / Review",
+        ["墨消し"] = "Redaction",
+        ["選択文字・領域を墨消し"] = "Redact Selected Text / Region",
+        ["矩形範囲を墨消し"] = "Redact a Rectangular Area",
+        ["このページの墨消しを解除"] = "Clear Redactions on This Page",
+        ["選択中の墨消し範囲を削除"] = "Delete Selected Redaction",
+        ["矩形をドラッグして墨消し範囲を追加 (Alt+E, D, K)"] = "Drag a rectangle to add a redaction (Alt+E, D, K)",
+        ["指定範囲はプロジェクトでは非破壊です。PDF出力時は対象ページを高精細画像化し、範囲外の透明OCR文字だけを保持して確定します。"] = "Redaction marks are non-destructive in the project. On PDF export, each affected page is flattened at high resolution while invisible OCR text outside the redacted areas is retained.",
+        ["墨消し色"] = "Redaction Color",
+        ["編集画面での表示"] = "Editor Preview",
+        ["半透明"] = "Translucent",
+        ["不透明"] = "Opaque",
+        ["#RRGGBB形式で入力"] = "Enter a color in #RRGGBB format",
+        ["黒"] = "Black",
+        ["白"] = "White",
+        ["赤"] = "Red",
+        ["青"] = "Blue",
+        ["緑"] = "Green",
+        ["黄"] = "Yellow",
+        ["スポイトで取得"] = "Pick Color from Page",
+        ["現在のPDFページをクリックし、その位置の色を墨消し色として取得します。"] = "Click the current PDF page to use the color at that position for redaction.",
+        ["選択範囲を墨消し"] = "Redact Selection",
+        ["文字編集モードでは選択文字、その他では選択OCR領域を対象にします。"] = "Uses the selected characters in Character Editing mode, or the selected OCR regions in other modes.",
+        ["矩形を指定"] = "Draw Rectangle",
+        ["ページ内を全解除"] = "Clear Page",
+        ["選択範囲を削除"] = "Delete Selection",
+        ["選択中の墨消し範囲を削除します。Undoで元に戻せます。"] = "Deletes the selected redaction mark. Use Undo to restore it.",
+        ["墨消し範囲を編集画面でも不透明に表示します。"] = "Redaction marks are shown opaque in the editor.",
+        ["墨消し範囲を編集画面では半透明に表示します。"] = "Redaction marks are shown translucent in the editor.",
+        ["スポイトを有効にしました。現在のPDFページから取得する色をクリックしてください。Escで中止できます。"] = "Eyedropper enabled. Click a color on the current PDF page. Press Esc to cancel.",
+        ["スポイトを中止しました。"] = "Eyedropper canceled.",
+        ["この位置から色を取得できませんでした。PDFページ内をクリックしてください。"] = "A color could not be sampled there. Click inside the PDF page.",
+        ["このページの墨消し範囲"] = "Redaction Areas on This Page",
+        ["OCR編集モード: 透明テキストの選択・文字・位置・サイズを編集します。"] = "OCR editing mode: select and edit hidden text, text content, position, and size.",
+        ["読み順編集モード: OCR領域の読み順を確認・変更します。"] = "Reading-order mode: review and change the reading order of OCR regions.",
+        ["校正・確認モード: 文字と確認状態を点検します。"] = "Review mode: inspect text and its review status.",
+        ["墨消しモード: ページ上をドラッグして墨消し範囲を指定します。EscでOCR編集へ戻ります。"] = "Redaction mode: drag on the page to mark an area. Press Esc to return to OCR editing.",
+        ["OCR編集モードへ切り替え (Alt+Mからも選択可能)"] = "Switch to OCR editing mode (also available from Alt+M)",
+        ["墨消しモードへ切り替え。ページ上をドラッグして範囲を指定 (Alt+E, D, M)"] = "Switch to redaction mode and drag on the page to mark an area (Alt+E, D, M)",
+        ["プレビュー上の操作モードを切り替えます"] = "Selects the interaction mode used on the preview.",
+        ["OCR編集モードの編集単位"] = "Editing unit used in OCR editing mode",
+        ["墨消しモードです。ページ上をドラッグして範囲を指定します。作成後は範囲内をドラッグして移動し、周囲のハンドルでサイズを変更できます。EscキーでOCR編集へ戻ります。"] = "Redaction mode is active. Drag on the page to mark an area. Drag inside an existing mark to move it, or use its surrounding handles to resize it. Press Esc to return to OCR editing.",
+        ["ドラッグで移動し、周囲のハンドルでサイズを変更します。"] = "Drag to move; use the surrounding handles to resize.",
+        ["墨消し範囲を移動"] = "Move redaction mark",
+        ["墨消し範囲の位置・サイズを変更しました。Undoで元に戻せます。"] = "The redaction mark was moved or resized. Use Undo to restore it.",
+        ["事前に選択した文字・OCR領域を墨消し"] = "Redact Previously Selected Text / OCR Regions",
+        ["OCR編集で選択してから墨消しモードへ切り替えた文字またはOCR領域を対象にします。"] = "Redacts characters or OCR regions selected before switching from OCR editing to redaction mode.",
         ["文字と確認ステータスを編集できます。枠の移動・変形操作は無効です。"] = "Edit text and review status. Direct frame movement and transformation are disabled.",
         ["確認対象の絞り込み"] = "Filter Review Targets",
         ["このページに該当する領域はありません。前／次の対象で別のページも検索できます。"] = "No matching regions on this page. Previous / Next also searches other pages.",
@@ -670,6 +720,30 @@ public static class LocalizationService
 
         match = Regex.Match(text, @"^(.+)（このページ:\s*([\d,]+)領域）$");
         if (match.Success) return $"{Translate(match.Groups[1].Value)} (this page: {match.Groups[2].Value} regions)";
+
+        match = Regex.Match(text, @"^このページ:\s*([\d,]+)件$");
+        if (match.Success) return $"This page: {match.Groups[1].Value}";
+
+        match = Regex.Match(text, @"^このページの墨消し範囲:\s*([\d,]+)件$");
+        if (match.Success) return $"Redaction areas on this page: {match.Groups[1].Value}";
+
+        match = Regex.Match(text, @"^墨消し色を (#[0-9A-Fa-f]{6}) に設定しました。$");
+        if (match.Success) return $"Redaction color set to {match.Groups[1].Value}.";
+
+        match = Regex.Match(text, @"^新しい墨消し範囲の色を (#[0-9A-Fa-f]{6}) に設定しました。$");
+        if (match.Success) return $"New redaction color set to {match.Groups[1].Value}.";
+
+        match = Regex.Match(text, @"^選択中の墨消し範囲の色を (#[0-9A-Fa-f]{6}) に変更しました。Undoで元に戻せます。$");
+        if (match.Success) return $"Selected redaction color changed to {match.Groups[1].Value}. Use Undo to restore it.";
+
+        match = Regex.Match(text, @"^スポイトで取得した (#[0-9A-Fa-f]{6}) を選択中の墨消し範囲へ適用しました。Undoで元に戻せます。$");
+        if (match.Success) return $"Applied sampled color {match.Groups[1].Value} to the selected redaction. Use Undo to restore it.";
+
+        match = Regex.Match(text, @"^スポイトで取得した (#[0-9A-Fa-f]{6}) を新しい墨消し範囲の色に設定しました。$");
+        if (match.Success) return $"Set sampled color {match.Groups[1].Value} for new redactions.";
+
+        match = Regex.Match(text, @"^([\d,]+)件を墨消し対象にしました。Undoで取り消せます。$");
+        if (match.Success) return $"Marked {match.Groups[1].Value} areas for redaction. You can undo this change.";
 
         return text;
     }

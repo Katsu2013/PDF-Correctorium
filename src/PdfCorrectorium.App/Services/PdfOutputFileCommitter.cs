@@ -111,7 +111,9 @@ internal static class PdfOutputFileCommitter
             // The completed PDF may be on another volume. Copy first, then remove the
             // working file, so finalization works across volumes and with long file names.
             File.Copy(completedPath, destinationPath, overwrite: false);
-            File.Delete(completedPath);
+            // The destination is already complete at this point. A transient scanner lock on
+            // the cache copy must not turn a successful commit into an apparent export failure.
+            TryDelete(completedPath);
             return;
         }
 
@@ -119,18 +121,23 @@ internal static class PdfOutputFileCommitter
             throw new UnauthorizedAccessException("出力先PDFは読み取り専用です。");
 
         var destinationDirectory = Path.GetDirectoryName(destinationPath)!;
-        var stagingPath = Path.Combine(destinationDirectory, $".pc-{Guid.NewGuid():N}.tmp");
-        var backupPath = destinationPath + ".bak";
+        var operationId = Guid.NewGuid().ToString("N");
+        var stagingPath = Path.Combine(destinationDirectory, $".pc-{operationId}.tmp");
+        // Use an operation-owned backup instead of destination.pdf.bak. This avoids
+        // overwriting a user-managed backup and prevents old PDF contents from being left
+        // beside the completed export after a successful atomic replacement.
+        var backupPath = Path.Combine(destinationDirectory, $".pc-{operationId}.bak");
         try
         {
             // File.Replace requires files on the same volume, so stage a short sibling first.
             File.Copy(completedPath, stagingPath, overwrite: false);
             File.Replace(stagingPath, destinationPath, backupPath, ignoreMetadataErrors: true);
-            File.Delete(completedPath);
+            TryDelete(completedPath);
         }
         finally
         {
             TryDelete(stagingPath);
+            TryDelete(backupPath);
         }
     }
 

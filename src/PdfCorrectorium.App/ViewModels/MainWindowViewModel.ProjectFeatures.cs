@@ -207,7 +207,8 @@ public sealed partial class MainWindowViewModel
     }
 
     private ProjectAnnotationSnapshot CaptureProjectAnnotationSnapshot() => new(
-        _project?.Comments.ToArray() ?? [], _project?.Tags.ToArray() ?? [], _project?.InternalLinks.ToArray() ?? []);
+        _project?.Comments.ToArray() ?? [], _project?.Tags.ToArray() ?? [], _project?.InternalLinks.ToArray() ?? [],
+        _project?.Redactions.ToArray() ?? []);
 
     private void ApplyProjectAnnotationSnapshot(ProjectAnnotationSnapshot snapshot)
     {
@@ -217,7 +218,9 @@ public sealed partial class MainWindowViewModel
             Comments = snapshot.Comments.ToArray(),
             Tags = snapshot.Tags.ToArray(),
             InternalLinks = snapshot.InternalLinks.ToArray(),
+            Redactions = snapshot.Redactions.ToArray(),
         };
+        RefreshRedactionItems();
         RefreshProjectFeatureState();
     }
 
@@ -225,7 +228,8 @@ public sealed partial class MainWindowViewModel
     {
         var after = CaptureProjectAnnotationSnapshot();
         if (before == after ||
-            (before.Comments.SequenceEqual(after.Comments) && before.Tags.SequenceEqual(after.Tags) && before.InternalLinks.SequenceEqual(after.InternalLinks))) return;
+            (before.Comments.SequenceEqual(after.Comments) && before.Tags.SequenceEqual(after.Tags) &&
+             before.InternalLinks.SequenceEqual(after.InternalLinks) && before.Redactions.SequenceEqual(after.Redactions))) return;
         RecordHistory(new ProjectAnnotationEdit(before, after, description));
         RefreshProjectFeatureState();
     }

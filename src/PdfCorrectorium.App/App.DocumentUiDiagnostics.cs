@@ -81,6 +81,7 @@ public partial class App
                 "BookmarkMenu", "OcrMenu", "PageMenu", "ValidationMenu", "ToolbarPageNumberBox",
                 "EditUnitSelector", "StatusZoomSlider", "StatusZoomComboBox",
                 "StatusZoomOutButton", "StatusZoomInButton",
+                "RedactionMenuItem", "OcrEditToolbarButton", "RedactionToolbarButton", "EditorModeSelector",
             };
             ICommand[] documentCommands =
             [
@@ -93,6 +94,9 @@ public partial class App
                 viewModel.ToggleAddOcrRegionModeCommand, viewModel.AddBookmarkCommand,
                 viewModel.AddChildBookmarkCommand, viewModel.DeleteBookmarkCommand,
                 viewModel.ImportBookmarksCommand, viewModel.ExportBookmarksCommand,
+                viewModel.ActivateOcrEditModeCommand, viewModel.ActivateRedactionModeCommand,
+                viewModel.AddSelectedRedactionsCommand,
+                viewModel.DeleteSelectedRedactionCommand, viewModel.ClearCurrentPageRedactionsCommand,
             ];
             await LayoutAsync();
             Check(!viewModel.HasDocument && !viewModel.CanUsePreview, "Startup has no document or usable preview.");
@@ -153,6 +157,9 @@ public partial class App
                     foreach (var descendant in Descendants(child)) yield return descendant;
                 }
             }
+            static bool RectClose(Rect first, Rect second) =>
+                Math.Abs(first.Left - second.Left) < 0.01 && Math.Abs(first.Top - second.Top) < 0.01 &&
+                Math.Abs(first.Width - second.Width) < 0.01 && Math.Abs(first.Height - second.Height) < 0.01;
             var selectedRegionContainer = overlayCanvas.ItemContainerGenerator.ContainerFromItem(readingOrderRegion) as ListBoxItem;
             Check(selectedRegionContainer is not null && Descendants(selectedRegionContainer).OfType<Thumb>()
                     .Any(thumb => Equals(thumb.Tag, "NW") && thumb.Visibility == Visibility.Visible),
@@ -170,6 +177,150 @@ public partial class App
             viewModel.EditorModeIndex = 0;
             viewModel.OverlayItems.Clear();
             await LayoutAsync();
+            Check(viewModel.IsOcrEditMode && !viewModel.IsRedactionMode && viewModel.CanEditGeometry,
+                "OCR editing starts as the exclusive geometry-editing mode.");
+            Check(viewModel.ActivateRedactionModeCommand.CanExecute(null),
+                "A loaded document enables switching to redaction mode.");
+            viewModel.ActivateRedactionModeCommand.Execute(null);
+            await LayoutAsync();
+            var modeGuardRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("mode guard", 10, 10, 60, 20, true));
+            viewModel.OverlayItems.Add(modeGuardRegion);
+            viewModel.SetOverlaySelection([modeGuardRegion], modeGuardRegion);
+            Check(viewModel.IsRedactionMode && !viewModel.IsOcrEditMode,
+                "Redaction mode is exclusive from OCR editing mode.");
+            Check(!viewModel.CanEditGeometry && !viewModel.CanAddOcrRegion &&
+                  !viewModel.DeleteOcrRegionsCommand.CanExecute(null),
+                "Redaction mode disables OCR geometry editing and OCR-region creation/deletion.");
+            Check(((ToggleButton)Control("RedactionToolbarButton")).IsChecked == true &&
+                  ((ToggleButton)Control("OcrEditToolbarButton")).IsChecked != true &&
+                  ((ComboBox)Control("EditorModeSelector")).SelectedIndex == (int)EditorInteractionMode.Redaction,
+                "Toolbar buttons and the editor-mode selector show the same active redaction mode.");
+            Check(Control("RedactionPanel").Visibility == Visibility.Visible &&
+                  ((TextBlock)Control("PropertiesPaneTitle")).Text == LocalizationService.Translate("墨消しプロパティ"),
+                "Redaction mode shows its dedicated property controls.");
+            var sampleBitmap = new WriteableBitmap(2, 2, 96, 96, PixelFormats.Bgra32, null);
+            sampleBitmap.WritePixels(new Int32Rect(0, 0, 2, 2), new byte[]
+            {
+                0x33, 0x22, 0x11, 0xFF, 0x66, 0x55, 0x44, 0xFF,
+                0x99, 0x88, 0x77, 0xFF, 0xCC, 0xBB, 0xAA, 0xFF,
+            }, 8, 0);
+            Check(PdfCorrectorium.App.MainWindow.TrySamplePreviewColor(sampleBitmap, new Point(75, 25), new Size(100, 100)) == "#445566" &&
+                  PdfCorrectorium.App.MainWindow.TrySamplePreviewColor(sampleBitmap, new Point(100, 25), new Size(100, 100)) is null,
+                "The eyedropper maps preview coordinates to the underlying page pixel and rejects clicks outside the page.");
+            Check(PdfCorrectorium.App.MainWindow.CalculateUnselectedWheelOffset(100, -120, 3, 400, 1000) == 148 &&
+                  PdfCorrectorium.App.MainWindow.CalculateUnselectedWheelOffset(20, 120, 3, 400, 1000) == 0 &&
+                  PdfCorrectorium.App.MainWindow.CalculateUnselectedWheelOffset(900, -120, -1, 300, 1000) == 1000,
+                "Unselected wheel scrolling follows system line/page settings and remains inside the workspace extent.");
+            var redaction = viewModel.AddManualRedaction(new Rect(24, 30, 80, 35));
+            await LayoutAsync();
+            var redactionLayer = (ItemsControl)Control("RedactionOverlayLayer");
+            Check(redaction is not null && viewModel.CurrentPageRedactionCount == 1 &&
+                  redactionLayer.Items.Count == 1 && redactionLayer.IsHitTestVisible,
+                "A manual redaction appears in the interactive foreground layer while redaction mode is active.");
+            Check(viewModel.IsRedactionMode,
+                "Redaction mode remains active after one mark so consecutive areas can be specified.");
+            var redactionOverlay = viewModel.RedactionItems.Single();
+            var redactionContainer = redactionLayer.ItemContainerGenerator.ContainerFromItem(redactionOverlay) as ContentPresenter;
+            Check(redactionOverlay.IsSelected && redactionContainer is not null &&
+                  Descendants(redactionContainer).OfType<Thumb>().Count(thumb => thumb.Visibility == Visibility.Visible) == 9,
+                "A selected redaction exposes one move surface and eight resize handles.");
+            var redactionPreviewBorder = redactionContainer is null
+                ? null
+                : redactionContainer.ContentTemplate.FindName("RedactionPreviewBorder", redactionContainer) as Border;
+            var redactionMoveThumb = redactionContainer is null
+                ? null
+                : Descendants(redactionContainer).OfType<Thumb>().FirstOrDefault(thumb => Equals(thumb.Tag, "Move"));
+            redactionMoveThumb?.ApplyTemplate();
+            var redactionMoveSurface = redactionMoveThumb is not null && VisualTreeHelper.GetChildrenCount(redactionMoveThumb) > 0
+                ? VisualTreeHelper.GetChild(redactionMoveThumb, 0) as Border
+                : null;
+            Check(redactionPreviewBorder is
+                  {
+                      Background: SolidColorBrush { Color: var initialRedactionColor },
+                      Opacity: 0.62
+                  } && initialRedactionColor == Colors.Black &&
+                  redactionMoveSurface?.Background is SolidColorBrush { Color.A: 0 },
+                "A black redaction uses its selected fill color, while the move surface remains visually transparent instead of painting white.");
+            Check(viewModel.IsRedactionPreviewTranslucent && !viewModel.IsRedactionPreviewOpaque &&
+                  ((RadioButton)Control("RedactionPreviewTranslucentRadioButton")).IsChecked == true,
+                "Redaction previews start in translucent editor mode so the covered content can still be inspected.");
+            viewModel.IsRedactionPreviewOpaque = true;
+            await LayoutAsync();
+            Check(viewModel.RedactionPreviewOpacity == 1d && redactionPreviewBorder?.Opacity == 1d &&
+                  ((RadioButton)Control("RedactionPreviewOpaqueRadioButton")).IsChecked == true,
+                "The editor preview can show the selected redaction color fully opaque without changing PDF output semantics.");
+            viewModel.IsRedactionPreviewTranslucent = true;
+            await LayoutAsync();
+            var undoBeforeRedactionColor = viewModel.UndoCountForDiagnostics;
+            viewModel.SetRedactionColor("#D32F2F");
+            Check(viewModel.ProjectForDiagnostics!.Redactions.Single().ColorHex == "#D32F2F" &&
+                  viewModel.RedactionItems.Single().ColorHex == "#D32F2F" &&
+                  viewModel.UndoCountForDiagnostics == undoBeforeRedactionColor + 1,
+                "Changing the color with an existing redaction selected updates that mark and creates one Undo entry.");
+            viewModel.UndoCommand.Execute(null);
+            Check(viewModel.ProjectForDiagnostics.Redactions.Single().ColorHex == "#000000" &&
+                  viewModel.RedactionItems.Single().ColorHex == "#000000",
+                "Undo restores the selected redaction's previous color.");
+            Check(PdfCorrectorium.App.MainWindow.CalculateRedactionTransform(new Rect(20, 20, 80, 40), "Move", new Vector(-50, 500), 200, 150) ==
+                  new Rect(0, 110, 80, 40),
+                "Moving a redaction remains inside the page without changing its size.");
+            Check(PdfCorrectorium.App.MainWindow.CalculateRedactionTransform(new Rect(20, 20, 80, 40), "NW", new Vector(15, 10), 200, 150) ==
+                  new Rect(35, 30, 65, 30) &&
+                  PdfCorrectorium.App.MainWindow.CalculateRedactionTransform(new Rect(20, 20, 80, 40), "SE", new Vector(-500, -500), 200, 150) ==
+                  new Rect(20, 20, 8, 8),
+                "Corner handles resize both axes and enforce the minimum redaction size.");
+            Snapshot("redaction-mode");
+            Check(Panel.GetZIndex(redactionLayer) > Panel.GetZIndex(Control("OverlayCanvas")) &&
+                  Panel.GetZIndex(redactionLayer) < Panel.GetZIndex(Control("ReadingOrderBadgeLayer")),
+                "Redaction previews are above OCR frames while reading-order badges remain foremost.");
+            var originalRedactionBounds = redactionOverlay.Bounds;
+            var originalPdfBounds = viewModel.ProjectForDiagnostics!.Redactions.Single().Bounds;
+            var undoBeforeRedactionTransform = viewModel.UndoCountForDiagnostics;
+            var adjustedRedactionBounds = new Rect(
+                originalRedactionBounds.Left + 12,
+                originalRedactionBounds.Top + 8,
+                originalRedactionBounds.Width + 18,
+                originalRedactionBounds.Height + 11);
+            Check(viewModel.PreviewRedactionBounds(redactionOverlay.Id, adjustedRedactionBounds) &&
+                  RectClose(viewModel.RedactionItems.Single().Bounds, adjustedRedactionBounds) &&
+                  viewModel.ProjectForDiagnostics.Redactions.Single().Bounds == originalPdfBounds &&
+                  viewModel.UndoCountForDiagnostics == undoBeforeRedactionTransform,
+                "Dragging previews a redaction transform without rewriting the project or growing Undo history per pointer event.");
+            Check(viewModel.CommitRedactionBounds(redactionOverlay.Id, originalRedactionBounds) &&
+                  viewModel.ProjectForDiagnostics.Redactions.Single().Bounds != originalPdfBounds &&
+                  viewModel.UndoCountForDiagnostics == undoBeforeRedactionTransform + 1,
+                "Completing a redaction move or resize commits one project edit and one Undo entry.");
+            viewModel.UndoCommand.Execute(null);
+            Check(viewModel.CurrentPageRedactionCount == 1 && RectClose(viewModel.RedactionItems.Single().Bounds, originalRedactionBounds),
+                "Undo restores the redaction's original position and size.");
+            viewModel.UndoCommand.Execute(null);
+            Check(viewModel.CurrentPageRedactionCount == 0, "A second Undo removes the newly added redaction.");
+            viewModel.RedoCommand.Execute(null);
+            Check(viewModel.CurrentPageRedactionCount == 1, "Redo restores a newly added redaction.");
+            viewModel.RedoCommand.Execute(null);
+            Check(RectClose(viewModel.RedactionItems.Single().Bounds, adjustedRedactionBounds),
+                "A second Redo restores the adjusted redaction position and size.");
+            viewModel.SelectedRedaction = viewModel.RedactionItems.Single();
+            Check(viewModel.DeleteSelectedRedactionCommand.CanExecute(null),
+                "Selecting an existing redaction enables its delete command.");
+            Check(PdfCorrectorium.App.MainWindow.ShouldDeleteSelectedRedaction(Key.Delete, true, true, new Border()) &&
+                  !PdfCorrectorium.App.MainWindow.ShouldDeleteSelectedRedaction(Key.Delete, true, true, new TextBox()) &&
+                  !PdfCorrectorium.App.MainWindow.ShouldDeleteSelectedRedaction(Key.Back, true, true, new Border()),
+                "Delete targets a selected redaction from the work area but preserves normal text-entry deletion.");
+            viewModel.DeleteSelectedRedactionCommand.Execute(null);
+            Check(viewModel.CurrentPageRedactionCount == 0 && viewModel.ProjectForDiagnostics.Redactions.Count == 0,
+                "Delete removes the selected redaction preview and project entry.");
+            viewModel.UndoCommand.Execute(null);
+            Check(viewModel.CurrentPageRedactionCount == 1 && viewModel.ProjectForDiagnostics.Redactions.Count == 1,
+                "Undo restores a deleted redaction.");
+            viewModel.ActivateOcrEditModeCommand.Execute(null);
+            await LayoutAsync();
+            Check(viewModel.IsOcrEditMode && !viewModel.IsRedactionMode && viewModel.CanEditGeometry &&
+                  ((ToggleButton)Control("OcrEditToolbarButton")).IsChecked == true &&
+                   ((ToggleButton)Control("RedactionToolbarButton")).IsChecked != true,
+                "Returning to OCR editing restores geometry editing and synchronized toolbar state.");
+            Check(!redactionLayer.IsHitTestVisible,
+                "Redaction handles stop intercepting the preview after returning to OCR editing.");
             Check(viewModel.ProjectStorageModeStatusText.Contains(viewModel.ProjectStorageModeText, StringComparison.Ordinal),
                 "The project PDF storage status contains the current project mode name.");
             Check(viewModel.ProjectStorageModeText == LocalizationService.Translate("ポータブルモード"),

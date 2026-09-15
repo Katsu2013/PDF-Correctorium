@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PdfCorrectorium.Core.Documents;
@@ -17,11 +19,15 @@ namespace PdfCorrectorium.App.Services;
 /// <param name="ModifiedPages">OCR変更または画像最適化を反映したページ数。</param>
 /// <param name="Warnings">出力を継続できたものの利用者確認が必要な事項。</param>
 /// <param name="OptimizedImages">余白切り抜きを適用したページ画像数。</param>
+/// <param name="AppliedRedactions">確定した墨消し範囲数。</param>
+/// <param name="RedactedPages">安全な画像ページへ変換したページ数。</param>
 public sealed record PdfExportResult(
     int ModifiedRegions,
     int ModifiedPages,
     IReadOnlyList<string> Warnings,
-    int OptimizedImages = 0);
+    int OptimizedImages = 0,
+    int AppliedRedactions = 0,
+    int RedactedPages = 0);
 
 /// <summary>PDF生成ワーカーが通知する処理段階と進捗を表します。</summary>
 /// <param name="Phase">機械判定に使用する処理段階。</param>
@@ -124,6 +130,10 @@ public sealed record PdfImageOptimizationPreviewRegion(
 /// </remarks>
 public sealed class PdfExportService
 {
+    // PDFium retains modified page resources until the document is saved and reopened.
+    // Periodic compact checkpoints keep native memory bounded for large, image-heavy books.
+    private const int MaximumPagesPerDocumentCheckpoint = 192;
+    private const long DocumentCheckpointPrivateMemoryThreshold = 768L * 1024 * 1024;
     /// <summary>1つのUnicodeテキスト要素と、行先頭からの位置および送り量を保持します。</summary>
     private sealed record CharacterTextRun(string Text, double Offset, double Advance);
 
@@ -173,6 +183,35 @@ public sealed class PdfExportService
         CharacterTextRun Run,
         double TargetCenterX,
         double TargetCenterY);
+
+    /// <summary>墨消しページへ残す不可視文字の元フォント、色、位置を保持します。</summary>
+    private sealed record PreservedTransparentTextFragment(
+        string Text,
+        int CharacterCount,
+        IntPtr Font,
+        float FontSize,
+        uint Red,
+        uint Green,
+        uint Blue,
+        uint Alpha,
+        double Left,
+        double Bottom,
+        double Right,
+        double Top);
+
+    /// <summary>墨消しページの不可視文字を、保持するオブジェクトと再構成する文字へ分けた計画です。</summary>
+    private sealed record RedactionTextPreservationPlan(
+        IReadOnlySet<IntPtr> WholeObjects,
+        IReadOnlyList<PreservedTransparentTextFragment> Fragments,
+        int RemovedCharacters,
+        int UnrepresentableCharacters);
+
+    /// <summary>墨消し後に保持した検索用テキストの件数を表します。</summary>
+    private sealed record RedactionTextPreservationResult(
+        int WholeObjects,
+        int RebuiltCharacters,
+        int RemovedCharacters,
+        int UnrepresentableCharacters);
 
     /// <summary>フォントの基準線を基点とした字形の下端・上端を保持します。</summary>
     private readonly record struct FontVerticalMetrics(double Bottom, double Top)
@@ -352,8 +391,9 @@ public sealed class PdfExportService
                 ValidateOutput(
                     temporaryPath,
                     project.SourcePdf.PageCount,
-                    project.Pages.Where(PageHasChanges).Select(page => page.PageNumber).ToHashSet(),
-                    project.OutputPdfVersion);
+                    project.Pages.Where(page => PageHasChanges(page, project.Redactions)).Select(page => page.PageNumber).ToHashSet(),
+                    project.OutputPdfVersion,
+                    project);
             progress?.Report(new PdfExportProgress("committing", 0, 0, "検証済みPDFを保存先へ確定しています..."));
             PdfOutputFileCommitter.Commit(
                 temporaryPath,
@@ -364,7 +404,9 @@ public sealed class PdfExportService
         }
         catch
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            // Cleanup must never replace the actual generation/validation exception with a
+            // secondary scanner or file-lock error.
+            TryDeleteFile(temporaryPath);
             throw;
         }
         finally
@@ -391,6 +433,7 @@ public sealed class PdfExportService
         EnsureInitialized();
         var utf8Path = Marshal.StringToCoTaskMemUTF8(sourcePath);
         IntPtr document = IntPtr.Zero;
+        string? previousCheckpointPath = null;
         try
         {
             document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
@@ -411,11 +454,14 @@ public sealed class PdfExportService
             var modifiedPages = 0;
 
             var optimizedImages = 0;
+            var appliedRedactions = 0;
+            var redactedPages = 0;
             var changedPages = project.Pages
-                .Where(PageHasChanges)
+                .Where(page => PageHasChanges(page, project.Redactions))
                 .OrderBy(page => page.PageNumber)
                 .ToArray();
             var processedPages = 0;
+            var pagesSinceCheckpoint = 0;
             progress?.Report(new PdfExportProgress(
                 "editing",
                 processedPages,
@@ -440,9 +486,14 @@ public sealed class PdfExportService
                     var candidates = CollectTextObjects(page, textPage);
                     var used = new HashSet<IntPtr>();
                     var appliedDeletionRequests = new List<OcrTextRegion>();
+                    var pageSpacingRequests = new List<TextSpacingRequest>();
+                    var pageRedactions = project.Redactions.Where(item => item.PageId == projectPage.Id).ToArray();
                     var pageChanged = false;
 
-                    if (projectPage.ImageOptimization is { Enabled: true })
+                    // A redacted page is flattened once below. Optimizing its source image first
+                    // would JPEG-encode the same pixels twice and visibly degrade scans and small text.
+                    if (pageRedactions.Length == 0 &&
+                        projectPage.ImageOptimization is { Enabled: true })
                     {
                         // 以前は全ページ分の再圧縮画像を先に生成して保持していたため、
                         // 大きな文書で数GBのメモリと長いGC待ちが発生していました。
@@ -474,7 +525,7 @@ public sealed class PdfExportService
                                 candidates,
                                 region,
                                 projectPage.PageNumber,
-                                textSpacingRequests);
+                                pageSpacingRequests);
                             modifiedRegions++;
                             pageChanged = true;
                             continue;
@@ -513,10 +564,57 @@ public sealed class PdfExportService
                                 candidate,
                                 region,
                                 projectPage.PageNumber,
-                                textSpacingRequests);
+                                pageSpacingRequests);
                         }
                         modifiedRegions++;
                         pageChanged = true;
+                    }
+
+                    if (pageRedactions.Length > 0)
+                    {
+                        if (textPage != IntPtr.Zero)
+                        {
+                            NativeMethods.FPDFText_ClosePage(textPage);
+                            textPage = IntPtr.Zero;
+                        }
+
+                        // PDFium's text page is a snapshot.  Generate the edited OCR content and
+                        // reload that snapshot before deciding which individual characters overlap
+                        // the redaction.  Otherwise the decision could be based on stale bounds.
+                        if (NativeMethods.FPDFPage_GenerateContent(page) == 0)
+                            throw new InvalidDataException($"{projectPage.PageNumber}ページの墨消し前文字内容を再生成できませんでした。");
+                        textPage = NativeMethods.FPDFText_LoadPage(page);
+                        if (textPage == IntPtr.Zero)
+                            throw new InvalidDataException($"{projectPage.PageNumber}ページの墨消し対象文字を解析できませんでした。");
+                        var preservationPlan = CreateRedactionTextPreservationPlan(
+                            page,
+                            textPage,
+                            pageRedactions,
+                            cancellationToken);
+                        NativeMethods.FPDFText_ClosePage(textPage);
+                        textPage = IntPtr.Zero;
+
+                        var preservedOcr = RasterizeAndRedactPage(
+                            document,
+                            page,
+                            pageRedactions,
+                            preservationPlan,
+                            cancellationToken);
+                        appliedRedactions += pageRedactions.Length;
+                        redactedPages++;
+                        pageChanged = true;
+                        warnings.Add(
+                            $"{projectPage.PageNumber}ページ: 墨消しを確定するため表示内容を高精細画像化し、" +
+                            $"範囲外の透明テキストをオブジェクト {preservedOcr.WholeObjects:N0}件、" +
+                            $"文字単位 {preservedOcr.RebuiltCharacters:N0}字で検索用に保持し、" +
+                            $"重なった {preservedOcr.RemovedCharacters:N0}字を除去しました。" +
+                            (preservedOcr.UnrepresentableCharacters > 0
+                                ? $" 元フォントで安全に再構成できない {preservedOcr.UnrepresentableCharacters:N0}字は保持していません。"
+                                : string.Empty));
+                    }
+                    else
+                    {
+                        textSpacingRequests.AddRange(pageSpacingRequests);
                     }
 
                     if (pageChanged)
@@ -538,11 +636,40 @@ public sealed class PdfExportService
                 }
 
                 processedPages++;
+                pagesSinceCheckpoint++;
                 progress?.Report(new PdfExportProgress(
                     "editing",
                     processedPages,
                     changedPages.Length,
                     $"PDFへ編集を反映しています（{processedPages:N0}/{changedPages.Length:N0}ページ）..."));
+
+                if (processedPages < changedPages.Length &&
+                    ShouldCheckpointDocument(pagesSinceCheckpoint))
+                {
+                    var nextCheckpointPath = temporaryPath + $".edit-{processedPages:N0}.checkpoint.pdf";
+                    try
+                    {
+                        progress?.Report(new PdfExportProgress(
+                            "checkpointing",
+                            processedPages,
+                            changedPages.Length,
+                            $"{processedPages:N0}ページまでの変更を確定し、使用メモリを解放しています..."));
+                        SaveCompactAndReloadDocument(
+                            ref document,
+                            ref utf8Path,
+                            nextCheckpointPath,
+                            pageCount,
+                            cancellationToken);
+                        TryDeleteFile(previousCheckpointPath);
+                        previousCheckpointPath = nextCheckpointPath;
+                        pagesSinceCheckpoint = 0;
+                        nextCheckpointPath = string.Empty;
+                    }
+                    finally
+                    {
+                        TryDeleteFile(nextCheckpointPath);
+                    }
+                }
             }
 
             var requested = project.Pages.Sum(page => page.TextRegions.Count(ShouldApplyToPdf));
@@ -550,6 +677,10 @@ public sealed class PdfExportService
                 throw new InvalidDataException("編集対象に対応するPDFテキストを特定できなかったため、出力を中止しました。NDLOCRの座標とPDF内テキストの位置が一致しているか確認してください。");
             if (modifiedRegions < requested)
                 throw new InvalidDataException($"{requested}件中{requested - modifiedRegions}件を安全に反映できなかったため、出力を中止しました。未反映箇所を確認してください。\n" + string.Join("\n", warnings.Take(8)));
+            if (appliedRedactions != project.Redactions.Count)
+                throw new InvalidDataException(
+                    $"墨消し範囲 {project.Redactions.Count:N0}件中{project.Redactions.Count - appliedRedactions:N0}件を安全に反映できなかったため、出力を中止しました。" +
+                    "対象ページと元PDFの対応を確認してください。");
 
             progress?.Report(new PdfExportProgress("saving", 0, 0, "編集済みPDFを一時保存しています..."));
             SaveDocument(document, temporaryPath);
@@ -564,7 +695,7 @@ public sealed class PdfExportService
                 warnings,
                 progress,
                 cancellationToken);
-            if (optimizedImages > 0)
+            if (optimizedImages > 0 || appliedRedactions > 0)
             {
                 progress?.Report(new PdfExportProgress("compacting", 0, 0, "画像最適化後のPDFを圧縮しています..."));
                 CompactDocumentWithQpdf(temporaryPath, cancellationToken);
@@ -584,12 +715,19 @@ public sealed class PdfExportService
                     cancellationToken)
                 .GetAwaiter()
                 .GetResult();
-            return new PdfExportResult(modifiedRegions, modifiedPages, warnings, optimizedImages);
+            return new PdfExportResult(
+                modifiedRegions,
+                modifiedPages,
+                warnings,
+                optimizedImages,
+                appliedRedactions,
+                redactedPages);
         }
         finally
         {
             if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
-            Marshal.FreeCoTaskMem(utf8Path);
+            if (utf8Path != IntPtr.Zero) Marshal.FreeCoTaskMem(utf8Path);
+            TryDeleteFile(previousCheckpointPath);
         }
     }
 
@@ -602,6 +740,7 @@ public sealed class PdfExportService
         var calibratedPath = pdfPath + ".selection-calibrated";
         var utf8Path = Marshal.StringToCoTaskMemUTF8(pdfPath);
         var document = IntPtr.Zero;
+        string? previousCheckpointPath = null;
         try
         {
             document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
@@ -610,13 +749,16 @@ public sealed class PdfExportService
 
             var pageCount = NativeMethods.FPDF_GetPageCount(document);
             var changed = false;
+            var redactedPageIds = project.Redactions.Select(item => item.PageId).ToHashSet();
             var calibrationPages = project.Pages.Where(page =>
+                    !redactedPageIds.Contains(page.Id) &&
                     page.TextRegions.Any(region =>
                         ShouldApplyToPdf(region) &&
                         !region.IsDeleted &&
                         RequiresPerCharacterObjects(region)))
                 .ToArray();
             var calibratedPages = 0;
+            var pagesSinceCheckpoint = 0;
             foreach (var projectPage in calibrationPages)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -650,11 +792,40 @@ public sealed class PdfExportService
                 }
 
                 calibratedPages++;
+                pagesSinceCheckpoint++;
                 progress?.Report(new PdfExportProgress(
                     "calibrating",
                     calibratedPages,
                     calibrationPages.Length,
                     $"文字位置を校正しています（{calibratedPages:N0}/{calibrationPages.Length:N0}ページ）..."));
+
+                if (calibratedPages < calibrationPages.Length &&
+                    ShouldCheckpointDocument(pagesSinceCheckpoint))
+                {
+                    var nextCheckpointPath = pdfPath + $".calibrate-{calibratedPages:N0}.checkpoint.pdf";
+                    try
+                    {
+                        progress?.Report(new PdfExportProgress(
+                            "checkpointing",
+                            calibratedPages,
+                            calibrationPages.Length,
+                            $"{calibratedPages:N0}ページまでの校正を確定し、使用メモリを解放しています..."));
+                        SaveCompactAndReloadDocument(
+                            ref document,
+                            ref utf8Path,
+                            nextCheckpointPath,
+                            pageCount,
+                            cancellationToken);
+                        TryDeleteFile(previousCheckpointPath);
+                        previousCheckpointPath = nextCheckpointPath;
+                        pagesSinceCheckpoint = 0;
+                        nextCheckpointPath = string.Empty;
+                    }
+                    finally
+                    {
+                        TryDeleteFile(nextCheckpointPath);
+                    }
+                }
             }
 
             if (!changed) return;
@@ -666,8 +837,9 @@ public sealed class PdfExportService
         finally
         {
             if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
-            Marshal.FreeCoTaskMem(utf8Path);
-            if (File.Exists(calibratedPath)) File.Delete(calibratedPath);
+            if (utf8Path != IntPtr.Zero) Marshal.FreeCoTaskMem(utf8Path);
+            TryDeleteFile(previousCheckpointPath);
+            TryDeleteFile(calibratedPath);
         }
     }
 
@@ -697,6 +869,24 @@ public sealed class PdfExportService
             return;
         }
 
+        // Most imported OCR geometry already matches the source font's natural advances
+        // after the whole line has been fitted to its edited rectangle.  Expanding and
+        // rebuilding the entire PDF for those no-op rows is particularly expensive on
+        // scanned books.  Keep the exact post-processing only for rows with a measurable
+        // per-character difference.
+        measurements = measurements
+            .Where(RequiresTextSpacingAdjustment)
+            .ToList();
+        if (measurements.Count == 0)
+        {
+            progress?.Report(new PdfExportProgress(
+                "spacing",
+                requests.Count,
+                requests.Count,
+                "文字送りはPDF内の配置と一致しているため、再構成を省略しました。"));
+            return;
+        }
+
         var qpdfPath = ResolveQpdfPath();
         if (qpdfPath is null)
         {
@@ -722,6 +912,8 @@ public sealed class PdfExportService
 
             var replacements = new List<(long Start, int Length, byte[] Value)>();
             var adjustedMarks = new HashSet<string>(StringComparer.Ordinal);
+            var failedMeasurementCount = 0;
+            var failedMeasurementSamples = new List<string>();
             // QDF全体を行ごとに先頭から検索すると、行数×PDF容量の走査になります。
             // PdfCorrectoriumが付けたマークを一度だけ走査して索引化します。
             var markerPositions = FindTextSpacingMarkerPositions(
@@ -734,12 +926,16 @@ public sealed class PdfExportService
                 if (!markerPositions.TryGetValue(measurement.Request.MarkName, out var markerIndex) ||
                     !TryCreateTextSpacingReplacement(qdfPath, measurement, markerIndex, out var replacement))
                 {
-                    warnings.Add(
-                        $"{measurement.Request.PageNumber}ページ: 「{Abbreviate(measurement.Request.Text)}」の文字送りをPDF命令へ反映できませんでした。");
-                    continue;
+                    failedMeasurementCount++;
+                    if (failedMeasurementSamples.Count < 8)
+                        failedMeasurementSamples.Add(
+                            $"{measurement.Request.PageNumber}ページ「{Abbreviate(measurement.Request.Text)}」");
                 }
-                replacements.Add(replacement);
-                adjustedMarks.Add(measurement.Request.MarkName);
+                else
+                {
+                    replacements.Add(replacement);
+                    adjustedMarks.Add(measurement.Request.MarkName);
+                }
 
                 if ((measurementIndex + 1) % 25 == 0 || measurementIndex + 1 == measurements.Count)
                 {
@@ -749,6 +945,16 @@ public sealed class PdfExportService
                         measurements.Count,
                         $"文字送りを反映しています（{measurementIndex + 1:N0}/{measurements.Count:N0}行）..."));
                 }
+            }
+
+            if (failedMeasurementCount > 0)
+            {
+                var sampleSuffix = failedMeasurementSamples.Count == 0
+                    ? string.Empty
+                    : $" 例: {string.Join("、", failedMeasurementSamples)}";
+                warnings.Add(
+                    $"{failedMeasurementCount:N0}行の文字送りをPDF命令へ反映できなかったため、行全体の幅を使用しました。" +
+                    sampleSuffix);
             }
 
             if (replacements.Count == 0) return;
@@ -787,6 +993,21 @@ public sealed class PdfExportService
             if (File.Exists(patchedQdfPath)) File.Delete(patchedQdfPath);
             if (File.Exists(adjustedPath)) File.Delete(adjustedPath);
         }
+    }
+
+    private static bool RequiresTextSpacingAdjustment(MeasuredTextSpacing measurement)
+    {
+        if (measurement.CurrentAdvances.Count != measurement.Request.CharacterAdvances.Count)
+            return true;
+        for (var index = 0; index < measurement.CurrentAdvances.Count; index++)
+        {
+            var current = measurement.CurrentAdvances[index];
+            var desired = measurement.Request.CharacterAdvances[index];
+            if (!double.IsFinite(current) || !double.IsFinite(desired)) return true;
+            var tolerance = Math.Max(0.02d, Math.Abs(desired) * 0.002d);
+            if (Math.Abs(current - desired) > tolerance) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -1543,9 +1764,389 @@ public sealed class PdfExportService
         !(region.IsAdded && region.IsDeleted) &&
         (region.IsDeleted || region.Output.IncludeInPdf);
 
-    private static bool PageHasChanges(OcrPage page) =>
+    private static bool PageHasChanges(OcrPage page, IReadOnlyList<PdfRedaction>? redactions = null) =>
         page.ImageOptimization is { Enabled: true } ||
-        page.TextRegions.Any(ShouldApplyToPdf);
+        page.TextRegions.Any(ShouldApplyToPdf) ||
+        redactions?.Any(item => item.PageId == page.Id) == true;
+
+    /// <summary>
+    /// ページを一枚の新しい画像へ変換してから指定範囲を塗りつぶし、元のページ内容を破棄します。
+    /// </summary>
+    /// <remarks>
+    /// 一部の画像画素やフォームだけを変更する方式では、非表示オブジェクト、再利用画像、注釈の
+    /// 外観ストリーム等に元情報が残り得ます。墨消し対象ページだけを完結した画像へ変換することで、
+    /// 対象範囲の文字抽出と背景画像抽出の双方を防ぎます。
+    /// </remarks>
+    private static RedactionTextPreservationResult RasterizeAndRedactPage(
+        IntPtr document,
+        IntPtr page,
+        IReadOnlyList<PdfRedaction> redactions,
+        RedactionTextPreservationPlan preservationPlan,
+        CancellationToken cancellationToken)
+    {
+        var pageWidth = NativeMethods.FPDF_GetPageWidthF(page);
+        var pageHeight = NativeMethods.FPDF_GetPageHeightF(page);
+        if (pageWidth <= 0 || pageHeight <= 0)
+            throw new InvalidDataException("墨消し対象ページの寸法を取得できませんでした。");
+
+        const double requestedPixelsPerPoint = 300d / 72d;
+        var scale = requestedPixelsPerPoint;
+        const int maximumDimension = 14_000;
+        const long maximumPixels = 96L * 1024 * 1024;
+        scale = Math.Min(scale, maximumDimension / Math.Max(pageWidth, pageHeight));
+        scale = Math.Min(scale, Math.Sqrt(maximumPixels / (pageWidth * pageHeight)));
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(pageWidth * scale));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(pageHeight * scale));
+
+        var bitmap = NativeMethods.FPDFBitmap_Create(pixelWidth, pixelHeight, 1);
+        if (bitmap == IntPtr.Zero)
+            throw new InvalidDataException("墨消し対象ページの安全な画像を作成できませんでした。");
+        byte[] jpeg;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            NativeMethods.FPDFBitmap_FillRect(bitmap, 0, 0, pixelWidth, pixelHeight, 0xFFFFFFFF);
+            NativeMethods.FPDF_RenderPageBitmap(bitmap, page, 0, 0, pixelWidth, pixelHeight, 0, 0);
+            var stride = NativeMethods.FPDFBitmap_GetStride(bitmap);
+            var format = NativeMethods.FPDFBitmap_GetFormat(bitmap);
+            var buffer = NativeMethods.FPDFBitmap_GetBuffer(bitmap);
+            if (stride < pixelWidth * 4 || format != 4 || buffer == IntPtr.Zero)
+                throw new InvalidDataException("墨消し対象ページの画素形式を安全に処理できませんでした。");
+            var pixels = new byte[checked(stride * pixelHeight)];
+            Marshal.Copy(buffer, pixels, 0, pixels.Length);
+            foreach (var redaction in redactions)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                PaintRedaction(pixels, stride, pixelWidth, pixelHeight, pageWidth, pageHeight, redaction);
+            }
+            jpeg = EncodePageJpeg(pixels, pixelWidth, pixelHeight, stride, 99);
+        }
+        finally
+        {
+            NativeMethods.FPDFBitmap_Destroy(bitmap);
+        }
+
+        // Annotation appearance/content may retain confidential information independently from page objects.
+        for (var index = NativeMethods.FPDFPage_GetAnnotCount(page) - 1; index >= 0; index--)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (NativeMethods.FPDFPage_RemoveAnnot(page, index) == 0)
+                throw new InvalidDataException("墨消し対象ページの既存注釈を除去できませんでした。");
+        }
+
+        var rebuiltTextObjects = CreatePreservedTransparentTextFragments(document, preservationPlan.Fragments);
+        var objectCount = NativeMethods.FPDFPage_CountObjects(page);
+        try
+        {
+            for (var index = objectCount - 1; index >= 0; index--)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+                if (preservationPlan.WholeObjects.Contains(pageObject)) continue;
+                if (pageObject == IntPtr.Zero || NativeMethods.FPDFPage_RemoveObject(page, pageObject) == 0)
+                    throw new InvalidDataException("墨消し対象ページの元オブジェクトを除去できませんでした。");
+                NativeMethods.FPDFPageObj_Destroy(pageObject);
+            }
+
+            foreach (var textObject in rebuiltTextObjects)
+                NativeMethods.FPDFPage_InsertObject(page, textObject);
+            rebuiltTextObjects.Clear();
+        }
+        finally
+        {
+            foreach (var textObject in rebuiltTextObjects)
+                NativeMethods.FPDFPageObj_Destroy(textObject);
+        }
+
+        var replacement = NativeMethods.FPDFPageObj_NewImageObj(document);
+        if (replacement == IntPtr.Zero)
+            throw new InvalidDataException("墨消し済みページ画像を作成できませんでした。");
+        var inserted = false;
+        try
+        {
+            if (!TryLoadJpegIntoImageObject(replacement, jpeg))
+                throw new InvalidDataException("墨消し済みページ画像をPDFへ格納できませんでした。");
+            var matrix = new FsMatrix { A = pageWidth, D = pageHeight };
+            if (NativeMethods.FPDFPageObj_SetMatrix(replacement, ref matrix) == 0)
+                throw new InvalidDataException("墨消し済みページ画像を配置できませんでした。");
+            NativeMethods.FPDFPage_InsertObject(page, replacement);
+            inserted = true;
+        }
+        finally
+        {
+            if (!inserted) NativeMethods.FPDFPageObj_Destroy(replacement);
+        }
+        return new RedactionTextPreservationResult(
+            preservationPlan.WholeObjects.Count,
+            preservationPlan.Fragments.Sum(item => item.CharacterCount),
+            preservationPlan.RemovedCharacters,
+            preservationPlan.UnrepresentableCharacters);
+    }
+
+    /// <summary>
+    /// 墨消し範囲外にある不可視テキストを文字境界で判定します。範囲と接しない行は
+    /// 元オブジェクトのまま保持し、一部だけが接する行は範囲外の文字だけを再構成します。
+    /// </summary>
+    private static RedactionTextPreservationPlan CreateRedactionTextPreservationPlan(
+        IntPtr page,
+        IntPtr textPage,
+        IReadOnlyList<PdfRedaction> redactions,
+        CancellationToken cancellationToken)
+    {
+        var transparentObjects = new HashSet<IntPtr>();
+        var objectCount = NativeMethods.FPDFPage_CountObjects(page);
+        for (var index = 0; index < objectCount; index++)
+        {
+            var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+            if (IsTransparentTextObject(pageObject)) transparentObjects.Add(pageObject);
+        }
+
+        var charactersByObject = transparentObjects.ToDictionary(
+            item => item,
+            _ => new List<(string Text, double Left, double Bottom, double Right, double Top, bool Redacted)>());
+        var characterCount = NativeMethods.FPDFText_CountChars(textPage);
+        for (var index = 0; index < characterCount; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var textObject = NativeMethods.FPDFText_GetTextObject(textPage, index);
+            if (!charactersByObject.TryGetValue(textObject, out var characters)) continue;
+            var unicode = NativeMethods.FPDFText_GetUnicode(textPage, index);
+            if (NativeMethods.FPDFText_GetCharBox(
+                    textPage,
+                    index,
+                    out var left,
+                    out var right,
+                    out var bottom,
+                    out var top) == 0 ||
+                right <= left || top <= bottom)
+            {
+                continue;
+            }
+
+            var redacted = redactions.Any(redaction =>
+                RectanglesIntersect(left, bottom, right, top, redaction.Bounds, padding: 1d));
+            var text = unicode is > 0 and <= 0x10FFFF
+                ? char.ConvertFromUtf32((int)unicode)
+                : string.Empty;
+            characters.Add((text, left, bottom, right, top, redacted));
+        }
+
+        var wholeObjects = new HashSet<IntPtr>();
+        var rebuiltFragments = new List<PreservedTransparentTextFragment>();
+        var removedCharacters = 0;
+        var unrepresentableCharacters = 0;
+        foreach (var item in charactersByObject)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sourceObject = item.Key;
+            var characters = item.Value;
+            if (characters.Count == 0) continue;
+            if (characters.All(character => !character.Redacted))
+            {
+                // Keeping untouched lines avoids unnecessary object growth and preserves the
+                // source PDF's native word spacing and reading order.
+                wholeObjects.Add(sourceObject);
+                continue;
+            }
+
+            removedCharacters += characters.Count(character => character.Redacted);
+            var font = NativeMethods.FPDFTextObj_GetFont(sourceObject);
+            var fontSize = NativeMethods.FPDFTextObj_GetFontSize(sourceObject);
+            if (font == IntPtr.Zero || !float.IsFinite(fontSize) || fontSize <= 0 ||
+                NativeMethods.FPDFPageObj_GetFillColor(sourceObject, out var red, out var green, out var blue, out var alpha) == 0)
+            {
+                unrepresentableCharacters += characters.Count(character => !character.Redacted);
+                continue;
+            }
+
+            var fragment = new List<(string Text, double Left, double Bottom, double Right, double Top)>();
+            void FlushFragment()
+            {
+                if (fragment.Count == 0) return;
+                var text = string.Concat(fragment.Select(character => character.Text));
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    unrepresentableCharacters += fragment.Count;
+                    fragment.Clear();
+                    return;
+                }
+                rebuiltFragments.Add(new PreservedTransparentTextFragment(
+                    text,
+                    fragment.Count,
+                    font,
+                    fontSize,
+                    red,
+                    green,
+                    blue,
+                    alpha,
+                    fragment.Min(character => character.Left),
+                    fragment.Min(character => character.Bottom),
+                    fragment.Max(character => character.Right),
+                    fragment.Max(character => character.Top)));
+                fragment.Clear();
+            }
+
+            foreach (var character in characters)
+            {
+                if (character.Redacted)
+                {
+                    FlushFragment();
+                    continue;
+                }
+                if (character.Text.Length == 0)
+                {
+                    FlushFragment();
+                    unrepresentableCharacters++;
+                    continue;
+                }
+                fragment.Add((character.Text, character.Left, character.Bottom, character.Right, character.Top));
+            }
+            FlushFragment();
+        }
+
+        return new RedactionTextPreservationPlan(
+            wholeObjects,
+            rebuiltFragments,
+            removedCharacters,
+            unrepresentableCharacters);
+    }
+
+    private static bool IsTransparentTextObject(IntPtr pageObject)
+    {
+        if (pageObject == IntPtr.Zero || NativeMethods.FPDFPageObj_GetType(pageObject) != 1)
+            return false;
+        if (NativeMethods.FPDFTextObj_GetTextRenderMode(pageObject) == 3) return true;
+        return NativeMethods.FPDFPageObj_GetFillColor(pageObject, out _, out _, out _, out var alpha) != 0 &&
+               alpha == 0;
+    }
+
+    /// <summary>範囲外の各文字を元のフォントと文字境界へ不可視で再配置します。</summary>
+    private static List<IntPtr> CreatePreservedTransparentTextFragments(
+        IntPtr document,
+        IReadOnlyList<PreservedTransparentTextFragment> fragments)
+    {
+        var result = new List<IntPtr>(fragments.Count);
+        try
+        {
+            foreach (var character in fragments)
+            {
+                var textObject = NativeMethods.FPDFPageObj_CreateTextObj(document, character.Font, character.FontSize);
+                if (textObject == IntPtr.Zero)
+                    throw CreatePdfException("墨消し範囲外の透明文字を再構成できませんでした");
+                result.Add(textObject);
+
+                var unicode = Marshal.StringToHGlobalUni(character.Text + '\0');
+                try
+                {
+                    if (NativeMethods.FPDFText_SetText(textObject, unicode) == 0)
+                        throw new InvalidDataException($"墨消し範囲外の文字「{character.Text}」を元フォントで再構成できませんでした。");
+                }
+                finally { Marshal.FreeHGlobal(unicode); }
+
+                if (NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, 3) == 0 ||
+                    NativeMethods.FPDFPageObj_SetFillColor(
+                        textObject,
+                        character.Red,
+                        character.Green,
+                        character.Blue,
+                        0) == 0)
+                    throw new InvalidDataException("墨消し範囲外の透明文字へ不可視属性を設定できませんでした。");
+                if (NativeMethods.FPDFPageObj_GetBounds(
+                        textObject,
+                        out var sourceLeft,
+                        out var sourceBottom,
+                        out var sourceRight,
+                        out var sourceTop) == 0 ||
+                    sourceRight <= sourceLeft || sourceTop <= sourceBottom)
+                    throw new InvalidDataException($"墨消し範囲外の文字「{character.Text}」の配置を計算できませんでした。");
+
+                var scaleX = (character.Right - character.Left) / (sourceRight - sourceLeft);
+                var scaleY = (character.Top - character.Bottom) / (sourceTop - sourceBottom);
+                var targetCenterX = (character.Left + character.Right) / 2d;
+                var targetCenterY = (character.Bottom + character.Top) / 2d;
+                var sourceCenterX = (sourceLeft + sourceRight) / 2d;
+                var sourceCenterY = (sourceBottom + sourceTop) / 2d;
+                NativeMethods.FPDFPageObj_Transform(
+                    textObject,
+                    scaleX,
+                    0d,
+                    0d,
+                    scaleY,
+                    targetCenterX - scaleX * sourceCenterX,
+                    targetCenterY - scaleY * sourceCenterY);
+            }
+            return result;
+        }
+        catch
+        {
+            foreach (var textObject in result) NativeMethods.FPDFPageObj_Destroy(textObject);
+            throw;
+        }
+    }
+
+    private static bool RectanglesIntersect(
+        double left,
+        double bottom,
+        double right,
+        double top,
+        PdfRectangle target,
+        double padding = 0d) =>
+        right > target.Left - padding &&
+        left < target.Right + padding &&
+        top > target.Bottom - padding &&
+        bottom < target.Top + padding;
+
+    private static void PaintRedaction(
+        byte[] pixels,
+        int stride,
+        int pixelWidth,
+        int pixelHeight,
+        double pageWidth,
+        double pageHeight,
+        PdfRedaction redaction)
+    {
+        if (!TryParseRgb(redaction.ColorHex, out var red, out var green, out var blue))
+            throw new InvalidDataException($"墨消し色「{redaction.ColorHex}」が不正です。");
+        // 1 PDF pointの安全余白を設け、OCR枠と実際の描画端の丸め差による消し残しを防ぐ。
+        const double padding = 1d;
+        var left = Math.Clamp((int)Math.Floor((redaction.Bounds.Left - padding) / pageWidth * pixelWidth), 0, pixelWidth);
+        var right = Math.Clamp((int)Math.Ceiling((redaction.Bounds.Right + padding) / pageWidth * pixelWidth), 0, pixelWidth);
+        var top = Math.Clamp((int)Math.Floor((pageHeight - redaction.Bounds.Top - padding) / pageHeight * pixelHeight), 0, pixelHeight);
+        var bottom = Math.Clamp((int)Math.Ceiling((pageHeight - redaction.Bounds.Bottom + padding) / pageHeight * pixelHeight), 0, pixelHeight);
+        if (right <= left || bottom <= top)
+            throw new InvalidDataException("墨消し範囲がページ内にありません。");
+        for (var y = top; y < bottom; y++)
+        {
+            var row = y * stride;
+            for (var x = left; x < right; x++)
+            {
+                var offset = row + x * 4;
+                pixels[offset] = blue;
+                pixels[offset + 1] = green;
+                pixels[offset + 2] = red;
+                pixels[offset + 3] = 255;
+            }
+        }
+    }
+
+    private static byte[] EncodePageJpeg(byte[] pixels, int width, int height, int stride, int quality)
+    {
+        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        var encoder = new JpegBitmapEncoder { QualityLevel = quality };
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static bool TryParseRgb(string value, out byte red, out byte green, out byte blue)
+    {
+        red = green = blue = 0;
+        return value.Length == 7 && value[0] == '#' &&
+               byte.TryParse(value.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out red) &&
+               byte.TryParse(value.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out green) &&
+               byte.TryParse(value.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out blue);
+    }
 
     private static string? ResolveQpdfPath()
     {
@@ -1583,7 +2184,7 @@ public sealed class PdfExportService
         var qpdfPath = ResolveQpdfPath();
         if (qpdfPath is null)
             throw new InvalidDataException(
-                "画像最適化の仕上げに必要なqpdfが見つかりません。" +
+                "画像最適化または墨消しの安全な仕上げに必要なqpdfが見つかりません。" +
                 "qpdf.exeと付属DLLがPDF Correctoriumの実行ファイルと同じフォルダーにあることを確認してください。");
 
         var compactPath = pdfPath + ".qpdf";
@@ -1598,7 +2199,7 @@ public sealed class PdfExportService
                 .GetAwaiter().GetResult();
             if (result.ExitCode != 0 || !File.Exists(compactPath))
                 throw new InvalidDataException(
-                    $"qpdfによる不要画像データの除去に失敗しました（終了コード {result.ExitCode}）。\n" +
+                    $"qpdfによる不要な元データの除去に失敗しました（終了コード {result.ExitCode}）。\n" +
                     string.Join("\n", new[] { result.StandardError, result.StandardOutput }.Where(value => !string.IsNullOrWhiteSpace(value))));
 
             File.Move(compactPath, pdfPath, true);
@@ -1877,26 +2478,19 @@ public sealed class PdfExportService
                 return false;
             }
 
-            var rowHasContent = new bool[height];
-            var columnContentCounts = new int[width];
-            var minimumRowInk = Math.Max(2, width / 800);
-            for (var y = 0; y < height; y++)
-            {
-                var row = y * stride;
-                var rowInk = 0;
-                for (var x = 0; x < width; x++)
-                {
-                    var offset = row + x * bytesPerPixel;
-                    if (IsBackgroundPixel(pixels, offset, format, background, options)) continue;
-                    rowInk++;
-                    columnContentCounts[x]++;
-                }
-                rowHasContent[y] = rowInk >= minimumRowInk;
-            }
-            var minimumColumnInk = Math.Max(2, height / 800);
-            var columnHasContent = columnContentCounts
-                .Select(count => count >= minimumColumnInk)
-                .ToArray();
+            // Build the row/column occupancy and the adaptive content grid in one pixel pass.
+            // The previous implementation scanned every source pixel twice before encoding,
+            // which dominated export time on several-hundred-page scanned books.
+            var contentGrid = ContentGrid.Create(
+                pixels,
+                width,
+                height,
+                stride,
+                format,
+                background,
+                options,
+                out var rowHasContent,
+                out var columnHasContent);
             if (!rowHasContent.Any(value => value) || !columnHasContent.Any(value => value))
             {
                 var blankImageHasWhiteBackground = background.Red >= options.WhiteThreshold &&
@@ -1943,14 +2537,6 @@ public sealed class PdfExportService
             var minimumHorizontalBand = Math.Max(8, (int)Math.Ceiling(height * Math.Clamp(options.MinimumInternalBlankBandRatio, 0.005d, 0.25d)));
             var minimumVerticalBand = Math.Max(8, (int)Math.Ceiling(width * Math.Clamp(options.MinimumInternalBlankBandRatio, 0.005d, 0.25d)));
             var maximumRegions = Math.Clamp(options.MaximumRetainedRegions, 1, 64);
-            var contentGrid = ContentGrid.Create(
-                pixels,
-                width,
-                height,
-                stride,
-                format,
-                background,
-                options);
             var segmentation = BuildRetainedRectangles(
                 contentGrid,
                 rowHasContent,
@@ -1991,6 +2577,12 @@ public sealed class PdfExportService
                                     background.Green >= options.WhiteThreshold &&
                                     background.Blue >= options.WhiteThreshold;
             var requiresBackgroundLayer = !isWhiteBackground;
+            var sourceBitmap = CreateImageOptimizationBitmap(
+                pixels,
+                width,
+                height,
+                stride,
+                format);
             var sourceTiles = tileBounds
                 .Select(bounds => new ImageCrop(
                     width,
@@ -2002,6 +2594,7 @@ public sealed class PdfExportService
                     format,
                     stride,
                     pixels,
+                    sourceBitmap,
                     0,
                     [],
                     94))
@@ -2066,6 +2659,7 @@ public sealed class PdfExportService
                         format,
                         stride,
                         pixels,
+                        sourceBitmap,
                         0,
                         [],
                         94))
@@ -2193,24 +2787,6 @@ public sealed class PdfExportService
         var color = ReadPixel(pixels, offset, format);
         var whiteTolerance = Math.Max(options.BackgroundColorTolerance, 255 - options.WhiteThreshold);
         var tolerance = background.IsNearWhite ? whiteTolerance : options.BackgroundColorTolerance;
-        return Math.Abs(color.Red - background.Red) <= tolerance &&
-               Math.Abs(color.Green - background.Green) <= tolerance &&
-               Math.Abs(color.Blue - background.Blue) <= tolerance;
-    }
-
-    private static bool IsStrictShapeBackgroundPixel(
-        byte[] pixels,
-        int offset,
-        int format,
-        RgbColor background,
-        PageImageOptimization options)
-    {
-        if (format == 4 && pixels[offset + 3] <= 8) return true;
-        var color = ReadPixel(pixels, offset, format);
-        var configuredTolerance = background.IsNearWhite
-            ? Math.Max(options.BackgroundColorTolerance, 255 - options.WhiteThreshold)
-            : options.BackgroundColorTolerance;
-        var tolerance = Math.Clamp(configuredTolerance, 1, 6);
         return Math.Abs(color.Red - background.Red) <= tolerance &&
                Math.Abs(color.Green - background.Green) <= tolerance &&
                Math.Abs(color.Blue - background.Blue) <= tolerance;
@@ -2385,25 +2961,67 @@ public sealed class PdfExportService
         out int jpegQuality,
         out long estimatedBytes)
     {
-        foreach (var quality in new[] { 94, 92, 90, 88, 85, 82, 80 })
+        ReadOnlySpan<int> qualities = [80, 82, 85, 88, 90, 92];
+        IReadOnlyList<ImageCrop>? bestTiles = null;
+        byte[]? bestBackground = null;
+        var bestQuality = 0;
+        long bestBytes = 0;
+        var highestQualityTiles = sourceTiles
+            .Select(tile => tile with
+            {
+                SourcePixels = [],
+                SourceBitmap = null,
+                EncodedJpeg = EncodeCroppedJpeg(tile, 94),
+                JpegQuality = 94,
+            })
+            .ToList();
+        var highestQualityBackground = includeBackground ? EncodeSolidJpeg(background, 94) : [];
+        var highestQualityBytes = highestQualityTiles.Sum(tile => (long)tile.EncodedJpeg.Length) +
+                                  highestQualityBackground.Length;
+        if (highestQualityBytes + 512L * (highestQualityTiles.Count + (includeBackground ? 1 : 0)) < originalEncodedBytes)
         {
+            encodedTiles = highestQualityTiles;
+            encodedBackground = highestQualityBackground;
+            jpegQuality = 94;
+            estimatedBytes = highestQualityBytes;
+            return true;
+        }
+
+        var low = 0;
+        var high = qualities.Length - 1;
+        while (low <= high)
+        {
+            var middle = low + (high - low) / 2;
+            var quality = qualities[middle];
             var tiles = sourceTiles
-                .Select(tile => tile with { SourcePixels = [], EncodedJpeg = EncodeCroppedJpeg(tile, quality), JpegQuality = quality })
+                .Select(tile => tile with
+                {
+                    SourcePixels = [],
+                    SourceBitmap = null,
+                    EncodedJpeg = EncodeCroppedJpeg(tile, quality),
+                    JpegQuality = quality,
+                })
                 .ToList();
             var backgroundBytes = includeBackground ? EncodeSolidJpeg(background, quality) : [];
             var total = tiles.Sum(tile => (long)tile.EncodedJpeg.Length) + backgroundBytes.Length;
-            if (total + 512L * (tiles.Count + (includeBackground ? 1 : 0)) >= originalEncodedBytes) continue;
-            encodedTiles = tiles;
-            encodedBackground = backgroundBytes;
-            jpegQuality = quality;
-            estimatedBytes = total;
-            return true;
+            if (total + 512L * (tiles.Count + (includeBackground ? 1 : 0)) < originalEncodedBytes)
+            {
+                bestTiles = tiles;
+                bestBackground = backgroundBytes;
+                bestQuality = quality;
+                bestBytes = total;
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
         }
-        encodedTiles = [];
-        encodedBackground = [];
-        jpegQuality = 0;
-        estimatedBytes = 0;
-        return false;
+        encodedTiles = bestTiles ?? [];
+        encodedBackground = bestBackground ?? [];
+        jpegQuality = bestQuality;
+        estimatedBytes = bestBytes;
+        return bestTiles is not null;
     }
 
     private static byte[] EncodeSolidJpeg(RgbColor color, int quality)
@@ -2596,71 +3214,44 @@ public sealed class PdfExportService
         return false;
     }
 
-    private static bool TryEncodeCroppedJpeg(
-        ImageCrop crop,
-        long originalEncodedBytes,
-        out byte[] encodedJpeg,
-        out int jpegQuality)
-    {
-        foreach (var quality in new[] { 94, 92, 90, 88, 85, 82, 80 })
-        {
-            var candidate = EncodeCroppedJpeg(crop, quality);
-            if (candidate.Length + 512 >= originalEncodedBytes ||
-                candidate.Length / (double)originalEncodedBytes > 0.95d)
-                continue;
-            encodedJpeg = candidate;
-            jpegQuality = quality;
-            return true;
-        }
-
-        encodedJpeg = [];
-        jpegQuality = 0;
-        return false;
-    }
-
     private static byte[] EncodeCroppedJpeg(ImageCrop crop, int quality)
     {
-        var targetStride = checked(crop.Width * 4);
-        var targetPixels = new byte[checked(targetStride * crop.Height)];
-        for (var y = 0; y < crop.Height; y++)
-        {
-            var sourceRow = (crop.Top + y) * crop.SourceStride;
-            var targetRow = y * targetStride;
-            for (var x = 0; x < crop.Width; x++)
-            {
-                var targetOffset = targetRow + x * 4;
-                var sourceOffset = sourceRow + (crop.Left + x) * crop.SourceBytesPerPixel;
-                if (crop.SourceFormat == 1)
-                {
-                    var gray = crop.SourcePixels[sourceOffset];
-                    targetPixels[targetOffset] = gray;
-                    targetPixels[targetOffset + 1] = gray;
-                    targetPixels[targetOffset + 2] = gray;
-                }
-                else
-                {
-                    targetPixels[targetOffset] = crop.SourcePixels[sourceOffset];
-                    targetPixels[targetOffset + 1] = crop.SourcePixels[sourceOffset + 1];
-                    targetPixels[targetOffset + 2] = crop.SourcePixels[sourceOffset + 2];
-                }
-                targetPixels[targetOffset + 3] = 255;
-            }
-        }
-
-        var bitmap = BitmapSource.Create(
-            crop.Width,
-            crop.Height,
-            96,
-            96,
-            PixelFormats.Bgr32,
-            null,
-            targetPixels,
-            targetStride);
+        var sourceBitmap = crop.SourceBitmap ?? throw new InvalidDataException("画像最適化用の元画像が解放されています。");
+        BitmapSource bitmap = crop.Left == 0 && crop.Top == 0 &&
+                              crop.Width == crop.SourceWidth && crop.Height == crop.SourceHeight
+            ? sourceBitmap
+            : new CroppedBitmap(sourceBitmap, new Int32Rect(crop.Left, crop.Top, crop.Width, crop.Height));
+        if (bitmap.CanFreeze) bitmap.Freeze();
         var encoder = new JpegBitmapEncoder { QualityLevel = quality };
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return stream.ToArray();
+    }
+
+    private static BitmapSource CreateImageOptimizationBitmap(
+        byte[] pixels,
+        int width,
+        int height,
+        int stride,
+        int format)
+    {
+        var pixelFormat = format switch
+        {
+            1 => PixelFormats.Gray8,
+            2 => PixelFormats.Bgr24,
+            3 => PixelFormats.Bgr32,
+            4 => PixelFormats.Bgra32,
+            _ => throw new InvalidDataException($"未対応のPDF画像形式です: {format}"),
+        };
+        BitmapSource bitmap = BitmapSource.Create(width, height, 96, 96, pixelFormat, null, pixels, stride);
+        // PDFium commonly exposes decoded JPEGs as BGRA. Convert that buffer once
+        // per source image instead of asking the JPEG encoder to repeat the same
+        // conversion for every candidate quality and retained tile.
+        if (format == 4)
+            bitmap = new FormatConvertedBitmap(bitmap, PixelFormats.Bgr32, null, 0);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static bool TryApplyImageOptimizationPlan(
@@ -3389,6 +3980,60 @@ public sealed class PdfExportService
     internal static bool PreservesLineTextObjectForDiagnostics(OcrTextRegion region) =>
         !RequiresPerCharacterObjects(region);
 
+    /// <summary>診断用に、出力ページへ格納された最大画像の実画素寸法を返します。</summary>
+    internal static (int Width, int Height) GetLargestPageImageSizeForDiagnostics(
+        string pdfPath,
+        int pageNumber)
+    {
+        EnsureInitialized();
+        var utf8Path = Marshal.StringToCoTaskMemUTF8(Path.GetFullPath(pdfPath));
+        var document = IntPtr.Zero;
+        var page = IntPtr.Zero;
+        try
+        {
+            document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
+            if (document == IntPtr.Zero) throw CreatePdfException("診断対象PDFを開けませんでした");
+            var pageCount = NativeMethods.FPDF_GetPageCount(document);
+            if (pageNumber < 1 || pageNumber > pageCount)
+                throw new ArgumentOutOfRangeException(nameof(pageNumber));
+            page = NativeMethods.FPDF_LoadPage(document, pageNumber - 1);
+            if (page == IntPtr.Zero) throw CreatePdfException("診断対象ページを開けませんでした");
+
+            var largest = (Width: 0, Height: 0);
+            var largestPixels = 0L;
+            var count = NativeMethods.FPDFPage_CountObjects(page);
+            for (var index = 0; index < count; index++)
+            {
+                var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+                if (pageObject == IntPtr.Zero || NativeMethods.FPDFPageObj_GetType(pageObject) != 3) continue;
+                var bitmap = NativeMethods.FPDFImageObj_GetBitmap(pageObject);
+                if (bitmap == IntPtr.Zero) continue;
+                try
+                {
+                    var width = NativeMethods.FPDFBitmap_GetWidth(bitmap);
+                    var height = NativeMethods.FPDFBitmap_GetHeight(bitmap);
+                    var pixels = (long)width * height;
+                    if (pixels > largestPixels)
+                    {
+                        largest = (width, height);
+                        largestPixels = pixels;
+                    }
+                }
+                finally
+                {
+                    NativeMethods.FPDFBitmap_Destroy(bitmap);
+                }
+            }
+            return largest;
+        }
+        finally
+        {
+            if (page != IntPtr.Zero) NativeMethods.FPDF_ClosePage(page);
+            if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
+            Marshal.FreeCoTaskMem(utf8Path);
+        }
+    }
+
     /// <summary>
     /// 診断テスト向けに、PDFの16進文字列と括弧付き文字列を文字送り補正へ変換できるかを返します。
     /// </summary>
@@ -3767,6 +4412,54 @@ public sealed class PdfExportService
     private static string NormalizeText(string value) => string.Concat(value.Where(character => !char.IsWhiteSpace(character)));
     private static string Abbreviate(string value) => value.Length <= 20 ? value : value[..20] + "…";
 
+    /// <summary>
+    /// ページ数を上限として必ず区切りつつ、画像置換などでネイティブメモリが早く増えた場合は
+    /// 上限到達前にも中間保存します。管理ヒープ量だけではPDFiumの保持量を判定できないため、
+    /// プロセス全体のプライベートメモリを使用します。
+    /// </summary>
+    private static bool ShouldCheckpointDocument(int pagesSinceCheckpoint)
+    {
+        if (pagesSinceCheckpoint >= MaximumPagesPerDocumentCheckpoint) return true;
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            return process.PrivateMemorySize64 >= DocumentCheckpointPrivateMemoryThreshold;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException)
+        {
+            // メモリ照会が利用できない環境でも、ページ数上限による確定は維持します。
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 現在までの変更を圧縮済みPDFへ確定して再度開き、PDFiumが保持する旧ページ資源を解放します。
+    /// </summary>
+    private static void SaveCompactAndReloadDocument(
+        ref IntPtr document,
+        ref IntPtr utf8Path,
+        string checkpointPath,
+        int expectedPageCount,
+        CancellationToken cancellationToken)
+    {
+        SaveDocument(document, checkpointPath);
+        NativeMethods.FPDF_CloseDocument(document);
+        document = IntPtr.Zero;
+        Marshal.FreeCoTaskMem(utf8Path);
+        utf8Path = IntPtr.Zero;
+
+        // Rewriting with qpdf removes superseded image/object streams before the next batch,
+        // so reopening does not merely move the accumulated native-memory problem to disk.
+        CompactDocumentWithQpdf(checkpointPath, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        utf8Path = Marshal.StringToCoTaskMemUTF8(checkpointPath);
+        document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
+        if (document == IntPtr.Zero)
+            throw CreatePdfException("メモリ解放後の中間PDFを開けませんでした");
+        if (NativeMethods.FPDF_GetPageCount(document) != expectedPageCount)
+            throw new InvalidDataException("メモリ解放後の中間PDFでページ数が変化しました。");
+    }
+
     private static void SaveDocument(IntPtr document, string path)
     {
         Exception? writeError = null;
@@ -3794,11 +4487,25 @@ public sealed class PdfExportService
         GC.KeepAlive(callback);
     }
 
+    private static void TryDeleteFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // Best-effort cleanup only. The caller must retain the original export error.
+        }
+    }
+
     private static void ValidateOutput(
         string path,
         int? expectedPageCount,
         IReadOnlySet<int> changedPages,
-        PdfOutputVersion expectedVersion)
+        PdfOutputVersion expectedVersion,
+        PdfCorrectoriumProject project)
     {
         var utf8Path = Marshal.StringToCoTaskMemUTF8(path);
         IntPtr document = IntPtr.Zero;
@@ -3815,6 +4522,10 @@ public sealed class PdfExportService
             var count = NativeMethods.FPDF_GetPageCount(document);
             if (count <= 0 || expectedPageCount is > 0 && count != expectedPageCount)
                 throw new InvalidDataException("出力PDFのページ数が元PDFと一致しません。");
+            var redactedPages = project.Pages
+                .Where(page => project.Redactions.Any(item => item.PageId == page.Id))
+                .Select(page => page.PageNumber)
+                .ToHashSet();
             for (var index = 0; index < count; index++)
             {
                 var page = NativeMethods.FPDF_LoadPage(document, index);
@@ -3822,6 +4533,26 @@ public sealed class PdfExportService
                 try
                 {
                     if (!changedPages.Contains(index + 1)) continue;
+                    if (redactedPages.Contains(index + 1))
+                    {
+                        var projectPage = project.Pages.First(page => page.PageNumber == index + 1);
+                        var pageRedactions = project.Redactions
+                            .Where(item => item.PageId == projectPage.Id)
+                            .ToArray();
+                        var textPage = NativeMethods.FPDFText_LoadPage(page);
+                        if (textPage == IntPtr.Zero)
+                            throw new InvalidDataException($"墨消し済みの{index + 1}ページを文字検証できません。");
+                        try
+                        {
+                            if (ContainsTextInRedactedArea(textPage, pageRedactions))
+                                throw new InvalidDataException(
+                                    $"墨消し済みの{index + 1}ページで、墨消し範囲内に抽出可能な文字が残っているため、出力を中止しました。");
+                        }
+                        finally
+                        {
+                            NativeMethods.FPDFText_ClosePage(textPage);
+                        }
+                    }
                     var bitmap = NativeMethods.FPDFBitmap_Create(200, 200, 1);
                     if (bitmap == IntPtr.Zero) throw new InvalidDataException($"出力PDFの{index + 1}ページを検証描画できません。");
                     try
@@ -3839,6 +4570,33 @@ public sealed class PdfExportService
             if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
             Marshal.FreeCoTaskMem(utf8Path);
         }
+    }
+
+    /// <summary>
+    /// 墨消し後に残した検索用テキストの各文字境界を検査し、秘匿範囲と接する文字を拒否します。
+    /// ページ全体の文字数を0件にするのではなく、範囲外の透明OCRは利用可能なまま維持します。
+    /// </summary>
+    private static bool ContainsTextInRedactedArea(
+        IntPtr textPage,
+        IReadOnlyList<PdfRedaction> redactions)
+    {
+        var count = NativeMethods.FPDFText_CountChars(textPage);
+        for (var index = 0; index < count; index++)
+        {
+            if (NativeMethods.FPDFText_GetCharBox(
+                    textPage,
+                    index,
+                    out var left,
+                    out var right,
+                    out var bottom,
+                    out var top) == 0 ||
+                right <= left || top <= bottom)
+                continue;
+            if (redactions.Any(redaction =>
+                    RectanglesIntersect(left, bottom, right, top, redaction.Bounds, padding: 1d)))
+                return true;
+        }
+        return false;
     }
 
     private static void EnsureInitialized()
@@ -3947,27 +4705,74 @@ public sealed class PdfExportService
             int sourceStride,
             int sourceFormat,
             RgbColor background,
-            PageImageOptimization options)
+            PageImageOptimization options,
+            out bool[] rowHasContent,
+            out bool[] columnHasContent)
         {
             var cellSize = Math.Max(1, (int)Math.Ceiling(Math.Max(sourceWidth, sourceHeight) / 1200d));
             var columns = (sourceWidth + cellSize - 1) / cellSize;
             var rows = (sourceHeight + cellSize - 1) / cellSize;
             var cellInk = new int[checked(columns * rows)];
             var strictCellInk = new int[cellInk.Length];
+            var rowInk = new int[sourceHeight];
+            var columnInk = new int[sourceWidth];
             var bytesPerPixel = sourceFormat == 1 ? 1 : sourceFormat == 2 ? 3 : 4;
-            for (var y = 0; y < sourceHeight; y++)
-            {
-                var sourceRow = y * sourceStride;
-                var gridRow = y / cellSize * columns;
-                for (var x = 0; x < sourceWidth; x++)
+            var configuredTolerance = background.IsNearWhite
+                ? Math.Max(options.BackgroundColorTolerance, 255 - options.WhiteThreshold)
+                : options.BackgroundColorTolerance;
+            var strictTolerance = Math.Clamp(configuredTolerance, 1, 6);
+            // Each worker owns complete content-grid rows, so cell counters and
+            // row counters never contend. Column counters are accumulated locally
+            // and merged once per worker rather than synchronized per pixel.
+            Parallel.For(
+                0,
+                rows,
+                () => new int[sourceWidth],
+                (gridY, _, localColumnInk) =>
                 {
-                    var offset = sourceRow + x * bytesPerPixel;
-                    if (!IsBackgroundPixel(pixels, offset, sourceFormat, background, options))
-                        cellInk[gridRow + x / cellSize]++;
-                    if (!IsStrictShapeBackgroundPixel(pixels, offset, sourceFormat, background, options))
-                        strictCellInk[gridRow + x / cellSize]++;
-                }
-            }
+                    var firstY = gridY * cellSize;
+                    var lastY = Math.Min(sourceHeight, firstY + cellSize);
+                    for (var y = firstY; y < lastY; y++)
+                    {
+                        var sourceRow = y * sourceStride;
+                        var gridRow = gridY * columns;
+                        for (var x = 0; x < sourceWidth; x++)
+                        {
+                            var offset = sourceRow + x * bytesPerPixel;
+                            if (sourceFormat == 4 && pixels[offset + 3] <= 8) continue;
+                            var color = ReadPixel(pixels, offset, sourceFormat);
+                            var redDistance = Math.Abs(color.Red - background.Red);
+                            var greenDistance = Math.Abs(color.Green - background.Green);
+                            var blueDistance = Math.Abs(color.Blue - background.Blue);
+                            if (redDistance > configuredTolerance ||
+                                greenDistance > configuredTolerance ||
+                                blueDistance > configuredTolerance)
+                            {
+                                cellInk[gridRow + x / cellSize]++;
+                                rowInk[y]++;
+                                localColumnInk[x]++;
+                            }
+                            if (redDistance > strictTolerance ||
+                                greenDistance > strictTolerance ||
+                                blueDistance > strictTolerance)
+                                strictCellInk[gridRow + x / cellSize]++;
+                        }
+                    }
+                    return localColumnInk;
+                },
+                localColumnInk =>
+                {
+                    lock (columnInk)
+                    {
+                        for (var x = 0; x < columnInk.Length; x++)
+                            columnInk[x] += localColumnInk[x];
+                    }
+                });
+
+            var minimumRowInk = Math.Max(2, sourceWidth / 800);
+            var minimumColumnInk = Math.Max(2, sourceHeight / 800);
+            rowHasContent = rowInk.Select(count => count >= minimumRowInk).ToArray();
+            columnHasContent = columnInk.Select(count => count >= minimumColumnInk).ToArray();
 
             var minimumCellInk = Math.Max(1, cellSize * cellSize / 48);
             var occupied = BuildOccupiedMap(cellInk, cellSize, columns, rows, minimumCellInk);
@@ -4353,17 +5158,11 @@ public sealed class PdfExportService
         int SourceFormat,
         int SourceStride,
         byte[] SourcePixels,
+        BitmapSource? SourceBitmap,
         long OriginalEncodedBytes,
         byte[] EncodedJpeg,
         int JpegQuality)
     {
-        public int SourceBytesPerPixel => SourceFormat switch
-        {
-            1 => 1,
-            2 => 3,
-            3 or 4 => 4,
-            _ => throw new InvalidDataException($"未対応のPDF画像形式です: {SourceFormat}"),
-        };
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -4413,6 +5212,7 @@ public sealed class PdfExportService
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFText_LoadPage(IntPtr page);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFText_ClosePage(IntPtr textPage);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFText_CountChars(IntPtr textPage);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern uint FPDFText_GetUnicode(IntPtr textPage, int index);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFText_GetTextObject(IntPtr textPage, int index);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFText_GetCharOrigin(IntPtr textPage, int index, out double x, out double y);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFText_GetCharBox(IntPtr textPage, int index, out double left, out double right, out double bottom, out double top);
@@ -4443,6 +5243,8 @@ public sealed class PdfExportService
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_RemoveObject(IntPtr page, IntPtr pageObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFPageObj_Destroy(IntPtr pageObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_GenerateContent(IntPtr page);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_GetAnnotCount(IntPtr page);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_RemoveAnnot(IntPtr page, int index);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDF_SaveAsCopy(IntPtr document, ref FpdfFileWrite writer, uint flags);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern float FPDF_GetPageWidthF(IntPtr page);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern float FPDF_GetPageHeightF(IntPtr page);

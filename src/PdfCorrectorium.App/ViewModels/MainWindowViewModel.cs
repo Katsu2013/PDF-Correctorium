@@ -23,6 +23,12 @@ namespace PdfCorrectorium.App.ViewModels;
 /// </summary>
 public enum OcrEditUnit { Line, Paragraph, Character }
 
+/// <summary>
+/// プレビュー上でマウス操作が何を編集するかを表します。
+/// 各値はツールバーの編集モード選択順と一致させます。
+/// </summary>
+public enum EditorInteractionMode { OcrEditing, ReadingOrder, Review, Redaction }
+
 /// <summary>しおりをドラッグした際、対象ノードのどこへ挿入するかを表します。</summary>
 public enum BookmarkDropPosition { Before, AsChild, After }
 
@@ -224,7 +230,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private sealed record ProjectAnnotationSnapshot(
         IReadOnlyList<ProjectComment> Comments,
         IReadOnlyList<ProjectTag> Tags,
-        IReadOnlyList<PdfInternalLink> InternalLinks);
+        IReadOnlyList<PdfInternalLink> InternalLinks,
+        IReadOnlyList<PdfRedaction> Redactions);
     private sealed record ProjectAnnotationEdit(
         ProjectAnnotationSnapshot Before,
         ProjectAnnotationSnapshot After,
@@ -277,6 +284,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _thumbnailCancellation;
     /// <summary>連続／見開き表示の前後ページ描画を切り替え時に中止するためのトークン源です。</summary>
     private CancellationTokenSource? _adjacentPreviewCancellation;
+    /// <summary>見開きのページ切替を、次の2ページを準備してから一括反映するためのトークン源です。</summary>
+    private CancellationTokenSource? _facingNavigationCancellation;
+    /// <summary>準備済み見開きの反映中に、SelectedPage setterの通常描画を抑止します。</summary>
+    private bool _isApplyingPreparedFacingNavigation;
     /// <summary>.pdfocrprojへ保存し、次回表示時に再利用するページ別JPEGサムネイルです。</summary>
     private readonly Dictionary<int, byte[]> _thumbnailCache = [];
     /// <summary>外部参照または内包PDFから解決した、実際に読み込むPDFパスです。</summary>
@@ -353,7 +364,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private bool _historyOperationInProgress;
     /// <summary>プレビューへ適用する表示倍率を百分率で保持します。</summary>
     private double _zoomPercent = 100;
-    /// <summary>通常編集と読み順編集を切り替える画面選択インデックスです。</summary>
+    /// <summary>プレビュー上の排他的な編集モードを切り替える画面選択インデックスです。</summary>
     private int _editorModeIndex;
     /// <summary>行・段落・文字の編集単位を表す画面選択インデックスです。</summary>
     private int _editUnitIndex;
@@ -479,6 +490,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         IncreaseLineCharacterSizeCommand = GeometryCommand(() => AdjustSelectedLineCharacterSizes(1), CanAdjustSelectedLineCharacterSizes);
         DeleteOcrRegionsCommand = GeometryCommand(DeleteSelectedOcrRegions, () => _selectedOverlays.Count > 0);
         ToggleAddOcrRegionModeCommand = new RelayCommand(() => IsAddOcrRegionMode = !IsAddOcrRegionMode, () => CanAddOcrRegion);
+        ActivateOcrEditModeCommand = new RelayCommand(ActivateOcrEditMode, () => CanUsePreview);
+        ActivateRedactionModeCommand = new RelayCommand(ActivateRedactionMode, CanEnterRedactionMode);
+        AddSelectedRedactionsCommand = new RelayCommand(AddSelectedRedactions, CanAddSelectedRedactions);
+        DeleteSelectedRedactionCommand = new RelayCommand(DeleteSelectedRedaction, () => IsRedactionMode && SelectedRedaction is not null);
+        ClearCurrentPageRedactionsCommand = new RelayCommand(ClearCurrentPageRedactions, () => IsRedactionMode && RedactionItems.Count > 0);
         ExitCommand = new RelayCommand(_close);
         InitializeReview();
         InitializeProjectFeatures();
@@ -501,6 +517,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(OcrDataSourceText));
         OnPropertyChanged(nameof(OverlaySummary));
+        OnPropertyChanged(nameof(PropertiesPaneTitle));
+        OnPropertyChanged(nameof(PropertiesPaneSummary));
         OnPropertyChanged(nameof(EqualizeCharacterAdvancesToolTip));
         OnPropertyChanged(nameof(PreviousCharacterToolTip));
         OnPropertyChanged(nameof(NextCharacterToolTip));
@@ -718,6 +736,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (_applicationSettings.DocumentViewMode == value || !Enum.IsDefined(value)) return;
+            CancelFacingNavigation();
             _applicationSettings = (_applicationSettings with { DocumentViewMode = value }).Normalize();
             RecordEditorViewOverride();
             OnPropertyChanged();
@@ -743,6 +762,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (_applicationSettings.DocumentPageFlowMode == value || !Enum.IsDefined(value)) return;
+            CancelFacingNavigation();
             _applicationSettings = _applicationSettings with { DocumentPageFlowMode = value };
             RecordEditorViewOverride();
             OnPropertyChanged();
@@ -767,6 +787,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (_applicationSettings.FacingPagesShowCoverSeparately == value) return;
+            CancelFacingNavigation();
             _applicationSettings = _applicationSettings with { FacingPagesShowCoverSeparately = value };
             RecordEditorViewOverride();
             OnPropertyChanged();
@@ -784,6 +805,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (_applicationSettings.FacingPagesBindingDirection == value || !Enum.IsDefined(value)) return;
+            CancelFacingNavigation();
             _applicationSettings = _applicationSettings with { FacingPagesBindingDirection = value };
             RecordEditorViewOverride();
             OnPropertyChanged();
@@ -947,6 +969,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             {
                 _renderCancellation?.Cancel();
                 _adjacentPreviewCancellation?.Cancel();
+                CancelFacingNavigation();
                 ClearAdjacentPreviews();
                 CancelReviewNavigation();
                 IsAddOcrRegionMode = false;
@@ -973,6 +996,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     }
     /// <summary>読込済み文書のプレビュー操作を許可する場合は<c>true</c>。</summary>
     public bool CanUsePreview => HasDocument && HasPreview;
+    /// <summary>文書を読み込み、OCR編集モードを選択している場合は<c>true</c>。</summary>
+    public bool CanUseOcrEditControls => CanUsePreview && IsOcrEditMode;
     /// <summary>復旧対象となる保存先がある文書だけ、バックアップ復旧操作を許可します。</summary>
     public bool CanRestoreProjectBackup => HasDocument && _projectFilePath is not null;
     public bool IsOpeningDocument
@@ -997,11 +1022,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private void NotifyPreviewAvailability()
     {
         OnPropertyChanged(nameof(CanUsePreview));
+        OnPropertyChanged(nameof(CanUseOcrEditControls));
         OnPropertyChanged(nameof(CanAddOcrRegion));
         ZoomInCommand.RaiseCanExecuteChanged();
         ZoomOutCommand.RaiseCanExecuteChanged();
         ActualSizeCommand.RaiseCanExecuteChanged();
         ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
+        ActivateOcrEditModeCommand.RaiseCanExecuteChanged();
+        ActivateRedactionModeCommand.RaiseCanExecuteChanged();
+        RefreshRedactionCommandState();
     }
     public string SourceHash { get => _sourceHash; private set => Set(ref _sourceHash, value); }
     public string StatusMessage { get => LocalizationService.Translate(_statusMessage); private set => Set(ref _statusMessage, value); }
@@ -1099,12 +1128,27 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         get => _editorModeIndex;
         set
         {
-            if (!Set(ref _editorModeIndex, Math.Clamp(value, 0, 2))) return;
-            OnPropertyChanged(nameof(IsReadingOrderMode));
+            if (!Set(ref _editorModeIndex, Math.Clamp(value, 0, (int)EditorInteractionMode.Redaction))) return;
             OnEditorModeChanged();
         }
     }
-    public bool IsReadingOrderMode => EditorModeIndex == 1;
+    public EditorInteractionMode EditorMode
+    {
+        get => (EditorInteractionMode)EditorModeIndex;
+        set => EditorModeIndex = (int)value;
+    }
+    public bool IsOcrEditMode => EditorMode == EditorInteractionMode.OcrEditing;
+    public bool IsReadingOrderMode => EditorMode == EditorInteractionMode.ReadingOrder;
+    public bool IsRedactionMode => EditorMode == EditorInteractionMode.Redaction;
+    /// <summary>OCR領域を扱う3モードでは<c>true</c>、墨消し専用モードでは<c>false</c>です。</summary>
+    public bool IsOcrInteractionMode => !IsRedactionMode;
+    public string PropertiesPaneTitle => LocalizationService.Translate(IsRedactionMode ? "墨消しプロパティ" : "OCRプロパティ");
+    public string PropertiesPaneSummary => IsRedactionMode
+        ? LocalizationService.Translate($"このページの墨消し範囲: {CurrentPageRedactionCount}件")
+        : OverlaySummary;
+    public bool ShowMultipleSelectionProperties => IsOcrInteractionMode && HasMultipleSelection;
+    public bool ShowSelectedOverlayProperties => IsOcrInteractionMode && HasSelectedOverlay;
+    public bool ShowOcrSelectionHint => IsOcrInteractionMode && !HasSelectedOverlay;
     public int EditUnitIndex
     {
         get => _editUnitIndex;
@@ -1315,6 +1359,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             if (!Set(ref _selectedOverlay, value)) return;
             NotifyReviewState();
             OnPropertyChanged(nameof(HasSelectedOverlay));
+            OnPropertyChanged(nameof(ShowSelectedOverlayProperties));
+            OnPropertyChanged(nameof(ShowOcrSelectionHint));
             NotifyCharacterSelectionState();
             OnPropertyChanged(nameof(SelectedReviewStatus));
             OnPropertyChanged(nameof(SelectedWritingMode));
@@ -1613,6 +1659,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(_selectedPage, value)) return;
+            if (!_isApplyingPreparedFacingNavigation) CancelFacingNavigation();
             CancelReviewNavigation();
             if (_selectedPage is not null) _selectedPage.IsCurrent = false;
             if (!Set(ref _selectedPage, value)) return;
@@ -1625,7 +1672,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OptimizeCurrentPageImageCommand.RaiseCanExecuteChanged();
             AddBookmarkCommand.RaiseCanExecuteChanged();
             RefreshProjectFeatureState();
-            if (value is not null && _resolvedPdfPath is not null) _ = RenderSelectedPageAsync();
+            if (value is not null && _resolvedPdfPath is not null && !_isApplyingPreparedFacingNavigation)
+                _ = RenderSelectedPageAsync();
         }
     }
 
@@ -2664,6 +2712,20 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var pageCount = _project.PageSequence.Count > 0
             ? _project.PageSequence.Count
             : Math.Max(_project.SourcePdf.PageCount ?? 0, _project.Pages.Count);
+        if (_project.Redactions.Count > 0)
+        {
+            var redactedPageCount = _project.Redactions.Select(item => item.PageId).Distinct().Count();
+            var proceedWithRedaction = MessageBox.Show(
+                $"墨消し範囲 {_project.Redactions.Count:N0}件を{redactedPageCount:N0}ページへ確定します。" +
+                "\n\n機密情報を元の文字・背景画像・注釈から復元できないよう、対象ページの表示内容を高精細画像へ変換します。" +
+                "墨消し範囲外の透明OCR文字は検索・コピー用に保持しますが、範囲に接する文字行と既存注釈・構造情報は失われます。" +
+                "\nプロジェクトと元PDFは変更せず、出力PDFだけに確定します。" +
+                "\n\nこの内容でPDF出力を続けますか？",
+                "墨消しを確定",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (proceedWithRedaction != MessageBoxResult.Yes) return;
+        }
         if (pageCount >= 100 || sourceBytes >= 50L * 1024L * 1024L)
         {
             var proceed = MessageBox.Show(
@@ -2710,8 +2772,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             var result = outcome.Result;
             var outputBytes = new FileInfo(outcome.OutputPath).Length;
             var sizeChange = sourceBytes <= 0 ? 0d : 1d - outputBytes / (double)sourceBytes;
-            StatusMessage = $"PDFを出力しました（{FormatFileSize(outputBytes)}、{result.ModifiedPages}ページ、{result.ModifiedRegions}領域、画像最適化{result.OptimizedImages}件）。";
-            await _log.WriteAsync(LogLevel.Information, "pdf.export", $"Exported {outcome.OutputPath}; pages={result.ModifiedPages}; regions={result.ModifiedRegions}");
+            StatusMessage = $"PDFを出力しました（{FormatFileSize(outputBytes)}、{result.ModifiedPages}ページ、{result.ModifiedRegions}領域、墨消し{result.AppliedRedactions}件、画像最適化{result.OptimizedImages}件）。";
+            await _log.WriteAsync(LogLevel.Information, "pdf.export", $"Exported {outcome.OutputPath}; pages={result.ModifiedPages}; regions={result.ModifiedRegions}; redactions={result.AppliedRedactions}");
             IsPdfExporting = false;
             MessageBox.Show(
                 (outcome.Warning is null ? "PDFの出力と再検証が完了しました。" : outcome.Warning) +
@@ -2719,7 +2781,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 $"\n出力PDFサイズ: {FormatFileSize(outputBytes)}" +
                 $"\n元PDFサイズ: {FormatFileSize(sourceBytes)}" +
                 $"\nサイズ変化: {sizeChange:P1}" +
-                $"\n変更ページ: {result.ModifiedPages}\n変更領域: {result.ModifiedRegions}\n最適化画像: {result.OptimizedImages}",
+                $"\n変更ページ: {result.ModifiedPages}\n変更領域: {result.ModifiedRegions}" +
+                $"\n墨消し範囲: {result.AppliedRedactions}（画像化ページ: {result.RedactedPages}）\n最適化画像: {result.OptimizedImages}",
                 "PDF Correctorium",
                 MessageBoxButton.OK,
                 outcome.Warning is null ? MessageBoxImage.Information : MessageBoxImage.Warning);
@@ -3203,7 +3266,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         await RenderPageAsync(SelectedPage.PageNumber, populatePageList: false);
     }
 
-    private async Task RenderPageAsync(int pageNumber, bool populatePageList, PdfPreviewResult? preparedPreview = null)
+    private async Task RenderPageAsync(
+        int pageNumber,
+        bool populatePageList,
+        PdfPreviewResult? preparedPreview = null,
+        PdfPreviewResult? preparedCompanion = null)
     {
         if (_resolvedPdfPath is null) return;
         _renderCancellation?.Cancel();
@@ -3244,6 +3311,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             }
             OverlayItems.Clear();
             foreach (var region in pageOverlayModels) OverlayItems.Add(region);
+            RefreshRedactionItems();
             RecalculateReadingOrderCommand.RaiseCanExecuteChanged();
             SelectedOverlay = null;
             UpdateOverlaySummary();
@@ -3254,7 +3322,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             PageSummary = $"{result.PageNumber} / {result.PageCount} ページ";
             StatusMessage = $"{result.PageNumber}ページを表示しました。";
             NotifyNavigationState();
-            _ = RefreshAdjacentPreviewsAsync(result.PageNumber);
+            _ = RefreshAdjacentPreviewsAsync(result.PageNumber, preparedCompanion);
             // 長大文書で離れたページへ移動した場合も、全ページを保持せず現在位置付近だけを
             // 読み直します。初回一覧生成時は既に上で開始しているため重複起動しません。
             if (!populatePageList && ShowPageThumbnails) StartThumbnailLoading();
@@ -3271,7 +3339,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// 見開き表示に必要な隣接ページだけを遅延描画します。
     /// 連続表示は画面側の可視範囲キャッシュが担当します。
     /// </summary>
-    private async Task RefreshAdjacentPreviewsAsync(int? expectedPageNumber = null)
+    private async Task RefreshAdjacentPreviewsAsync(
+        int? expectedPageNumber = null,
+        PdfPreviewResult? preparedCompanion = null)
     {
         _adjacentPreviewCancellation?.Cancel();
         _adjacentPreviewCancellation?.Dispose();
@@ -3286,6 +3356,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var previous = companion < selectedPageNumber ? companion : null;
         var next = companion > selectedPageNumber ? companion : null;
 
+        if (companion.HasValue && preparedCompanion?.PageNumber == companion.Value)
+        {
+            ApplyAdjacentPreview(preparedCompanion, selectedPageNumber);
+            return;
+        }
+
         _adjacentPreviewCancellation = new CancellationTokenSource();
         var token = _adjacentPreviewCancellation.Token;
         try
@@ -3295,20 +3371,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 var result = await RenderProjectPageAsync(_resolvedPdfPath, _project, previous.Value, 1200, token, useBackgroundWorker: true);
                 token.ThrowIfCancellationRequested();
                 if (SelectedPage?.PageNumber != selectedPageNumber) return;
-                PreviousPreviewPixelWidth = result.Image.PixelWidth;
-                PreviousPreviewPixelHeight = result.Image.PixelHeight;
-                PreviousPreviewPageNumber = previous;
-                PreviousPreviewImage = result.Image;
+                ApplyAdjacentPreview(result, selectedPageNumber);
             }
             if (next.HasValue)
             {
                 var result = await RenderProjectPageAsync(_resolvedPdfPath, _project, next.Value, 1200, token, useBackgroundWorker: true);
                 token.ThrowIfCancellationRequested();
                 if (SelectedPage?.PageNumber != selectedPageNumber) return;
-                NextPreviewPixelWidth = result.Image.PixelWidth;
-                NextPreviewPixelHeight = result.Image.PixelHeight;
-                NextPreviewPageNumber = next;
-                NextPreviewImage = result.Image;
+                ApplyAdjacentPreview(result, selectedPageNumber);
             }
         }
         catch (OperationCanceledException) { }
@@ -3316,6 +3386,24 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         {
             await _log.WriteAsync(LogLevel.Warning, "preview.adjacent-render.failed", ex.Message, ex);
         }
+    }
+
+    /// <summary>準備済みまたは遅延描画済みの相方ページを、現在ページとの前後関係に応じて設定します。</summary>
+    private void ApplyAdjacentPreview(PdfPreviewResult result, int selectedPageNumber)
+    {
+        if (result.PageNumber < selectedPageNumber)
+        {
+            PreviousPreviewPixelWidth = result.Image.PixelWidth;
+            PreviousPreviewPixelHeight = result.Image.PixelHeight;
+            PreviousPreviewPageNumber = result.PageNumber;
+            PreviousPreviewImage = result.Image;
+            return;
+        }
+
+        NextPreviewPixelWidth = result.Image.PixelWidth;
+        NextPreviewPixelHeight = result.Image.PixelHeight;
+        NextPreviewPageNumber = result.PageNumber;
+        NextPreviewImage = result.Image;
     }
 
     private void ClearAdjacentPreviews()
@@ -3332,7 +3420,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public void NavigateFromAdjacentPreview(int pageNumber)
     {
         if (pageNumber < 1 || pageNumber > PageItems.Count || SelectedPage?.PageNumber == pageNumber) return;
-        SelectedPage = PageItems[pageNumber - 1];
+        _ = NavigateToPageAsync(pageNumber);
     }
 
     private void StartThumbnailLoading()
@@ -3942,13 +4030,98 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private void GoToPreviousPage()
     {
         if (!CanGoPrevious || SelectedPage is null) return;
-        SelectedPage = PageItems[SelectedPage.PageNumber - 2];
+        _ = NavigateToPageAsync(SelectedPage.PageNumber - 1);
     }
 
     private void GoToNextPage()
     {
         if (!CanGoNext || SelectedPage is null) return;
-        SelectedPage = PageItems[SelectedPage.PageNumber];
+        _ = NavigateToPageAsync(SelectedPage.PageNumber + 1);
+    }
+
+    /// <summary>
+    /// ページ切り替え表示の見開きでは、移動先と相方ページを先に描画してから一括反映します。
+    /// 読み込み中に相方だけが消え、単一ページ表示へ一時的に見えることを防ぎます。
+    /// </summary>
+    internal async Task NavigateToPageAsync(int pageNumber)
+    {
+        if (pageNumber < 1 || pageNumber > PageItems.Count || SelectedPage?.PageNumber == pageNumber) return;
+        if (!IsFacingPagesView || IsContinuousView || _resolvedPdfPath is null)
+        {
+            SelectedPage = PageItems[pageNumber - 1];
+            return;
+        }
+
+        CancelFacingNavigation();
+        var navigationCancellation = new CancellationTokenSource();
+        _facingNavigationCancellation = navigationCancellation;
+        var token = navigationCancellation.Token;
+        var originalPageNumber = SelectedPage?.PageNumber;
+        var path = _resolvedPdfPath;
+        var project = _project;
+        var layout = FacingPageLayoutCalculator.Calculate(
+            pageNumber,
+            PageItems.Count,
+            FacingPagesShowCoverSeparately,
+            FacingPagesBindingDirection);
+        var companionPageNumber = layout.GetCompanionPageNumber(pageNumber);
+
+        try
+        {
+            IsPreviewLoading = true;
+            StatusMessage = $"{pageNumber}ページを含む見開きを準備しています...";
+            var pageTask = RenderProjectPageAsync(path, project, pageNumber, cancellationToken: token);
+            var companionTask = companionPageNumber.HasValue
+                ? RenderProjectPageAsync(path, project, companionPageNumber.Value, 1200, token, useBackgroundWorker: true)
+                : null;
+            var pageResult = await pageTask;
+            var companionResult = companionTask is null ? null : await companionTask;
+            token.ThrowIfCancellationRequested();
+
+            if (!string.Equals(path, _resolvedPdfPath, StringComparison.Ordinal) ||
+                !ReferenceEquals(project, _project) ||
+                SelectedPage?.PageNumber != originalPageNumber ||
+                !IsFacingPagesView || IsContinuousView)
+                return;
+
+            _isApplyingPreparedFacingNavigation = true;
+            try
+            {
+                SelectedPage = PageItems[pageNumber - 1];
+            }
+            finally
+            {
+                _isApplyingPreparedFacingNavigation = false;
+            }
+
+            // Both results are already available. RenderPageAsync and the adjacent refresh therefore
+            // run to their first completed task without yielding a single-page visual frame.
+            await RenderPageAsync(pageNumber, populatePageList: false, pageResult, companionResult);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync($"{pageNumber}ページを含む見開きを描画できませんでした。", ex);
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested) IsPreviewLoading = false;
+            if (ReferenceEquals(_facingNavigationCancellation, navigationCancellation))
+            {
+                _facingNavigationCancellation = null;
+                navigationCancellation.Dispose();
+            }
+        }
+    }
+
+    /// <summary>保留中の見開き準備だけを停止し、現在表示中のページ画像は維持します。</summary>
+    private void CancelFacingNavigation()
+    {
+        var cancellation = _facingNavigationCancellation;
+        _facingNavigationCancellation = null;
+        if (cancellation is null) return;
+        try { cancellation.Cancel(); }
+        finally { cancellation.Dispose(); }
     }
 
     private void NotifyNavigationState()
@@ -4009,6 +4182,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             UpdateAlignmentReference(SelectedOverlay);
         OnPropertyChanged(nameof(SelectedOverlayCount));
         OnPropertyChanged(nameof(HasMultipleSelection));
+        OnPropertyChanged(nameof(ShowMultipleSelectionProperties));
         OnPropertyChanged(nameof(HasOverlaySelection));
         OnPropertyChanged(nameof(SelectedParagraphText));
         NotifyCharacterSelectionState();
@@ -4018,6 +4192,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         RaiseCharacterAdvanceCommands();
         DeleteOcrRegionsCommand.RaiseCanExecuteChanged();
         NotifyReviewState();
+        RefreshRedactionCommandState();
     }
 
     /// <summary>
@@ -6230,6 +6405,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OverlaySummary = deleted == 0
             ? $"文字領域: {active}件"
             : $"文字領域: {active}件（削除予定: {deleted}件）";
+        OnPropertyChanged(nameof(PropertiesPaneSummary));
     }
 
     private void NotifyHistoryState()
@@ -6276,6 +6452,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _renderCancellation?.Cancel();
         _thumbnailCancellation?.Cancel();
         _adjacentPreviewCancellation?.Cancel();
+        CancelFacingNavigation();
         _renderCancellation?.Dispose();
         _thumbnailCancellation?.Dispose();
         _adjacentPreviewCancellation?.Dispose();
@@ -6331,10 +6508,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _batchedRegion = null;
         _batchStart = null;
         OverlayItems.Clear();
+        RedactionItems.Clear();
+        SelectedRedaction = null;
+        OnPropertyChanged(nameof(CurrentPageRedactionCount));
+        RefreshRedactionCommandState();
         RecalculateReadingOrderCommand.RaiseCanExecuteChanged();
         SelectedOverlay = null;
         OnPropertyChanged(nameof(SelectedOverlayCount));
         OnPropertyChanged(nameof(HasMultipleSelection));
+        OnPropertyChanged(nameof(ShowMultipleSelectionProperties));
         OnPropertyChanged(nameof(HasOverlaySelection));
         OnPropertyChanged(nameof(AlignmentReferenceDescription));
         RaiseMultiSelectionCommands();

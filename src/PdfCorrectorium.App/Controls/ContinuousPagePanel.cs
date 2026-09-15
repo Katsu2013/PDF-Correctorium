@@ -101,6 +101,11 @@ public sealed class ContinuousPagePanel : Panel
         {
             if (child is not FrameworkElement { Tag: int pageNumber } element) continue;
             var slot = GetPageSlotBounds(pageNumber);
+            if (slot.IsEmpty)
+            {
+                element.Arrange(new Rect());
+                continue;
+            }
             element.Arrange(new Rect(slot.Left + horizontalShift, slot.Top, element.DesiredSize.Width, element.DesiredSize.Height));
         }
         return new Size(Math.Max(finalSize.Width, _extent.Width), Math.Max(finalSize.Height, _extent.Height));

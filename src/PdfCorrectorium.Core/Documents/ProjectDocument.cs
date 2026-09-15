@@ -69,6 +69,25 @@ public sealed record PdfInternalLink
 }
 
 /// <summary>
+/// 元PDFを変更せず、最終PDF出力時にだけ確定する墨消し範囲です。
+/// </summary>
+/// <remarks>
+/// 範囲はページ左下原点のPDFポイントで保持します。出力時は対象ページ全体を
+/// 画像化してから範囲を塗りつぶし、元の文字・画像・注釈を出力ページへ残しません。
+/// </remarks>
+public sealed record PdfRedaction
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public Guid PageId { get; init; }
+    public required PdfRectangle Bounds { get; init; }
+    public string ColorHex { get; init; } = "#000000";
+    public Guid? SourceRegionId { get; init; }
+    public int? SourceCharacterStart { get; init; }
+    public int? SourceCharacterLength { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>
 /// 編集中の論理ページを、変更しない元PDFの物理ページへ対応付けます。
 /// </summary>
 /// <remarks>
@@ -234,6 +253,8 @@ public sealed record PdfCorrectoriumProject
     public IReadOnlyList<ProjectTag> Tags { get; init; } = [];
     /// <summary>アプリ内移動と出力PDFのGoTo注釈に使用する内部リンクです。</summary>
     public IReadOnlyList<PdfInternalLink> InternalLinks { get; init; } = [];
+    /// <summary>PDF出力時に内容を復元不能な形で除去するページ内矩形です。</summary>
+    public IReadOnlyList<PdfRedaction> Redactions { get; init; } = [];
     /// <summary>元PDFからしおりを読み込み済みかを示します。</summary>
     public bool BookmarksInitialized { get; init; }
     /// <summary>PDF出力時にしおりツリーを再構築する必要があるかを示します。</summary>

@@ -17,7 +17,13 @@ internal sealed class WindowsProcessJob : IDisposable
 
     private readonly SafeFileHandle _handle;
 
-    private WindowsProcessJob(SafeFileHandle handle) => _handle = handle;
+    private WindowsProcessJob(SafeFileHandle handle, long processMemoryLimitBytes)
+    {
+        _handle = handle;
+        ProcessMemoryLimitBytes = processMemoryLimitBytes;
+    }
+
+    internal long ProcessMemoryLimitBytes { get; }
 
     public static WindowsProcessJob Attach(
         Process process,
@@ -61,12 +67,39 @@ internal sealed class WindowsProcessJob : IDisposable
 
             if (!AssignProcessToJobObject(handle, process.Handle))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "外部PDF処理をWindowsジョブへ収容できませんでした。");
-            return new WindowsProcessJob(handle);
+            return new WindowsProcessJob(handle, processMemoryLimitBytes);
         }
         catch
         {
             handle.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>ジョブに属した単一PDFワーカーのピークメモリを取得します。</summary>
+    internal long? TryGetPeakProcessMemoryBytes()
+    {
+        var size = Marshal.SizeOf<JobObjectExtendedLimitInformation>();
+        var buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (!QueryInformationJobObject(
+                    _handle,
+                    JobObjectExtendedLimitInformationClass,
+                    buffer,
+                    (uint)size,
+                    out _))
+                return null;
+            var information = Marshal.PtrToStructure<JobObjectExtendedLimitInformation>(buffer);
+            return checked((long)information.PeakProcessMemoryUsed.ToUInt64());
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
 
@@ -118,6 +151,15 @@ internal sealed class WindowsProcessJob : IDisposable
         int informationClass,
         IntPtr information,
         uint informationLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryInformationJobObject(
+        SafeFileHandle job,
+        int informationClass,
+        IntPtr information,
+        uint informationLength,
+        out uint returnLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

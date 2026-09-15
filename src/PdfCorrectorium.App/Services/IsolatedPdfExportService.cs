@@ -65,10 +65,31 @@ internal sealed class IsolatedPdfExportService(
         var completedOutputPath = Path.Combine(exportDirectory, "completed.pdf");
         var standardError = string.Empty;
         var preserveCompletedOutput = false;
+        long? peakWorkerMemoryBytes = null;
+        long? workerMemoryLimitBytes = null;
 
         try
         {
-            await packages.SaveAsync(temporaryProjectPath, project, embedSourcePdf: false, cancellationToken);
+            // The worker receives the actual source PDF as a separate, explicit argument. Its
+            // transport package therefore needs a non-embedded reference that is valid relative
+            // to the temporary package, even when the user's project is portable and has no
+            // RelativePath. Re-hashing the prepared source also binds the worker payload to the
+            // exact physical PDF that will be exported without copying that potentially large PDF.
+            var transportSource = await packages.CreateSourceReferenceAsync(sourcePdfPath, cancellationToken: cancellationToken);
+            transportSource = transportSource with
+            {
+                FileName = project.SourcePdf.FileName,
+                RelativePath = Path.GetFileName(sourcePdfPath),
+                AbsolutePathHint = null,
+                PageCount = project.SourcePdf.PageCount,
+                IsEmbedded = false,
+            };
+            var transportProject = project with
+            {
+                PdfStorageMode = ProjectPdfStorageMode.Relative,
+                SourcePdf = transportSource,
+            };
+            await packages.SaveAsync(temporaryProjectPath, transportProject, embedSourcePdf: false, cancellationToken);
             var executablePath = ResolveExecutablePath();
             var startInfo = new ProcessStartInfo
             {
@@ -87,15 +108,16 @@ internal sealed class IsolatedPdfExportService(
 
             using var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("PDF出力プロセスを開始できませんでした。");
-            using var job = WindowsProcessJob.Attach(process);
-            using var timeoutSource = new CancellationTokenSource(ExportTimeout);
-            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-            var errorTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
-                process.StandardError, MaximumWorkerOutputCharacters, linkedSource.Token);
-            var outputTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
-                process.StandardOutput, MaximumWorkerOutputCharacters, linkedSource.Token);
             try
             {
+                using var job = WindowsProcessJob.Attach(process);
+                workerMemoryLimitBytes = job.ProcessMemoryLimitBytes;
+                using var timeoutSource = new CancellationTokenSource(ExportTimeout);
+                using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                var errorTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
+                    process.StandardError, MaximumWorkerOutputCharacters, linkedSource.Token);
+                var outputTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
+                    process.StandardOutput, MaximumWorkerOutputCharacters, linkedSource.Token);
                 var exitTask = process.WaitForExitAsync(linkedSource.Token);
                 string? lastProgressKey = null;
                 while (!exitTask.IsCompleted)
@@ -121,6 +143,7 @@ internal sealed class IsolatedPdfExportService(
                 }
 
                 await exitTask;
+                peakWorkerMemoryBytes = job.TryGetPeakProcessMemoryBytes();
                 standardError = await errorTask;
                 _ = await outputTask;
             }
@@ -162,7 +185,15 @@ internal sealed class IsolatedPdfExportService(
             var phase = DescribePhase(state?.Phase);
             var detail = state?.Error;
             if (string.IsNullOrWhiteSpace(detail)) detail = standardError.Trim();
-            if (string.IsNullOrWhiteSpace(detail)) detail = "ネイティブPDF処理が予期せず停止しました。";
+            if (string.IsNullOrWhiteSpace(detail) &&
+                peakWorkerMemoryBytes is { } peak &&
+                workerMemoryLimitBytes is { } limit &&
+                peak >= limit * 0.95)
+                detail =
+                    $"PDF出力プロセスがメモリ安全上限付近で停止しました（最大 {FormatBytes(peak)}、上限 {FormatBytes(limit)}）。" +
+                    "処理済みページを中間確定する新しい省メモリ経路でも完了できないPDFです。";
+            if (string.IsNullOrWhiteSpace(detail))
+                detail = $"ネイティブPDF処理が予期せず停止しました（終了コード {process.ExitCode}）。";
             throw new InvalidOperationException(
                 $"PDF出力用の別プロセスが「{phase}」で停止しました。編集画面と未保存の変更は保護されています。\n{detail}");
         }
@@ -173,6 +204,7 @@ internal sealed class IsolatedPdfExportService(
             TryDelete(temporaryProjectPath + ".tmp");
             TryDelete(statePath);
             TryDelete(statePath + ".tmp");
+            TryDeleteStateTemporaryFiles(statePath);
             if (!preserveCompletedOutput) TryDelete(completedOutputPath);
             TryDeleteDirectory(exportDirectory);
         }
@@ -190,28 +222,32 @@ internal sealed class IsolatedPdfExportService(
         string statePath,
         CancellationToken cancellationToken = default)
     {
+        var stateWriter = new ExportWorkerStateWriter(statePath);
         try
         {
-            await WriteStateAsync(statePath, new ExportWorkerState("starting"), cancellationToken);
-            var project = await new ProjectPackageService().OpenAsync(projectPath, cancellationToken);
-            await WriteStateAsync(statePath, new ExportWorkerState("project-opened"), cancellationToken);
-            await WriteStateAsync(statePath, new ExportWorkerState("exporting"), cancellationToken);
-            var progress = new WorkerProgressReporter(statePath);
+            await stateWriter.WriteAsync(new ExportWorkerState("starting"), cancellationToken);
+            var packageService = new ProjectPackageService();
+            var project = await packageService.OpenAsync(projectPath, cancellationToken);
+            if (!await packageService.VerifySourceFileAsync(project.SourcePdf, sourcePdfPath, cancellationToken))
+                throw new InvalidDataException(
+                    "PDF出力用の元PDFが、準備時に検証したファイルと一致しません。元PDFを開き直して再試行してください。");
+            await stateWriter.WriteAsync(new ExportWorkerState("project-opened"), cancellationToken);
+            await stateWriter.WriteAsync(new ExportWorkerState("exporting"), cancellationToken);
+            var progress = new WorkerProgressReporter(stateWriter);
             var result = await new PdfExportService().ExportAsync(
                 sourcePdfPath,
                 destinationPdfPath,
                 project,
                 progress,
                 cancellationToken);
-            await WriteStateAsync(statePath, new ExportWorkerState("completed", result), cancellationToken);
+            await stateWriter.WriteAsync(new ExportWorkerState("completed", result), cancellationToken);
             return 0;
         }
         catch (Exception exception)
         {
             try
             {
-                await WriteStateAsync(
-                    statePath,
+                await stateWriter.WriteAsync(
                     new ExportWorkerState("failed", Error: exception.ToString()),
                     CancellationToken.None);
             }
@@ -263,33 +299,13 @@ internal sealed class IsolatedPdfExportService(
         }
     }
 
-    private static async Task WriteStateAsync(
-        string path,
-        ExportWorkerState state,
-        CancellationToken cancellationToken)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temporaryPath = path + ".tmp";
-        await using (var stream = new FileStream(
-                         temporaryPath,
-                         FileMode.Create,
-                         FileAccess.Write,
-                         FileShare.None,
-                         4096,
-                         FileOptions.Asynchronous))
-        {
-            await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
-        }
-        File.Move(temporaryPath, path, overwrite: true);
-    }
-
     private static string DescribePhase(string? phase) => phase switch
     {
         "starting" => "起動準備",
         "project-opened" => "編集内容の読込後",
         "exporting" => "PDFの生成または検証中",
         "editing" => "変更ページの反映中",
+        "checkpointing" => "中間結果の確定とメモリ解放中",
         "saving" => "一時PDFの保存中",
         "calibrating" => "文字位置の校正中",
         "spacing" => "文字送りの反映中",
@@ -300,6 +316,13 @@ internal sealed class IsolatedPdfExportService(
         "failed" => "PDF出力中",
         "completed" => "完了処理",
         _ => "起動前または初期化中",
+    };
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1024L * 1024L * 1024L => $"{bytes / (1024d * 1024d * 1024d):N2} GiB",
+        >= 1024L * 1024L => $"{bytes / (1024d * 1024d):N1} MiB",
+        _ => $"{bytes:N0} bytes",
     };
 
     private static void TryDelete(string path)
@@ -327,32 +350,76 @@ internal sealed class IsolatedPdfExportService(
         }
     }
 
-    /// <summary>PDF出力サービスの進捗を、親プロセスが監視する状態ファイルへ直ちに反映します。</summary>
-    private sealed class WorkerProgressReporter(string statePath) : IProgress<PdfExportProgress>
+    private static void TryDeleteStateTemporaryFiles(string statePath)
     {
-        private readonly object _gate = new();
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(statePath));
+            if (directory is null || !Directory.Exists(directory)) return;
+            var pattern = Path.GetFileName(statePath) + ".*.tmp";
+            foreach (var temporaryPath in Directory.EnumerateFiles(directory, pattern, SearchOption.TopDirectoryOnly))
+                TryDelete(temporaryPath);
+        }
+        catch
+        {
+            // 出力状態の一時ファイルは再利用しないため、回収失敗を本来の結果より優先しません。
+        }
+    }
 
+    /// <summary>進捗と完了通知を直列化し、一意な一時ファイルから原子的に公開します。</summary>
+    private sealed class ExportWorkerStateWriter(string statePath)
+    {
+        private readonly SemaphoreSlim _gate = new(1, 1);
+
+        public async Task WriteAsync(ExportWorkerState state, CancellationToken cancellationToken)
+        {
+            await _gate.WaitAsync(cancellationToken);
+            var fullPath = Path.GetFullPath(statePath);
+            var temporaryPath = fullPath + $".{Guid.NewGuid():N}.tmp";
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                await using (var stream = new FileStream(
+                                 temporaryPath,
+                                 FileMode.CreateNew,
+                                 FileAccess.Write,
+                                 FileShare.None,
+                                 4096,
+                                 FileOptions.Asynchronous | FileOptions.WriteThrough))
+                {
+                    await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
+                    await stream.FlushAsync(cancellationToken);
+                }
+                File.Move(temporaryPath, fullPath, overwrite: true);
+            }
+            finally
+            {
+                TryDelete(temporaryPath);
+                _gate.Release();
+            }
+        }
+    }
+
+    /// <summary>PDF出力サービスの進捗を、親プロセスが監視する状態ファイルへ直ちに反映します。</summary>
+    private sealed class WorkerProgressReporter(ExportWorkerStateWriter stateWriter) : IProgress<PdfExportProgress>
+    {
         public void Report(PdfExportProgress value)
         {
-            lock (_gate)
+            try
             {
-                try
-                {
-                    WriteStateAsync(
-                            statePath,
-                            new ExportWorkerState(
-                                value.Phase,
-                                Current: value.Current,
-                                Total: value.Total,
-                                Message: value.Message),
-                            CancellationToken.None)
-                        .GetAwaiter()
-                        .GetResult();
-                }
-                catch
-                {
-                    // 進捗通知の失敗はPDF生成自体を中断させません。
-                }
+                stateWriter.WriteAsync(
+                        new ExportWorkerState(
+                            value.Phase,
+                            Current: value.Current,
+                            Total: value.Total,
+                            Message: value.Message),
+                        CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+            catch
+            {
+                // 進捗通知の失敗はPDF生成自体を中断させません。
             }
         }
     }

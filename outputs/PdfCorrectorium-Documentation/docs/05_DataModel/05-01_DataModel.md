@@ -1,14 +1,15 @@
 # 05-01 データモデル
 
-## dev.143の永続モデル
+## dev.152の永続モデル
 
 - `ProjectPdfStorageMode`: `Embedded`または`Relative`。旧形式読込用の`Legacy`は正規化し、新規保存しない。
 - `ProjectPageReference`: 固定`PageId`、不変元PDF内の`SourcePageNumber`、0／90／180／270度の`RotationDegrees`を持つ。`PdfCorrectoriumProject.PageSequence`の順序が表示・出力順である。
 - `ProjectComment`: 対象参照、本文、重要度、解決状態、タグID、作成／更新UTC、任意の作者を持つ。現行UIの対象は文書、ページ、OCR領域。
 - `ProjectTag`: 固定ID、名前、色を持つ。現行UIは名前の作成／割当を提供し、色編集は未実装。
 - `PdfInternalLink`: 元ページID、元OCR領域ID、移動先ページID、任意倍率、説明、有効状態を持つ。ページ番号ではなくIDで関係を保持する。
+- `PdfRedaction`: 固定ID、対象ページID、ページ左下原点のPDFポイント矩形、`#RRGGBB`色、任意の元OCR領域IDと文字範囲、作成UTCを持つ。プレビュー座標や一時画像を保存しない。
 
-コメント／タグ／内部リンクの編集は実行中のUndo/Redoへ入る。永続的な監査履歴、共同編集者管理、リンク用の任意矩形・文字列自動認識は含まない。
+コメント／タグ／内部リンク／墨消し指定の編集は実行中のUndo/Redoへ入る。永続的な監査履歴、共同編集者管理、リンク用の任意矩形・文字列自動認識は含まない。
 
 ## 現行実装上の制約（2026-08-30 / dev.123）
 
@@ -28,6 +29,7 @@ classDiagram
   TextRegion o-- ReviewState
   Project o-- Comment
   Project o-- Bookmark
+  Project o-- PdfRedaction
   Project o-- ChangeRecord
 ```
 
@@ -71,6 +73,10 @@ classDiagram
 
 対象種別・ID、本文、状態、重要度、タグ、作成・更新時刻を持つ。個人名は将来の共同編集に備え任意フィールドとする。
 
+### PdfRedaction
+
+固定ページIDと有限・正面積の矩形を持つ。色は`#RRGGBB`に限定する。元OCR領域と文字範囲は操作由来を説明する補助参照であり、出力時の消去範囲は常に保存済み矩形を正本とする。対象ページが存在しない参照、ページ外矩形、不正色、不正文字範囲は保存検証で拒否する。出力用のページ画像は再生成物であり、プロジェクトへ重複保存しない。
+
 ### ChangeRecord
 
 操作ID、相関ID、時刻、対象、変更種別、変更前後の要約を保持する。Undo用コマンドと監査履歴は別データ。
@@ -94,6 +100,7 @@ classDiagram
 - 幾何値は有限で、面積が正。
 - `CharacterAdvances`はすべて正の有限値で、要素数は有効文字列のUnicode文字要素数と一致する。文字幅情報がない旧データは行長を均等分割して補完する。
 - 分割・結合は出自IDを残す。
+- 墨消し範囲は存在するページを参照し、ページ境界内の正面積矩形と有効な`#RRGGBB`色を持つ。
 
 ## 5. 変更状態
 

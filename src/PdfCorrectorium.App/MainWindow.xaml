@@ -275,6 +275,13 @@
                 <MenuItem x:Name="ReplaceOcrTextMenuItem" Header="透明テキストを置換...(_H)" IsEnabled="{Binding HasDocument}" InputGestureText="Ctrl+H" Click="ReplaceOcrTextMenuItem_OnClick"  AutomationProperties.AccessKey="Alt+H"/>
                 <Separator />
                 <MenuItem Header="コメントとタグ...(_C)" IsEnabled="{Binding HasDocument}" Click="CommentsAndTags_OnClick" AutomationProperties.AccessKey="Alt+C" />
+                <MenuItem x:Name="RedactionMenuItem" Header="墨消し(_D)" IsEnabled="{Binding HasDocument}" AutomationProperties.AccessKey="Alt+D">
+                    <MenuItem Header="墨消しモードへ切り替え(_M)" Command="{Binding ActivateRedactionModeCommand}"
+                              IsCheckable="True" IsChecked="{Binding IsRedactionMode, Mode=OneWay}" AutomationProperties.AccessKey="Alt+M" />
+                    <MenuItem Header="選択文字・領域を墨消し(_S)" Command="{Binding AddSelectedRedactionsCommand}" AutomationProperties.AccessKey="Alt+S" />
+                    <MenuItem Header="選択中の墨消し範囲を削除(_R)" Command="{Binding DeleteSelectedRedactionCommand}" AutomationProperties.AccessKey="Alt+R" />
+                    <MenuItem Header="このページの墨消しを解除(_C)" Command="{Binding ClearCurrentPageRedactionsCommand}" AutomationProperties.AccessKey="Alt+C" />
+                </MenuItem>
                 <Separator />
                 <MenuItem x:Name="ApplicationSettingsMenuItem" Header="設定...(_P)" Click="ApplicationSettingsMenuItem_OnClick" />
             </MenuItem>
@@ -510,6 +517,28 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="削除" />
                         </StackPanel>
                     </Button>
+                    <ToggleButton x:Name="OcrEditToolbarButton" Command="{Binding ActivateOcrEditModeCommand}"
+                                  IsChecked="{Binding IsOcrEditMode, Mode=OneWay}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}"
+                                  ToolTip="OCR編集モードへ切り替え (Alt+Mからも選択可能)"
+                                  AutomationProperties.Name="OCR編集モード">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="18" Height="14" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="2">
+                                <TextBlock Text="T" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="OCR編集" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton x:Name="RedactionToolbarButton" Command="{Binding ActivateRedactionModeCommand}"
+                                  IsChecked="{Binding IsRedactionMode, Mode=OneWay}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}"
+                                  ToolTip="墨消しモードへ切り替え。ページ上をドラッグして範囲を指定 (Alt+E, D, M)"
+                                  AutomationProperties.Name="墨消しモード">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="18" Height="11" Background="#263746" CornerRadius="1" Margin="2" />
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="墨消し" />
+                        </StackPanel>
+                    </ToggleButton>
                     <Separator Margin="4,0" />
                     <Button Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoPrevious}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="前のページ">
                         <StackPanel Orientation="Horizontal">
@@ -618,15 +647,16 @@
                               AutomationProperties.Name="スクロール方式"
                               AutomationProperties.AccessKey="Alt+2" />
                     <Separator Margin="4,0" />
-                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUsePreview}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCRの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
+                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUseOcrEditControls}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCR編集モードの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
                         <ComboBoxItem Content="行編集" />
                         <ComboBoxItem Content="段落編集" />
                         <ComboBoxItem Content="文字編集" />
                     </ComboBox>
-                    <ComboBox IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
+                    <ComboBox x:Name="EditorModeSelector" IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" ToolTip="プレビュー上の操作モードを切り替えます" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
                         <ComboBoxItem Content="OCR編集" />
                         <ComboBoxItem Content="読み順編集" />
                         <ComboBoxItem Content="校正・確認" />
+                        <ComboBoxItem Content="墨消し" />
                     </ComboBox>
                 </ToolBar>
             </ToolBarTray>
@@ -1016,6 +1046,7 @@
                                         BorderThickness="1"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Top"
+                                        PreviewMouseLeftButtonDown="PreviewPageHost_OnPreviewMouseLeftButtonDown"
                                         PreviewMouseRightButtonDown="PreviewPageHost_OnPreviewMouseRightButtonDown">
                                     <Border.ContextMenu>
                                         <ContextMenu Opened="PreviewContextMenu_OnOpened"
@@ -1070,6 +1101,9 @@
                                                     <Setter Property="Cursor" Value="Arrow" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsAddOcrRegionMode}" Value="True">
+                                                            <Setter Property="Cursor" Value="Cross" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsRedactionMode}" Value="True">
                                                             <Setter Property="Cursor" Value="Cross" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -1487,6 +1521,72 @@
                                                     BorderBrush="#FFD32F2F"
                                                     BorderThickness="1" />
                                         </Canvas>
+                                        <!-- 墨消し指定は編集時だけ半透明で表示し、PDF出力時は指定色で確定する。 -->
+                                        <ItemsControl x:Name="RedactionOverlayLayer" ItemsSource="{Binding RedactionItems}"
+                                                      IsHitTestVisible="{Binding IsRedactionMode}" Panel.ZIndex="80">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Width="{Binding Width}" Height="{Binding Height}" ClipToBounds="False"
+                                                          PreviewMouseLeftButtonDown="RedactionOverlay_OnPreviewMouseLeftButtonDown"
+                                                          ToolTip="ドラッグで移動し、周囲のハンドルでサイズを変更します。">
+                                                        <Border x:Name="RedactionPreviewBorder"
+                                                                Background="{Binding ColorHex}"
+                                                                Opacity="{Binding DataContext.RedactionPreviewOpacity, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                BorderBrush="#FFFF3B30" BorderThickness="2" />
+                                                        <Thumb Tag="Move" Cursor="SizeAll" Background="Transparent" Margin="5"
+                                                               DragStarted="RedactionThumb_OnDragStarted"
+                                                               DragDelta="RedactionThumb_OnDragDelta"
+                                                               DragCompleted="RedactionThumb_OnDragCompleted"
+                                                               AutomationProperties.Name="墨消し範囲を移動">
+                                                            <Thumb.Template>
+                                                                <ControlTemplate TargetType="Thumb">
+                                                                    <Border Background="Transparent" />
+                                                                </ControlTemplate>
+                                                            </Thumb.Template>
+                                                        </Thumb>
+                                                        <Thumb x:Name="NorthHandle" Tag="N" Width="18" Height="8" Cursor="SizeNS" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="NorthEastHandle" Tag="NE" Width="10" Height="10" Cursor="SizeNESW" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="EastHandle" Tag="E" Width="8" Height="18" Cursor="SizeWE" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="SouthEastHandle" Tag="SE" Width="10" Height="10" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="SouthHandle" Tag="S" Width="18" Height="8" Cursor="SizeNS" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="SouthWestHandle" Tag="SW" Width="10" Height="10" Cursor="SizeNESW" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="WestHandle" Tag="W" Width="8" Height="18" Cursor="SizeWE" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                        <Thumb x:Name="NorthWestHandle" Tag="NW" Width="10" Height="10" Cursor="SizeNWSE" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                               Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
+                                                    </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter TargetName="RedactionPreviewBorder" Property="BorderBrush" Value="#FFFFFFFF" />
+                                                            <Setter TargetName="RedactionPreviewBorder" Property="BorderThickness" Value="2.5" />
+                                                            <Setter TargetName="NorthHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="NorthEastHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="EastHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="SouthEastHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="SouthHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="SouthWestHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="WestHandle" Property="Visibility" Value="Visible" />
+                                                            <Setter TargetName="NorthWestHandle" Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </DataTemplate.Triggers>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                         <!-- Reading-order badges live in their own foreground layer so region
                                              borders and resize handles can never cover the sequence number. -->
                                         <ItemsControl x:Name="ReadingOrderBadgeLayer"
@@ -1629,14 +1729,14 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="OCRプロパティ" Style="{StaticResource PaneTitleStyle}" />
+                            <TextBlock x:Name="PropertiesPaneTitle" Text="{Binding PropertiesPaneTitle}" Style="{StaticResource PaneTitleStyle}" />
                             <ToggleButton Grid.Column="1"
                                       Content="説明"
                                       IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}"
                                       Padding="7,3"
                                       ToolTip="操作説明の表示／非表示" />
                         </Grid>
-                        <TextBlock Text="{Binding OverlaySummary}" Foreground="{StaticResource SecondaryTextBrush}" />
+                        <TextBlock Text="{Binding PropertiesPaneSummary}" Foreground="{StaticResource SecondaryTextBrush}" />
                         <Separator Margin="0,14" />
                         <Border Background="#FFF8E7" BorderBrush="#E7C66B" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10"
                                 Visibility="{Binding HasInputPdfIssues, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -1646,6 +1746,7 @@
                                 <TextBlock Text="{Binding InputPdfIssueSummary}" TextWrapping="Wrap" VerticalAlignment="Center" />
                             </DockPanel>
                         </Border>
+                        <StackPanel Visibility="{Binding IsOcrInteractionMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <TextBlock Text="文書注釈" Style="{StaticResource PaneTitleStyle}" />
                         <TextBlock Text="コメント、タグ、PDF内ページリンクを選択中の文字領域へ設定できます。"
                                    TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,7" />
@@ -1659,6 +1760,62 @@
                             <Button Content="リンク先" Click="InternalLinkNavigate_OnClick" IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="ページ メニュー → リンク先へ移動 (Alt+P, G)" Margin="2,0" />
                             <Button Content="リンク削除" Click="InternalLinkDelete_OnClick" IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="ページ メニュー → ページリンクを削除 (Alt+P, E)" Margin="2,0,0,0" />
                         </UniformGrid>
+                        </StackPanel>
+                        <Separator Margin="0,14" />
+                        <StackPanel x:Name="RedactionPanel" Visibility="{Binding IsRedactionMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Border Background="#FFF4F4" BorderBrush="#D32F2F" BorderThickness="1" CornerRadius="4" Padding="9" Margin="0,0,0,9">
+                            <TextBlock Text="墨消しモードです。ページ上をドラッグして範囲を指定します。作成後は範囲内をドラッグして移動し、周囲のハンドルでサイズを変更できます。EscキーでOCR編集へ戻ります。"
+                                       TextWrapping="Wrap" Foreground="#8F1F1F" FontWeight="SemiBold" />
+                        </Border>
+                        <TextBlock Text="指定範囲はプロジェクトでは非破壊です。PDF出力時は対象ページを高精細画像化し、範囲外の透明OCR文字だけを保持して確定します。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,8" />
+                        <Label Content="墨消し色(_C)" Padding="0" Target="{Binding ElementName=RedactionColorTextBox}" />
+                        <DockPanel Margin="0,3,0,6">
+                            <Border DockPanel.Dock="Right" Width="30" Height="24" Margin="6,0,0,0"
+                                    Background="{Binding RedactionColorPreview}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" />
+                            <TextBox x:Name="RedactionColorTextBox" Text="{Binding RedactionColorHex, UpdateSourceTrigger=LostFocus}"
+                                     ToolTip="#RRGGBB形式で入力" AutomationProperties.AccessKey="Alt+C" />
+                        </DockPanel>
+                        <UniformGrid Columns="6" Margin="0,0,0,7">
+                            <Button Background="#000000" Tag="#000000" Height="24" Click="RedactionColorButton_OnClick" ToolTip="黒" AutomationProperties.Name="墨消し色 黒" />
+                            <Button Background="#FFFFFF" Tag="#FFFFFF" Height="24" Click="RedactionColorButton_OnClick" ToolTip="白" AutomationProperties.Name="墨消し色 白" />
+                            <Button Background="#D32F2F" Tag="#D32F2F" Height="24" Click="RedactionColorButton_OnClick" ToolTip="赤" AutomationProperties.Name="墨消し色 赤" />
+                            <Button Background="#1565C0" Tag="#1565C0" Height="24" Click="RedactionColorButton_OnClick" ToolTip="青" AutomationProperties.Name="墨消し色 青" />
+                            <Button Background="#388E3C" Tag="#388E3C" Height="24" Click="RedactionColorButton_OnClick" ToolTip="緑" AutomationProperties.Name="墨消し色 緑" />
+                            <Button Background="#F9A825" Tag="#F9A825" Height="24" Click="RedactionColorButton_OnClick" ToolTip="黄" AutomationProperties.Name="墨消し色 黄" />
+                        </UniformGrid>
+                        <ToggleButton x:Name="RedactionEyedropperButton" Content="スポイトで取得(_I)" Margin="0,0,0,7"
+                                      Click="RedactionEyedropperButton_OnClick"
+                                      ToolTip="現在のPDFページをクリックし、その位置の色を墨消し色として取得します。"
+                                      AutomationProperties.AccessKey="Alt+I" />
+                        <Label Content="編集画面での表示(_V)" Padding="0" Target="{Binding ElementName=RedactionPreviewTranslucentRadioButton}" />
+                        <UniformGrid Columns="2" Margin="0,2,0,7">
+                            <RadioButton x:Name="RedactionPreviewTranslucentRadioButton" Content="半透明(_T)"
+                                         GroupName="RedactionPreviewOpacity" IsChecked="{Binding IsRedactionPreviewTranslucent, Mode=TwoWay}"
+                                         AutomationProperties.AccessKey="Alt+T" />
+                            <RadioButton x:Name="RedactionPreviewOpaqueRadioButton" Content="不透明(_O)"
+                                         GroupName="RedactionPreviewOpacity" IsChecked="{Binding IsRedactionPreviewOpaque, Mode=TwoWay}"
+                                         AutomationProperties.AccessKey="Alt+O" />
+                        </UniformGrid>
+                        <Button Content="事前に選択した文字・OCR領域を墨消し" Command="{Binding AddSelectedRedactionsCommand}"
+                                ToolTip="OCR編集で選択してから墨消しモードへ切り替えた文字またはOCR領域を対象にします。" />
+                        <TextBlock Text="{Binding CurrentPageRedactionCount, StringFormat=このページ: {0}件}" Margin="0,7,0,3" Foreground="{StaticResource SecondaryTextBrush}" />
+                        <ListBox ItemsSource="{Binding RedactionItems}" SelectedItem="{Binding SelectedRedaction}" MaxHeight="86" AutomationProperties.Name="このページの墨消し範囲">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="3">
+                                        <Border Width="18" Height="14" Background="{Binding ColorHex}" BorderBrush="#999" BorderThickness="1" Margin="0,0,6,0" />
+                                        <TextBlock Text="{Binding Description}" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <UniformGrid Columns="2" Margin="0,5,0,0">
+                            <Button Content="選択範囲を削除" Command="{Binding DeleteSelectedRedactionCommand}" Margin="0,0,3,0"
+                                    ToolTip="選択中の墨消し範囲を削除します。Undoで元に戻せます。" />
+                            <Button Content="ページ内を全解除" Command="{Binding ClearCurrentPageRedactionsCommand}" Margin="3,0,0,0" />
+                        </UniformGrid>
+                        </StackPanel>
                         <Separator Margin="0,14" />
                         <StackPanel x:Name="ReviewPanel" Visibility="{Binding IsReviewMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="校正・確認" Style="{StaticResource PaneTitleStyle}" />
@@ -1701,7 +1858,7 @@
                             </StackPanel>
                             <Separator Margin="0,14" />
                         </StackPanel>
-                        <StackPanel Visibility="{Binding HasMultipleSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Visibility="{Binding ShowMultipleSelectionProperties, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="複数領域の整列" FontWeight="SemiBold" FontSize="15" />
                             <TextBlock Text="{Binding SelectedOverlayCount, StringFormat=選択中: {0}領域}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,3,0,8" />
                             <Border Background="{StaticResource AccentSoftBrush}" BorderBrush="#F0A0A0" BorderThickness="1" CornerRadius="4" Padding="9" Margin="0,0,0,8">
@@ -1768,7 +1925,7 @@
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <Separator Margin="0,16" />
                         </StackPanel>
-                        <StackPanel Visibility="{Binding HasSelectedOverlay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel Visibility="{Binding ShowSelectedOverlayProperties, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="選択中のOCR領域" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,8" />
                             <Button Content="この透明テキスト領域を削除"
                                 Command="{Binding DeleteOcrRegionsCommand}"
@@ -2065,17 +2222,8 @@
                                    Visibility="{Binding ShowPropertyHelpText, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <Separator Margin="0,16" />
                         </StackPanel>
-                        <Border Background="#FAFBFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,4,0,0">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding HasSelectedOverlay}" Value="False">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
+                        <Border Background="#FAFBFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="12" Margin="0,4,0,0"
+                                Visibility="{Binding ShowOcrSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock Text="OCR領域を選択するとプロパティを編集できます"
                                        TextWrapping="Wrap" TextAlignment="Center"
                                        Foreground="{StaticResource SecondaryTextBrush}" />

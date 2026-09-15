@@ -35,16 +35,16 @@ internal static class ExternalProcessRunner
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"外部処理を起動できませんでした: {Path.GetFileName(executablePath)}");
-        using var job = WindowsProcessJob.Attach(process);
-        using var timeoutSource = new CancellationTokenSource(timeout);
-        using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-        var standardOutput = ReadToEndWithLimitAsync(process.StandardOutput, maximumOutputCharacters, linkedSource.Token);
-        var standardError = ReadToEndWithLimitAsync(process.StandardError, maximumOutputCharacters, linkedSource.Token);
-        var outputFailure = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
-        MonitorFailure(standardOutput, outputFailure);
-        MonitorFailure(standardError, outputFailure);
         try
         {
+            using var job = WindowsProcessJob.Attach(process);
+            using var timeoutSource = new CancellationTokenSource(timeout);
+            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            var standardOutput = ReadToEndWithLimitAsync(process.StandardOutput, maximumOutputCharacters, linkedSource.Token);
+            var standardError = ReadToEndWithLimitAsync(process.StandardError, maximumOutputCharacters, linkedSource.Token);
+            var outputFailure = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+            MonitorFailure(standardOutput, outputFailure);
+            MonitorFailure(standardError, outputFailure);
             var exitTask = process.WaitForExitAsync(linkedSource.Token);
             var completed = await Task.WhenAny(exitTask, outputFailure.Task).ConfigureAwait(false);
             if (completed == outputFailure.Task) throw await outputFailure.Task.ConfigureAwait(false);

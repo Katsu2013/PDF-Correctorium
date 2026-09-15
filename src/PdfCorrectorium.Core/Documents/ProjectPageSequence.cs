@@ -12,6 +12,7 @@ public static class ProjectPageSequence
         int sourcePageCount)
     {
         if (sourcePageCount < 0) throw new ArgumentOutOfRangeException(nameof(sourcePageCount));
+        ArgumentNullException.ThrowIfNull(pages);
         if (sequence is { Count: > 0 }) return sequence.ToArray();
 
         var pageIds = pages

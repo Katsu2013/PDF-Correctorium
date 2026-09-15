@@ -21,10 +21,10 @@ public sealed partial class MainWindowViewModel
     private bool _refreshingLocalizedOptions;
     private CancellationTokenSource? _reviewNavigationCancellation;
 
-    public bool IsReviewMode => EditorModeIndex == 2;
+    public bool IsReviewMode => EditorMode == EditorInteractionMode.Review;
     // This is a temporary interaction restriction, not a change to the saved geometry locks.
-    public bool CanEditGeometry => !IsReviewMode;
-    public bool CanAddOcrRegion => CanUsePreview && CanEditGeometry;
+    public bool CanEditGeometry => IsOcrEditMode || IsReadingOrderMode;
+    public bool CanAddOcrRegion => CanUsePreview && IsOcrEditMode;
     public bool CanEditSelectedCharacterAdvance => CanEditGeometry && SelectedOverlay?.HasUnlockedSelectedCharacters == true;
     public bool IsReviewNavigating => _reviewNavigationCancellation is not null;
     public ObservableCollection<OverlayRegionViewModel> ReviewItems { get; } = [];
@@ -97,12 +97,24 @@ public sealed partial class MainWindowViewModel
     private void OnEditorModeChanged()
     {
         CancelReviewNavigation();
+        if (IsReviewMode || IsRedactionMode)
+            IsAddOcrRegionMode = false;
         if (IsReviewMode)
         {
-            IsAddOcrRegionMode = false;
             EditUnitIndex = (int)OcrEditUnit.Line;
         }
+        OnPropertyChanged(nameof(EditorMode));
+        OnPropertyChanged(nameof(IsOcrEditMode));
+        OnPropertyChanged(nameof(IsReadingOrderMode));
         OnPropertyChanged(nameof(IsReviewMode));
+        OnPropertyChanged(nameof(IsRedactionMode));
+        OnPropertyChanged(nameof(IsOcrInteractionMode));
+        OnPropertyChanged(nameof(CanUseOcrEditControls));
+        OnPropertyChanged(nameof(PropertiesPaneTitle));
+        OnPropertyChanged(nameof(PropertiesPaneSummary));
+        OnPropertyChanged(nameof(ShowMultipleSelectionProperties));
+        OnPropertyChanged(nameof(ShowSelectedOverlayProperties));
+        OnPropertyChanged(nameof(ShowOcrSelectionHint));
         OnPropertyChanged(nameof(CanEditGeometry));
         OnPropertyChanged(nameof(CanAddOcrRegion));
         OnPropertyChanged(nameof(IsSelectedGeometryEditable));
@@ -114,7 +126,18 @@ public sealed partial class MainWindowViewModel
         RecalculateReadingOrderCommand.RaiseCanExecuteChanged();
         DeleteOcrRegionsCommand.RaiseCanExecuteChanged();
         ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
+        ActivateOcrEditModeCommand.RaiseCanExecuteChanged();
+        ActivateRedactionModeCommand.RaiseCanExecuteChanged();
+        RefreshRedactionCommandState();
         RefreshReviewItems();
+        StatusMessage = EditorMode switch
+        {
+            EditorInteractionMode.OcrEditing => "OCR編集モード: 透明テキストの選択・文字・位置・サイズを編集します。",
+            EditorInteractionMode.ReadingOrder => "読み順編集モード: OCR領域の読み順を確認・変更します。",
+            EditorInteractionMode.Review => "校正・確認モード: 文字と確認状態を点検します。",
+            EditorInteractionMode.Redaction => "墨消しモード: ページ上をドラッグして墨消し範囲を指定します。EscでOCR編集へ戻ります。",
+            _ => StatusMessage,
+        };
     }
 
     private bool MatchesReviewFilter(OverlayRegionViewModel region) => !region.IsDeleted && ReviewFilterIndex switch

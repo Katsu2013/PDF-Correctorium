@@ -85,6 +85,7 @@ public sealed record TextGeometry
     /// <returns>全項目が許容差内で一致する場合は<c>true</c>。</returns>
     public bool IsEquivalentTo(TextGeometry other, double tolerance = 0.000001)
     {
+        if (other is null) return false;
         if (Math.Abs(LocalBounds.Left - other.LocalBounds.Left) > tolerance ||
             Math.Abs(LocalBounds.Bottom - other.LocalBounds.Bottom) > tolerance ||
             Math.Abs(LocalBounds.Size.Width - other.LocalBounds.Size.Width) > tolerance ||

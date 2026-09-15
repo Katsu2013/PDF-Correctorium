@@ -47,7 +47,7 @@ public partial class App : Application
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _isSmokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
-        _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--redaction-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--ocr-rendering-test", StringComparer.OrdinalIgnoreCase);
@@ -145,10 +145,17 @@ public partial class App : Application
                 return;
             }
 
+            var redactionTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--redaction-test", StringComparison.OrdinalIgnoreCase));
+            if (redactionTestIndex >= 0)
+            {
+                await RunRedactionTestAsync(e.Args, redactionTestIndex);
+                return;
+            }
+
             var projectExportTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--project-export-test", StringComparison.OrdinalIgnoreCase));
             if (projectExportTestIndex >= 0)
             {
-                RunProjectExportTest(e.Args, projectExportTestIndex);
+                await RunProjectExportTestAsync(e.Args, projectExportTestIndex);
                 return;
             }
 
@@ -1428,6 +1435,143 @@ public partial class App : Application
         Shutdown(0);
     }
 
+    /// <summary>
+    /// 墨消し指定がプロジェクトへ保存され、出力PDFでは対象範囲の文字だけが除去され、
+    /// 範囲外の修正済み透明テキストと高精細なページ画像が残ることを検証します。
+    /// </summary>
+    private async Task RunRedactionTestAsync(string[] arguments, int optionIndex)
+    {
+        if (arguments.Length <= optionIndex + 3)
+            throw new ArgumentException("--redaction-test requires input PDF, output PDF, and output project paths.");
+        var inputPath = Path.GetFullPath(arguments[optionIndex + 1]);
+        var outputPath = Path.GetFullPath(arguments[optionIndex + 2]);
+        var projectPath = Path.GetFullPath(arguments[optionIndex + 3]);
+        var paths = ApplicationPathResolver.Resolve(AppContext.BaseDirectory);
+        ApplicationPathResolver.EnsureDirectories(paths);
+        var packageService = new ProjectPackageService();
+        var previewService = new PdfPreviewService();
+        var viewModel = new MainWindowViewModel(
+            packageService,
+            previewService,
+            new PdfExportService(),
+            new NdlOcrCompanionService(),
+            new DiagnosticLog(paths.LogDirectory),
+            paths,
+            () => { });
+
+        await viewModel.LoadPdfForDiagnosticsAsync(inputPath);
+        if (viewModel.PreviewPixelWidth < 40 || viewModel.PreviewPixelHeight < 40)
+            throw new InvalidDataException("The test PDF did not produce a usable page preview.");
+        var editedText = "PDFPDF";
+        var addedOverlay = viewModel.AddManualOcrRegion(new Rect(
+            viewModel.PreviewPixelWidth * 0.65,
+            viewModel.PreviewPixelHeight * 0.75,
+            viewModel.PreviewPixelWidth * 0.2,
+            viewModel.PreviewPixelHeight * 0.05))
+            ?? throw new InvalidDataException("The test PDF could not add transparent OCR text outside the redaction range.");
+        addedOverlay.Text = editedText;
+        const string partiallyRedactedText = "LEFT0123456789RIGHT";
+        var partiallyRedactedOverlay = viewModel.AddManualOcrRegion(new Rect(
+            viewModel.PreviewPixelWidth * 0.01,
+            viewModel.PreviewPixelHeight * 0.23,
+            viewModel.PreviewPixelWidth * 0.90,
+            viewModel.PreviewPixelHeight * 0.05))
+            ?? throw new InvalidDataException("The test PDF could not add transparent OCR text across the redaction range.");
+        partiallyRedactedOverlay.Text = partiallyRedactedText;
+        viewModel.EditorMode = EditorInteractionMode.Redaction;
+        if (!viewModel.IsRedactionMode || viewModel.CanEditGeometry || viewModel.CanAddOcrRegion)
+            throw new InvalidDataException("Redaction mode did not exclusively disable OCR geometry editing.");
+        viewModel.SetRedactionColor("#102030");
+        var bounds = new Rect(
+            viewModel.PreviewPixelWidth * 0.2,
+            viewModel.PreviewPixelHeight * 0.2,
+            viewModel.PreviewPixelWidth * 0.35,
+            viewModel.PreviewPixelHeight * 0.12);
+        var redaction = viewModel.AddManualRedaction(bounds)
+            ?? throw new InvalidDataException("The redaction range could not be added.");
+        if (!viewModel.IsRedactionMode)
+            throw new InvalidDataException("Redaction mode did not remain active after adding an area.");
+        viewModel.UndoCommand.Execute(null);
+        if (viewModel.ProjectForDiagnostics?.Redactions.Count != 0)
+            throw new InvalidDataException("Undo did not remove the redaction range.");
+        viewModel.RedoCommand.Execute(null);
+        if (viewModel.ProjectForDiagnostics?.Redactions.SingleOrDefault()?.Id != redaction.Id)
+            throw new InvalidDataException("Redo did not restore the redaction range.");
+
+        // The interactive UI exports through a child process. A portable project has no relative
+        // source path, which must still be transportable without embedding and duplicating the PDF.
+        var portableExportProject = viewModel.ProjectForDiagnostics! with
+        {
+            PdfStorageMode = ProjectPdfStorageMode.Embedded,
+            Pages = viewModel.ProjectForDiagnostics.Pages
+                .Select(page => page with { ImageOptimization = new PageImageOptimization() })
+                .ToList(),
+            SourcePdf = viewModel.ProjectForDiagnostics.SourcePdf with
+            {
+                IsEmbedded = true,
+                RelativePath = null,
+                AbsolutePathHint = inputPath,
+            },
+        };
+
+        await viewModel.SaveProjectForDiagnosticsAsync(projectPath, ProjectPdfStorageMode.Relative);
+        var reopenedProject = await packageService.OpenAsync(projectPath);
+        if (reopenedProject.Redactions.Count != 1 || reopenedProject.Redactions[0].ColorHex != "#102030")
+            throw new InvalidDataException("The redaction range or color did not round-trip through the project package.");
+
+        var result = (await new IsolatedPdfExportService(packageService, paths)
+            .ExportAsync(inputPath, outputPath, portableExportProject)).Result;
+        if (result.AppliedRedactions != 1 || result.RedactedPages != 1)
+            throw new InvalidDataException("The PDF exporter did not report the expected redaction result.");
+        if (result.OptimizedImages != 0)
+            throw new InvalidDataException("A redacted page was image-optimized before flattening and would be JPEG-encoded twice.");
+        var reopenedPdf = await previewService.RenderPageAsync(outputPath, 1, viewModel.PreviewPixelWidth);
+        if (!reopenedPdf.TextRegions.Any(region =>
+                string.Equals(
+                    string.Concat(region.Text.Where(character => !char.IsWhiteSpace(character))),
+                    string.Concat(editedText.Where(character => !char.IsWhiteSpace(character))),
+                    StringComparison.Ordinal)))
+            throw new InvalidDataException("Edited searchable text outside the redaction range was not preserved.");
+        var searchableText = string.Concat(
+            reopenedPdf.TextRegions
+                .SelectMany(region => region.Text)
+                .Where(character => !char.IsWhiteSpace(character)));
+        if (!searchableText.Contains("LEF", StringComparison.Ordinal) ||
+            !searchableText.Contains("RIGHT", StringComparison.Ordinal) ||
+            searchableText.Contains("012345", StringComparison.Ordinal))
+            throw new InvalidDataException(
+                $"A partially redacted OCR line was not preserved character by character: {searchableText}");
+        if (!result.Warnings.Any(warning =>
+                warning.Contains("文字単位", StringComparison.Ordinal) &&
+                warning.Contains("除去しました", StringComparison.Ordinal)))
+            throw new InvalidDataException("The exporter did not report character-level redaction preservation.");
+        var flattenedImageSize = PdfExportService.GetLargestPageImageSizeForDiagnostics(outputPath, 1);
+        var horizontalDpi = flattenedImageSize.Width / reopenedPdf.PageWidthPoints * 72d;
+        var verticalDpi = flattenedImageSize.Height / reopenedPdf.PageHeightPoints * 72d;
+        if (Math.Min(horizontalDpi, verticalDpi) < 295d)
+            throw new InvalidDataException(
+                $"The flattened redaction image was not stored at the requested quality " +
+                $"({flattenedImageSize.Width} x {flattenedImageSize.Height}, {horizontalDpi:0.#} x {verticalDpi:0.#} DPI).");
+        var redactionCenterX = Math.Clamp(
+            (int)Math.Round(reopenedPdf.Image.PixelWidth * 0.375), 0, reopenedPdf.Image.PixelWidth - 1);
+        var redactionCenterY = Math.Clamp(
+            (int)Math.Round(reopenedPdf.Image.PixelHeight * 0.26), 0, reopenedPdf.Image.PixelHeight - 1);
+        var converted = new FormatConvertedBitmap(reopenedPdf.Image, PixelFormats.Bgra32, null, 0);
+        var pixel = new byte[4];
+        converted.CopyPixels(new Int32Rect(redactionCenterX, redactionCenterY, 1, 1), pixel, 4, 0);
+        if (Math.Abs(pixel[2] - 0x10) > 12 || Math.Abs(pixel[1] - 0x20) > 12 || Math.Abs(pixel[0] - 0x30) > 12)
+            throw new InvalidDataException(
+                $"The redacted output did not contain the selected color at the expected location " +
+                $"(actual RGB: #{pixel[2]:X2}{pixel[1]:X2}{pixel[0]:X2}).");
+
+        _diagnostics?.Write(
+            "redaction-test.pass",
+            $"Redactions: {result.AppliedRedactions}; pages: {result.RedactedPages}; " +
+            $"flattened image: {flattenedImageSize.Width}x{flattenedImageSize.Height}; " +
+            $"preserved OCR text: {editedText}; output: {outputPath}; project: {projectPath}");
+        Shutdown(0);
+    }
+
     private void RunEditorProjectTest(string[] arguments, int optionIndex)
     {
         if (arguments.Length <= optionIndex + 2)
@@ -1527,7 +1671,7 @@ public partial class App : Application
         Shutdown(0);
     }
 
-    private void RunProjectExportTest(string[] arguments, int optionIndex)
+    private async Task RunProjectExportTestAsync(string[] arguments, int optionIndex)
     {
         if (arguments.Length <= optionIndex + 2)
             throw new ArgumentException("--project-export-test requires a project path and an output PDF path.");
@@ -1536,7 +1680,7 @@ public partial class App : Application
         var paths = ApplicationPathResolver.Resolve(AppContext.BaseDirectory);
         ApplicationPathResolver.EnsureDirectories(paths);
         var packages = new ProjectPackageService();
-        var result = Task.Run(async () =>
+        var result = await Task.Run(async () =>
         {
             var project = await packages.OpenAsync(projectPath);
             var projectDirectory = Path.GetDirectoryName(projectPath)!;
@@ -1572,7 +1716,8 @@ public partial class App : Application
                     };
                 }
 
-                var export = await new PdfExportService().ExportAsync(exportSourcePath, outputPath, exportProject);
+                var export = (await new IsolatedPdfExportService(packages, paths)
+                    .ExportAsync(exportSourcePath, outputPath, exportProject)).Result;
                 var reopened = await new PdfPreviewService().RenderPageAsync(outputPath, 1, 640);
                 if (reopened.PageCount != sequence.Count || reopened.Image.PixelWidth <= 0)
                     throw new InvalidDataException("The project export could not be reopened and rendered.");
@@ -1586,7 +1731,7 @@ public partial class App : Application
                     catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
                 }
             }
-        }).GetAwaiter().GetResult();
+        });
         _diagnostics?.Write(
             "project-export-test.pass",
             $"Pages: {result.ModifiedPages}; regions: {result.ModifiedRegions}; warnings: {string.Join(" | ", result.Warnings)}; output: {outputPath}");

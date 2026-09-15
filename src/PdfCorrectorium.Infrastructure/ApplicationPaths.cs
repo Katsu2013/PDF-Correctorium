@@ -83,10 +83,17 @@ public static class ApplicationPathResolver
         Directory.CreateDirectory(destinationDirectory);
         foreach (var sourceFile in Directory.EnumerateFiles(legacyDirectory, "*", SearchOption.AllDirectories))
         {
-            var relativePath = Path.GetRelativePath(legacyDirectory, sourceFile);
-            var destinationFile = Path.Combine(destinationDirectory, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
-            File.Copy(sourceFile, destinationFile, overwrite: false);
+            try
+            {
+                var relativePath = Path.GetRelativePath(legacyDirectory, sourceFile);
+                var destinationFile = Path.Combine(destinationDirectory, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+                File.Copy(sourceFile, destinationFile, overwrite: false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 個別のファイルのコピー失敗で起動全体を中断しない。
+            }
         }
     }
 }

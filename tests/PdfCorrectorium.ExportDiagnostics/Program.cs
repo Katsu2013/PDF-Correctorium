@@ -13,32 +13,44 @@ if (args.Length == 1 && string.Equals(args[0], "--output-commit-test", StringCom
     try
     {
         PdfOutputFileCommitter.ValidateDestination(destinationPath);
-        await using var destinationLock = new FileStream(
-            destinationPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.None);
-
-        try
+        await using (var destinationLock = new FileStream(
+                         destinationPath,
+                         FileMode.Open,
+                         FileAccess.Read,
+                         FileShare.None))
         {
-            PdfOutputFileCommitter.ValidateDestination(destinationPath);
-            throw new InvalidOperationException("An occupied output PDF was not detected.");
-        }
-        catch (IOException)
-        {
-            // Expected: another application has the destination open exclusively.
+            try
+            {
+                PdfOutputFileCommitter.ValidateDestination(destinationPath);
+                throw new InvalidOperationException("An occupied output PDF was not detected.");
+            }
+            catch (IOException)
+            {
+                // Expected: another application has the destination open exclusively.
+            }
+
+            await File.WriteAllTextAsync(completedPath, "completed PDF placeholder");
+            var recoveryCommit = PdfOutputFileCommitter.Commit(
+                completedPath,
+                destinationPath,
+                preserveCompletedOutputOnConflict: true,
+                CancellationToken.None);
+            if (!File.Exists(recoveryCommit.OutputPath) || string.IsNullOrWhiteSpace(recoveryCommit.Warning))
+                throw new InvalidOperationException("The completed PDF was not preserved under a recovery name.");
         }
 
-        await File.WriteAllTextAsync(completedPath, "completed PDF placeholder");
+        await File.WriteAllTextAsync(completedPath, "replacement PDF placeholder");
         var commit = PdfOutputFileCommitter.Commit(
             completedPath,
             destinationPath,
-            preserveCompletedOutputOnConflict: true,
+            preserveCompletedOutputOnConflict: false,
             CancellationToken.None);
-        if (!File.Exists(commit.OutputPath) || string.IsNullOrWhiteSpace(commit.Warning))
-            throw new InvalidOperationException("The completed PDF was not preserved under a recovery name.");
+        if (!string.Equals(await File.ReadAllTextAsync(destinationPath), "replacement PDF placeholder", StringComparison.Ordinal) ||
+            File.Exists(completedPath) ||
+            Directory.EnumerateFiles(testDirectory, ".pc-*.bak").Any())
+            throw new InvalidOperationException("Atomic replacement did not clean up its operation-owned files.");
 
-        Console.WriteLine($"Output commit test passed. Recovery={commit.OutputPath}");
+        Console.WriteLine($"Output commit test passed. Replacement={commit.OutputPath}");
         return;
     }
     finally

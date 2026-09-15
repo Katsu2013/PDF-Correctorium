@@ -16,6 +16,7 @@ obj/
 .agents/
 .sandbox-profile/
 TestResults/
+.verification/
 *.user
 *.suo
 *.tmp
