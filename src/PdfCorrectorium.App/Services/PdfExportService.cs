@@ -20,7 +20,7 @@ namespace PdfCorrectorium.App.Services;
 /// <param name="Warnings">出力を継続できたものの利用者確認が必要な事項。</param>
 /// <param name="OptimizedImages">余白切り抜きを適用したページ画像数。</param>
 /// <param name="AppliedRedactions">確定した墨消し範囲数。</param>
-/// <param name="RedactedPages">安全な画像ページへ変換したページ数。</param>
+/// <param name="RedactedPages">墨消しを確定したページ数。</param>
 public sealed record PdfExportResult(
     int ModifiedRegions,
     int ModifiedPages,
@@ -213,6 +213,54 @@ public sealed class PdfExportService
         int RemovedCharacters,
         int UnrepresentableCharacters);
 
+    /// <summary>通常PDFの構造を保ったまま文字墨消しを確定した結果です。</summary>
+    private sealed record StructurePreservingRedactionResult(
+        int ReplacedTextObjects,
+        int RebuiltCharacters,
+        int RemovedCharacters,
+        int RemovedAnnotations,
+        bool PreservedOriginalTextCommands = false);
+
+    /// <summary>
+    /// 元フォントで範囲外文字を再生成できない場合に、保存後の元テキスト命令から
+    /// 選択文字の符号だけを除去するための要求です。
+    /// </summary>
+    private sealed record TextRedactionRequest(
+        int PageNumber,
+        string MarkName,
+        IReadOnlyList<string> Characters,
+        IReadOnlyList<bool> RedactedCharacters,
+        IReadOnlyList<double> CharacterAdvances,
+        double PointsPerAdjustmentUnit,
+        bool IsVertical);
+
+    /// <summary>元テキストオブジェクトに属する1文字の符号、境界、原点と墨消し判定です。</summary>
+    private sealed record StructuredTextCharacter(
+        string Text,
+        double Left,
+        double Bottom,
+        double Right,
+        double Top,
+        double OriginX,
+        double OriginY,
+        bool Redacted);
+
+    /// <summary>部分墨消し後に残す可視・不可視テキスト断片の属性と位置です。</summary>
+    private sealed record PreservedTextFragment(
+        string Text,
+        int CharacterCount,
+        IntPtr Font,
+        float FontSize,
+        int RenderMode,
+        uint Red,
+        uint Green,
+        uint Blue,
+        uint Alpha,
+        double Left,
+        double Bottom,
+        double Right,
+        double Top);
+
     /// <summary>フォントの基準線を基点とした字形の下端・上端を保持します。</summary>
     private readonly record struct FontVerticalMetrics(double Bottom, double Top)
     {
@@ -368,6 +416,15 @@ public sealed class PdfExportService
         if (string.Equals(sourceFullPath, destinationFullPath, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("元PDFへの直接上書きはできません。別のファイル名を指定してください。");
 
+        // Older projects can contain one text marker per drag (or even repeated markers over
+        // the same glyph).  Normalize those ranges before every export as well as in the editor,
+        // so a project exported without first reopening redaction mode still produces one stable
+        // rectangle for each continuous same-line selection.
+        project = project with
+        {
+            Redactions = ConsolidateTextSelectionRedactionsForExport(project.Redactions),
+        };
+
         var directory = Path.GetDirectoryName(destinationFullPath) ?? throw new InvalidOperationException("出力先が不正です。");
         Directory.CreateDirectory(directory);
 
@@ -423,6 +480,84 @@ public sealed class PdfExportService
         }
     }
 
+    /// <summary>
+    /// 同じ行で重なる文字選択は色にかかわらず1本へ、同色で隣接する文字選択は
+    /// 連続した1本へ統合します。重複時は作成日時が新しい指定の色を優先します。
+    /// </summary>
+    internal static IReadOnlyList<PdfRedaction> ConsolidateTextSelectionRedactionsForExport(
+        IReadOnlyList<PdfRedaction> redactions)
+    {
+        var result = redactions
+            .Where(redaction => redaction.ShapeKind != PdfRedactionShapeKind.TextSelection ||
+                                redaction.PathPoints.Count >= 3)
+            .ToList();
+        foreach (var pageGroup in redactions
+                     .Where(redaction => redaction.ShapeKind == PdfRedactionShapeKind.TextSelection &&
+                                         redaction.PathPoints.Count < 3)
+                     .GroupBy(redaction => redaction.PageId))
+        {
+            var pageBands = new List<PdfRedaction>();
+            foreach (var addition in pageGroup
+                         .OrderBy(redaction => redaction.CreatedAtUtc)
+                         .ThenBy(redaction => redaction.Bounds.Bottom)
+                         .ThenBy(redaction => redaction.Bounds.Left))
+            {
+                var merged = addition;
+                Guid? retainedId = null;
+                while (true)
+                {
+                    var candidateIndex = pageBands.FindIndex(candidate =>
+                    {
+                        if (!AreOnSameTextSelectionLine(candidate.Bounds, merged.Bounds)) return false;
+                        var horizontalGap = Math.Max(
+                            0d,
+                            Math.Max(candidate.Bounds.Left, merged.Bounds.Left) -
+                            Math.Min(candidate.Bounds.Right, merged.Bounds.Right));
+                        var overlaps = horizontalGap <= 0.01d;
+                        var adjacency = Math.Max(
+                            0.75d,
+                            Math.Min(candidate.Bounds.Size.Height, merged.Bounds.Size.Height) * 0.20d);
+                        return overlaps ||
+                               (string.Equals(candidate.ColorHex, merged.ColorHex, StringComparison.OrdinalIgnoreCase) &&
+                                horizontalGap <= adjacency);
+                    });
+                    if (candidateIndex < 0) break;
+                    var candidate = pageBands[candidateIndex];
+                    retainedId ??= candidate.Id;
+                    pageBands.RemoveAt(candidateIndex);
+                    merged = merged with
+                    {
+                        Id = retainedId.Value,
+                        Bounds = UnionTextSelectionBounds(candidate.Bounds, merged.Bounds),
+                        ColorHex = addition.ColorHex,
+                    };
+                }
+                pageBands.Add(merged);
+            }
+            result.AddRange(pageBands);
+        }
+        return result;
+    }
+
+    private static bool AreOnSameTextSelectionLine(PdfRectangle first, PdfRectangle second)
+    {
+        var overlap = Math.Min(first.Top, second.Top) - Math.Max(first.Bottom, second.Bottom);
+        var overlapRatio = overlap <= 0d ? 0d : overlap / Math.Min(first.Size.Height, second.Size.Height);
+        var centerDistance = Math.Abs(
+            first.Bottom + first.Size.Height / 2d - (second.Bottom + second.Size.Height / 2d));
+        return overlapRatio >= 0.55d ||
+               centerDistance <= Math.Max(0.5d, Math.Min(first.Size.Height, second.Size.Height) * 0.30d);
+    }
+
+    private static PdfRectangle UnionTextSelectionBounds(PdfRectangle first, PdfRectangle second)
+    {
+        var left = Math.Min(first.Left, second.Left);
+        var bottom = Math.Min(first.Bottom, second.Bottom);
+        var right = Math.Max(first.Right, second.Right);
+        var top = Math.Max(first.Top, second.Top);
+        return new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom));
+    }
+
     private static PdfExportResult EditAndSave(
         string sourcePath,
         string temporaryPath,
@@ -450,6 +585,7 @@ public sealed class PdfExportService
             var pageCount = NativeMethods.FPDF_GetPageCount(document);
             var warnings = new List<string>();
             var textSpacingRequests = new List<TextSpacingRequest>();
+            var textRedactionRequests = new List<TextRedactionRequest>();
             var modifiedRegions = 0;
             var modifiedPages = 0;
 
@@ -586,31 +722,73 @@ public sealed class PdfExportService
                         textPage = NativeMethods.FPDFText_LoadPage(page);
                         if (textPage == IntPtr.Zero)
                             throw new InvalidDataException($"{projectPage.PageNumber}ページの墨消し対象文字を解析できませんでした。");
-                        var preservationPlan = CreateRedactionTextPreservationPlan(
-                            page,
-                            textPage,
-                            pageRedactions,
-                            cancellationToken);
-                        NativeMethods.FPDFText_ClosePage(textPage);
-                        textPage = IntPtr.Zero;
+                        var textSelectionOnly = pageRedactions.All(redaction =>
+                            redaction.ShapeKind == PdfRedactionShapeKind.TextSelection &&
+                            redaction.PathPoints.Count < 3);
+                        if (TryApplyStructurePreservingTextRedactions(
+                                document,
+                                page,
+                                textPage,
+                                projectPage.PageNumber,
+                                pageRedactions,
+                                textRedactionRequests,
+                                cancellationToken,
+                                out var structuredResult,
+                                out var fallbackReason))
+                        {
+                            NativeMethods.FPDFText_ClosePage(textPage);
+                            textPage = IntPtr.Zero;
+                            appliedRedactions += pageRedactions.Length;
+                            redactedPages++;
+                            pageChanged = true;
+                            textSpacingRequests.AddRange(pageSpacingRequests);
+                            warnings.Add(
+                                $"{projectPage.PageNumber}ページ: 元の画像・図形・範囲外テキストを保持し、" +
+                                $"PDF文字オブジェクト {structuredResult.ReplacedTextObjects:N0}件のうち" +
+                                $" {structuredResult.RemovedCharacters:N0}字を除去して、" +
+                                (structuredResult.PreservedOriginalTextCommands
+                                    ? $"範囲外 {structuredResult.RebuiltCharacters:N0}字は元の文字命令と配置のまま保持しました。"
+                                    : $"範囲外 {structuredResult.RebuiltCharacters:N0}字を再構成しました。") +
+                                (structuredResult.RemovedAnnotations > 0
+                                    ? $" 墨消し範囲と重なる注釈 {structuredResult.RemovedAnnotations:N0}件を除去しました。"
+                                    : string.Empty));
+                        }
+                        else if (textSelectionOnly)
+                        {
+                            NativeMethods.FPDFText_ClosePage(textPage);
+                            textPage = IntPtr.Zero;
+                            throw new InvalidDataException(
+                                $"{projectPage.PageNumber}ページのPDF文字選択を、元のPDF構造を保ったまま安全に墨消しできませんでした。" +
+                                $"ページは画像化せず、出力を中止しました。理由: {fallbackReason}");
+                        }
+                        else
+                        {
+                            var preservationPlan = CreateRedactionTextPreservationPlan(
+                                page,
+                                textPage,
+                                pageRedactions,
+                                cancellationToken);
+                            NativeMethods.FPDFText_ClosePage(textPage);
+                            textPage = IntPtr.Zero;
 
-                        var preservedOcr = RasterizeAndRedactPage(
-                            document,
-                            page,
-                            pageRedactions,
-                            preservationPlan,
-                            cancellationToken);
-                        appliedRedactions += pageRedactions.Length;
-                        redactedPages++;
-                        pageChanged = true;
-                        warnings.Add(
-                            $"{projectPage.PageNumber}ページ: 墨消しを確定するため表示内容を高精細画像化し、" +
-                            $"範囲外の透明テキストをオブジェクト {preservedOcr.WholeObjects:N0}件、" +
-                            $"文字単位 {preservedOcr.RebuiltCharacters:N0}字で検索用に保持し、" +
-                            $"重なった {preservedOcr.RemovedCharacters:N0}字を除去しました。" +
-                            (preservedOcr.UnrepresentableCharacters > 0
-                                ? $" 元フォントで安全に再構成できない {preservedOcr.UnrepresentableCharacters:N0}字は保持していません。"
-                                : string.Empty));
+                            var preservedOcr = RasterizeAndRedactPage(
+                                document,
+                                page,
+                                pageRedactions,
+                                preservationPlan,
+                                cancellationToken);
+                            appliedRedactions += pageRedactions.Length;
+                            redactedPages++;
+                            pageChanged = true;
+                            warnings.Add(
+                                $"{projectPage.PageNumber}ページ: {fallbackReason}ため、安全側の処理として表示内容を高精細画像化し、" +
+                                $"範囲外の透明テキストをオブジェクト {preservedOcr.WholeObjects:N0}件、" +
+                                $"文字単位 {preservedOcr.RebuiltCharacters:N0}字で検索用に保持し、" +
+                                $"重なった {preservedOcr.RemovedCharacters:N0}字を除去しました。" +
+                                (preservedOcr.UnrepresentableCharacters > 0
+                                    ? $" 元フォントで安全に再構成できない {preservedOcr.UnrepresentableCharacters:N0}字は保持していません。"
+                                    : string.Empty));
+                        }
                     }
                     else
                     {
@@ -686,6 +864,12 @@ public sealed class PdfExportService
             SaveDocument(document, temporaryPath);
             NativeMethods.FPDF_CloseDocument(document);
             document = IntPtr.Zero;
+            progress?.Report(new PdfExportProgress("redacting", 0, 0, "文字選択の墨消しを元のPDF構造へ確定しています..."));
+            ApplyStructurePreservingTextRedactions(
+                temporaryPath,
+                textRedactionRequests,
+                progress,
+                cancellationToken);
             progress?.Report(new PdfExportProgress("calibrating", 0, 0, "文字位置と選択範囲を校正しています..."));
             CalibrateSavedDocument(temporaryPath, project, progress, cancellationToken);
             progress?.Report(new PdfExportProgress("spacing", 0, 0, "文字送りを出力PDFへ反映しています..."));
@@ -841,6 +1025,384 @@ public sealed class PdfExportService
             TryDeleteFile(previousCheckpointPath);
             TryDeleteFile(calibratedPath);
         }
+    }
+
+    /// <summary>
+    /// 元フォントへUnicode文字を再符号化できなかった文字選択を、保存後の元テキスト命令から
+    /// 選択符号だけ除去して確定します。範囲外の符号・フォント・行列は変更しません。
+    /// </summary>
+    private static void ApplyStructurePreservingTextRedactions(
+        string pdfPath,
+        IReadOnlyList<TextRedactionRequest> requests,
+        IProgress<PdfExportProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (requests.Count == 0) return;
+        var qpdfPath = ResolveQpdfPath()
+            ?? throw new InvalidDataException(
+                "未埋め込みフォントの文字選択を元のPDF構造のまま確定するために必要なqpdfが見つかりません。");
+        var qdfPath = pdfPath + ".redaction-qdf";
+        var patchedQdfPath = pdfPath + ".redaction-patched-qdf";
+        var adjustedPath = pdfPath + ".redaction-adjusted";
+        try
+        {
+            progress?.Report(new PdfExportProgress(
+                "redacting",
+                0,
+                requests.Count,
+                $"元の文字命令から選択文字を除去しています（対象 {requests.Count:N0}行）..."));
+            RunQpdf(
+                qpdfPath,
+                ["--qdf", "--object-streams=disable", "--stream-data=uncompress", pdfPath, qdfPath],
+                qdfPath,
+                cancellationToken);
+
+            var markerPositions = FindTextSpacingMarkerPositions(
+                qdfPath,
+                requests.Select(request => request.MarkName));
+            var replacements = new List<(long Start, int Length, byte[] Value)>();
+            var failures = new List<string>();
+            for (var index = 0; index < requests.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var request = requests[index];
+                if (!markerPositions.TryGetValue(request.MarkName, out var markerIndex) ||
+                    !TryCreateTextRedactionReplacement(qdfPath, request, markerIndex, out var replacement))
+                {
+                    if (failures.Count < 8)
+                        failures.Add($"{request.PageNumber}ページ {request.MarkName}");
+                }
+                else
+                {
+                    replacements.Add(replacement);
+                }
+                progress?.Report(new PdfExportProgress(
+                    "redacting",
+                    index + 1,
+                    requests.Count,
+                    $"元の文字命令から選択文字を除去しています（{index + 1:N0}/{requests.Count:N0}行）..."));
+            }
+            if (failures.Count > 0 || replacements.Count != requests.Count)
+                throw new InvalidDataException(
+                    $"選択文字を元の文字命令から安全に除去できない箇所が {requests.Count - replacements.Count:N0}件ありました。" +
+                    (failures.Count == 0 ? string.Empty : $" 例: {string.Join("、", failures)}"));
+
+            ApplyByteReplacements(qdfPath, patchedQdfPath, replacements, cancellationToken);
+            RunQpdf(
+                qpdfPath,
+                ["--object-streams=generate", "--recompress-flate", patchedQdfPath, adjustedPath],
+                adjustedPath,
+                cancellationToken);
+            File.Move(adjustedPath, pdfPath, true);
+        }
+        finally
+        {
+            TryDeleteFile(qdfPath);
+            TryDeleteFile(patchedQdfPath);
+            TryDeleteFile(adjustedPath);
+        }
+    }
+
+    /// <summary>対象マーク後の文字描画命令を、選択符号を含まないTJ配列へ置換します。</summary>
+    private static bool TryCreateTextRedactionReplacement(
+        string qdfPath,
+        TextRedactionRequest request,
+        long markerIndex,
+        out (long Start, int Length, byte[] Value) replacement)
+    {
+        replacement = default;
+        const int maximumBlockBytes = 65536 + 256;
+        var remaining = new FileInfo(qdfPath).Length - markerIndex;
+        if (markerIndex < 0 || remaining <= 0) return false;
+        var block = new byte[(int)Math.Min(maximumBlockBytes, remaining)];
+        using var stream = new FileStream(
+            qdfPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            81920,
+            FileOptions.RandomAccess);
+        stream.Seek(markerIndex, SeekOrigin.Begin);
+        var totalRead = 0;
+        while (totalRead < block.Length)
+        {
+            var read = stream.Read(block, totalRead, block.Length - totalRead);
+            if (read == 0) break;
+            totalRead += read;
+        }
+        if (totalRead != block.Length) Array.Resize(ref block, totalRead);
+        if (!TryCreateTextRedactionReplacement(block, request, 0, out var local)) return false;
+        replacement = (markerIndex + local.Start, local.Length, local.Value);
+        return true;
+    }
+
+    private static bool TryCreateTextRedactionReplacement(
+        byte[] qdfBytes,
+        TextRedactionRequest request,
+        int markerIndex,
+        out (int Start, int Length, byte[] Value) replacement)
+    {
+        replacement = default;
+        var marker = Encoding.ASCII.GetBytes('/' + request.MarkName);
+        var endMarker = Encoding.ASCII.GetBytes("EMC");
+        var blockEnd = IndexOf(qdfBytes, endMarker, markerIndex + marker.Length);
+        if (blockEnd < 0 || blockEnd - markerIndex > 65536) return false;
+        var blockStart = markerIndex;
+        var blockLength = blockEnd + endMarker.Length - blockStart;
+        var blockText = Encoding.Latin1.GetString(qdfBytes, blockStart, blockLength);
+        if (TryFindPdfArrayShowOperation(
+                blockText,
+                out var arrayOperationStart,
+                out var arrayOperationLength,
+                out var arrayOperand) &&
+            TryCreateArrayTextRedactionReplacement(
+                arrayOperand,
+                request,
+                out var arrayReplacement))
+        {
+            replacement = (
+                blockStart + arrayOperationStart,
+                arrayOperationLength,
+                Encoding.ASCII.GetBytes(arrayReplacement));
+            return true;
+        }
+
+        if (!TryFindPdfStringShowOperation(
+                blockText,
+                out var operationStart,
+                out var operationLength,
+                out var operand) ||
+            !TryDecodePdfStringOperand(operand, out var encodedBytes))
+            return false;
+
+        var chunks = SplitEncodedCharacters(encodedBytes, request.Characters);
+        if (chunks is null ||
+            chunks.Count != request.RedactedCharacters.Count ||
+            chunks.Count != request.CharacterAdvances.Count ||
+            !request.RedactedCharacters.Any(redacted => redacted))
+            return false;
+
+        if (request.RedactedCharacters.All(redacted => redacted))
+        {
+            replacement = (
+                blockStart + operationStart,
+                operationLength,
+                Encoding.ASCII.GetBytes("<> Tj"));
+            return true;
+        }
+
+        var builder = new StringBuilder("[");
+        var visibleBytes = new StringBuilder();
+        void FlushVisibleBytes()
+        {
+            if (visibleBytes.Length == 0) return;
+            builder.Append('<').Append(visibleBytes).Append("> ");
+            visibleBytes.Clear();
+        }
+
+        for (var index = 0; index < chunks.Count; index++)
+        {
+            if (!request.RedactedCharacters[index])
+            {
+                visibleBytes.Append(chunks[index]);
+                continue;
+            }
+            FlushVisibleBytes();
+            if (index >= chunks.Count - 1) continue;
+            var advance = request.CharacterAdvances[index];
+            var adjustment = advance / request.PointsPerAdjustmentUnit * (request.IsVertical ? 1d : -1d);
+            if (!double.IsFinite(adjustment)) return false;
+            builder.Append(Math.Clamp(adjustment, -1000000d, 1000000d)
+                    .ToString("0.####", CultureInfo.InvariantCulture))
+                .Append(' ');
+        }
+        FlushVisibleBytes();
+        builder.Append("] TJ");
+        replacement = (
+            blockStart + operationStart,
+            operationLength,
+            Encoding.ASCII.GetBytes(builder.ToString()));
+        return true;
+    }
+
+    /// <summary>PDFiumが生成したTJ配列から、選択符号だけを文字送りへ置換します。</summary>
+    private static bool TryCreateArrayTextRedactionReplacement(
+        string operand,
+        TextRedactionRequest request,
+        out string replacement)
+    {
+        replacement = string.Empty;
+        if (operand.Length < 2 || operand[0] != '[' || operand[^1] != ']') return false;
+        var encoded = new List<byte>();
+        var tokens = new List<(bool IsString, string Raw, byte[] Bytes, double Number)>();
+        var content = operand[1..^1];
+        for (var offset = 0; offset < content.Length;)
+        {
+            while (offset < content.Length && char.IsWhiteSpace(content[offset])) offset++;
+            if (offset >= content.Length) break;
+
+            string raw;
+            if (content[offset] == '<')
+            {
+                var end = content.IndexOf('>', offset + 1);
+                if (end < 0) return false;
+                raw = content.Substring(offset, end - offset + 1);
+                offset = end + 1;
+                if (!TryDecodePdfStringOperand(raw, out var bytes)) return false;
+                tokens.Add((true, raw, bytes, 0d));
+                encoded.AddRange(bytes);
+            }
+            else if (content[offset] == '(')
+            {
+                if (!TryFindPdfLiteralStringEnd(content, offset, out var end)) return false;
+                raw = content.Substring(offset, end - offset);
+                offset = end;
+                if (!TryDecodePdfStringOperand(raw, out var bytes)) return false;
+                tokens.Add((true, raw, bytes, 0d));
+                encoded.AddRange(bytes);
+            }
+            else
+            {
+                var match = Regex.Match(
+                    content[offset..],
+                    @"[+-]?(?:\d+(?:\.\d*)?|\.\d+)",
+                    RegexOptions.CultureInvariant,
+                    TimeSpan.FromMilliseconds(100));
+                if (!match.Success || match.Index != 0) return false;
+                raw = match.Value;
+                offset += match.Length;
+                if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
+                    !double.IsFinite(number))
+                    return false;
+                tokens.Add((false, raw, [], number));
+            }
+        }
+
+        var chunks = SplitEncodedCharacters(encoded.ToArray(), request.Characters);
+        if (chunks is null ||
+            chunks.Count != request.RedactedCharacters.Count ||
+            chunks.Count != request.CharacterAdvances.Count ||
+            !request.RedactedCharacters.Any(redacted => redacted))
+            return false;
+        if (request.RedactedCharacters.All(redacted => redacted))
+        {
+            replacement = "<> Tj";
+            return true;
+        }
+
+        var flattened = new List<(string? Hex, string? RawNumber, double Number, int CharacterIndex)>();
+        var chunkIndex = 0;
+        foreach (var token in tokens)
+        {
+            if (!token.IsString)
+            {
+                flattened.Add((null, token.Raw, token.Number, -1));
+                continue;
+            }
+
+            var consumedBytes = 0;
+            while (consumedBytes < token.Bytes.Length && chunkIndex < chunks.Count)
+            {
+                var chunk = chunks[chunkIndex];
+                var chunkBytes = chunk.Length / 2;
+                if (chunkBytes <= 0 || consumedBytes + chunkBytes > token.Bytes.Length) return false;
+                flattened.Add((chunk, null, 0d, chunkIndex));
+                consumedBytes += chunkBytes;
+                chunkIndex++;
+            }
+            if (consumedBytes != token.Bytes.Length) return false;
+        }
+        if (chunkIndex != chunks.Count) return false;
+
+        var builder = new StringBuilder("[");
+        for (var itemIndex = 0; itemIndex < flattened.Count; itemIndex++)
+        {
+            var item = flattened[itemIndex];
+            if (item.Hex is null)
+            {
+                builder.Append(item.RawNumber).Append(' ');
+                continue;
+            }
+            if (!request.RedactedCharacters[item.CharacterIndex])
+            {
+                builder.Append('<').Append(item.Hex).Append("> ");
+                continue;
+            }
+
+            var nextCharacterItem = itemIndex + 1;
+            var originalAdjustment = 0d;
+            while (nextCharacterItem < flattened.Count && flattened[nextCharacterItem].Hex is null)
+            {
+                originalAdjustment += flattened[nextCharacterItem].Number;
+                nextCharacterItem++;
+            }
+            if (nextCharacterItem >= flattened.Count) continue;
+
+            var desiredAdvance = request.CharacterAdvances[item.CharacterIndex];
+            var naturalAdvanceUnits = desiredAdvance / request.PointsPerAdjustmentUnit +
+                                      (request.IsVertical ? -originalAdjustment : originalAdjustment);
+            var skipAdjustment = request.IsVertical ? naturalAdvanceUnits : -naturalAdvanceUnits;
+            if (!double.IsFinite(skipAdjustment)) return false;
+            builder.Append(Math.Clamp(skipAdjustment, -1000000d, 1000000d)
+                    .ToString("0.####", CultureInfo.InvariantCulture))
+                .Append(' ');
+        }
+        builder.Append("] TJ");
+        replacement = builder.ToString();
+        return true;
+    }
+
+    /// <summary>コンテンツから角括弧形式のTJ文字表示命令を探します。</summary>
+    private static bool TryFindPdfArrayShowOperation(
+        string blockText,
+        out int operationStart,
+        out int operationLength,
+        out string operand)
+    {
+        operationStart = 0;
+        operationLength = 0;
+        operand = string.Empty;
+        foreach (Match showMatch in Regex.Matches(blockText, @"\bTJ\b", RegexOptions.CultureInvariant))
+        {
+            var operandEnd = showMatch.Index;
+            while (operandEnd > 0 && char.IsWhiteSpace(blockText[operandEnd - 1])) operandEnd--;
+            if (operandEnd <= 0 || blockText[operandEnd - 1] != ']') continue;
+            var operandStart = blockText.LastIndexOf('[', operandEnd - 1);
+            if (operandStart < 0) continue;
+            operationStart = operandStart;
+            operationLength = showMatch.Index + showMatch.Length - operandStart;
+            operand = blockText.Substring(operandStart, operandEnd - operandStart);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>元符号列をPDFiumが返した文字単位へ分割します。</summary>
+    private static IReadOnlyList<string>? SplitEncodedCharacters(
+        byte[] encoded,
+        IReadOnlyList<string> characters)
+    {
+        if (encoded.Length == 0 || characters.Count == 0 || characters.Any(string.IsNullOrEmpty)) return null;
+        var utf16CodeUnits = characters.Sum(character => character.Length);
+        int[] byteLengths;
+        if (encoded.Length == utf16CodeUnits * 2)
+            byteLengths = characters.Select(character => character.Length * 2).ToArray();
+        else if (encoded.Length == characters.Count)
+            byteLengths = Enumerable.Repeat(1, characters.Count).ToArray();
+        else if (encoded.Length % characters.Count == 0)
+            byteLengths = Enumerable.Repeat(encoded.Length / characters.Count, characters.Count).ToArray();
+        else
+            return null;
+
+        var result = new List<string>(characters.Count);
+        var byteOffset = 0;
+        foreach (var byteLength in byteLengths)
+        {
+            if (byteOffset + byteLength > encoded.Length) return null;
+            result.Add(Convert.ToHexString(encoded.AsSpan(byteOffset, byteLength)));
+            byteOffset += byteLength;
+        }
+        return byteOffset == encoded.Length ? result : null;
     }
 
     /// <summary>
@@ -1770,6 +2332,633 @@ public sealed class PdfExportService
         redactions?.Any(item => item.PageId == page.Id) == true;
 
     /// <summary>
+    /// PDF文字選択だけで作られた墨消しは、元ページを画像化せず、対象文字オブジェクトだけを
+    /// 除去・再構成してから塗り矩形を追加します。
+    /// </summary>
+    /// <remarks>
+    /// PDFiumが直接編集できないフォーム内文字、回転・縁取り文字などはfalseを返します。
+    /// 呼び出し側はPDF文字選択の場合に画像化せず出力を中止し、任意領域だけ全面画像化へ戻します。
+    /// </remarks>
+    private static bool TryApplyStructurePreservingTextRedactions(
+        IntPtr document,
+        IntPtr page,
+        IntPtr textPage,
+        int pageNumber,
+        IReadOnlyList<PdfRedaction> redactions,
+        ICollection<TextRedactionRequest> textRedactionRequests,
+        CancellationToken cancellationToken,
+        out StructurePreservingRedactionResult result,
+        out string fallbackReason)
+    {
+        result = new StructurePreservingRedactionResult(0, 0, 0, 0);
+        fallbackReason = "通常構造のまま安全に対象文字だけを除去できないPDF構造だった";
+        if (redactions.Any(redaction =>
+                redaction.ShapeKind != PdfRedactionShapeKind.TextSelection ||
+                redaction.PathPoints.Count >= 3))
+        {
+            fallbackReason = "文字選択以外の範囲指定を含んでいる";
+            return false;
+        }
+        var pageWidth = NativeMethods.FPDF_GetPageWidthF(page);
+        var pageHeight = NativeMethods.FPDF_GetPageHeightF(page);
+        if (pageWidth <= 0 || pageHeight <= 0)
+        {
+            fallbackReason = "ページ寸法を安全に判定できなかった";
+            return false;
+        }
+
+        if (!TryGetOverlappingAnnotationIndexes(page, redactions, out var overlappingAnnotations))
+        {
+            fallbackReason = "既存注釈の範囲を安全に検査できなかった";
+            return false;
+        }
+
+        // PDFium can parse inherited ICC/CMYK path/text colours for rendering but omit them when
+        // it regenerates an edited content stream. Materialize the already resolved RGBA values
+        // so unrelated white text and vector backgrounds do not fall back to black.
+        if (!TryMaterializePageObjectColors(page))
+        {
+            fallbackReason = "元ページの図形色を安全に保持できなかった";
+            return false;
+        }
+
+        var directTextObjects = new HashSet<IntPtr>();
+        var objectCount = NativeMethods.FPDFPage_CountObjects(page);
+        for (var index = 0; index < objectCount; index++)
+        {
+            var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+            if (pageObject != IntPtr.Zero && NativeMethods.FPDFPageObj_GetType(pageObject) == 1)
+                directTextObjects.Add(pageObject);
+        }
+
+        var charactersByObject = directTextObjects.ToDictionary(
+            item => item,
+            _ => new List<StructuredTextCharacter>());
+        var matchedRedactions = new bool[redactions.Count];
+        var charactersByRedaction = Enumerable.Range(0, redactions.Count)
+            .Select(_ => new List<StructuredTextCharacter>())
+            .ToArray();
+        var characterCount = NativeMethods.FPDFText_CountChars(textPage);
+        for (var index = 0; index < characterCount; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (NativeMethods.FPDFText_GetCharBox(
+                    textPage,
+                    index,
+                    out var left,
+                    out var right,
+                    out var bottom,
+                    out var top) == 0 ||
+                right <= left || top <= bottom)
+                continue;
+
+            var redacted = false;
+            for (var redactionIndex = 0; redactionIndex < redactions.Count; redactionIndex++)
+            {
+                var redaction = redactions[redactionIndex];
+                if (!RedactionTargetsTextCharacter(redaction, left, bottom, right, top))
+                    continue;
+                matchedRedactions[redactionIndex] = true;
+                redacted = true;
+            }
+
+            var textObject = NativeMethods.FPDFText_GetTextObject(textPage, index);
+            if (!charactersByObject.TryGetValue(textObject, out var characters))
+            {
+                if (redacted)
+                {
+                    fallbackReason = "フォーム等に入った直接編集できない文字が墨消し範囲と重なっている";
+                    return false;
+                }
+                continue;
+            }
+
+            var unicode = NativeMethods.FPDFText_GetUnicode(textPage, index);
+            var text = unicode is > 0 and <= 0x10FFFF
+                ? char.ConvertFromUtf32((int)unicode)
+                : string.Empty;
+            if (NativeMethods.FPDFText_GetCharOrigin(textPage, index, out var originX, out var originY) == 0)
+            {
+                if (redacted)
+                {
+                    fallbackReason = "墨消し対象文字の元の送り位置を取得できなかった";
+                    return false;
+                }
+                originX = (left + right) / 2d;
+                originY = (bottom + top) / 2d;
+            }
+            var character = new StructuredTextCharacter(
+                text,
+                left,
+                bottom,
+                right,
+                top,
+                originX,
+                originY,
+                redacted);
+            characters.Add(character);
+            for (var redactionIndex = 0; redactionIndex < redactions.Count; redactionIndex++)
+                if (RedactionTargetsTextCharacter(redactions[redactionIndex], left, bottom, right, top))
+                    charactersByRedaction[redactionIndex].Add(character);
+        }
+
+        if (matchedRedactions.Any(matched => !matched))
+        {
+            fallbackReason = "選択範囲に直接編集可能なPDF文字が見つからなかった";
+            return false;
+        }
+
+        var touchedObjects = charactersByObject
+            .Where(item => item.Value.Any(character => character.Redacted))
+            .ToArray();
+        if (touchedObjects.Length == 0) return false;
+        var fragments = new List<PreservedTextFragment>();
+        var removedCharacters = 0;
+        foreach (var item in touchedObjects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sourceObject = item.Key;
+            var characters = item.Value;
+            if (NativeMethods.FPDFPageObj_GetMatrix(sourceObject, out var matrix) == 0 ||
+                Math.Abs(matrix.B) > 0.0001f || Math.Abs(matrix.C) > 0.0001f)
+            {
+                fallbackReason = "回転または傾斜した文字を同じ見た目で部分再構成できない";
+                return false;
+            }
+
+            var renderMode = NativeMethods.FPDFTextObj_GetTextRenderMode(sourceObject);
+            if (renderMode is not (0 or 3))
+            {
+                fallbackReason = "縁取り・クリッピング等の特殊な文字描画を含んでいる";
+                return false;
+            }
+            var font = NativeMethods.FPDFTextObj_GetFont(sourceObject);
+            var fontSize = NativeMethods.FPDFTextObj_GetFontSize(sourceObject);
+            if (font == IntPtr.Zero || !float.IsFinite(fontSize) || fontSize <= 0 ||
+                NativeMethods.FPDFPageObj_GetFillColor(
+                    sourceObject,
+                    out var red,
+                    out var green,
+                    out var blue,
+                    out var alpha) == 0)
+            {
+                fallbackReason = "元フォントまたは文字色を取得できなかった";
+                return false;
+            }
+
+            removedCharacters += characters.Count(character => character.Redacted);
+            var fragment = new List<(string Text, double Left, double Bottom, double Right, double Top)>();
+            void FlushFragment()
+            {
+                if (fragment.Count == 0) return;
+                var text = string.Concat(fragment.Select(character => character.Text));
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    fragments.Add(new PreservedTextFragment(
+                        text,
+                        fragment.Count,
+                        font,
+                        fontSize,
+                        renderMode,
+                        red,
+                        green,
+                        blue,
+                        alpha,
+                        fragment.Min(character => character.Left),
+                        fragment.Min(character => character.Bottom),
+                        fragment.Max(character => character.Right),
+                        fragment.Max(character => character.Top)));
+                }
+                fragment.Clear();
+            }
+
+            foreach (var character in characters)
+            {
+                if (character.Redacted || character.Text.Length == 0)
+                {
+                    FlushFragment();
+                    continue;
+                }
+                fragment.Add((character.Text, character.Left, character.Bottom, character.Right, character.Top));
+            }
+            FlushFragment();
+        }
+
+        var rebuiltObjects = new List<IntPtr>();
+        var rectangleObjects = new List<IntPtr>();
+        var pendingTextRedactionRequests = new List<TextRedactionRequest>();
+        // 元文字命令から符号だけを除去する経路を優先します。文字を作り直さないため、
+        // 埋め込み／未埋め込みフォントを問わず、範囲外の字幅・位置・フォントをそのまま保持できます。
+        var preserveOriginalTextCommands = TryRegisterTextRedactionRequests(
+            pageNumber,
+            touchedObjects,
+            pendingTextRedactionRequests,
+            out var requestFailure);
+        try
+        {
+            try
+            {
+                // 元命令を文字単位に対応付けられない特殊構造だけ、従来の範囲外文字再構成へ戻します。
+                if (!preserveOriginalTextCommands)
+                    rebuiltObjects.AddRange(CreatePreservedTextFragments(document, fragments));
+                for (var redactionIndex = 0; redactionIndex < redactions.Count; redactionIndex++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    rectangleObjects.Add(CreateRedactionRectangle(
+                        pageWidth,
+                        pageHeight,
+                        redactions[redactionIndex]));
+                }
+            }
+            catch (InvalidDataException exception)
+            {
+                fallbackReason = preserveOriginalTextCommands
+                    ? $"墨消し矩形を同じPDF構造へ追加できなかった（{exception.Message}）"
+                    : $"元文字命令を安全に部分編集できず、範囲外文字の再構成にも失敗した" +
+                      $"（{requestFailure}; {exception.Message}）";
+                return false;
+            }
+
+            if (!preserveOriginalTextCommands)
+            {
+                foreach (var item in touchedObjects)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (NativeMethods.FPDFPage_RemoveObject(page, item.Key) == 0)
+                        throw new InvalidDataException("墨消し対象のPDF文字オブジェクトを除去できませんでした。");
+                    NativeMethods.FPDFPageObj_Destroy(item.Key);
+                }
+            }
+            foreach (var annotationIndex in overlappingAnnotations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (NativeMethods.FPDFPage_RemoveAnnot(page, annotationIndex) == 0)
+                    throw new InvalidDataException("墨消し範囲と重なるPDF注釈を除去できませんでした。");
+            }
+            foreach (var textObject in rebuiltObjects)
+                NativeMethods.FPDFPage_InsertObject(page, textObject);
+            foreach (var rectangleObject in rectangleObjects)
+                NativeMethods.FPDFPage_InsertObject(page, rectangleObject);
+            rebuiltObjects.Clear();
+            rectangleObjects.Clear();
+            if (preserveOriginalTextCommands)
+                foreach (var request in pendingTextRedactionRequests)
+                    textRedactionRequests.Add(request);
+        }
+        finally
+        {
+            foreach (var textObject in rebuiltObjects) NativeMethods.FPDFPageObj_Destroy(textObject);
+            foreach (var rectangleObject in rectangleObjects) NativeMethods.FPDFPageObj_Destroy(rectangleObject);
+        }
+
+        result = new StructurePreservingRedactionResult(
+            touchedObjects.Length,
+            fragments.Sum(fragment => fragment.CharacterCount),
+            removedCharacters,
+            overlappingAnnotations.Count,
+            preserveOriginalTextCommands);
+        fallbackReason = string.Empty;
+        return true;
+    }
+
+    /// <summary>
+    /// 再符号化できない元フォントの文字オブジェクトへマークを付け、保存後に選択符号だけを
+    /// 除去する要求を登録します。文字送りは元の文字原点間隔から取得します。
+    /// </summary>
+    private static bool TryRegisterTextRedactionRequests(
+        int pageNumber,
+        IReadOnlyList<KeyValuePair<IntPtr, List<StructuredTextCharacter>>> touchedObjects,
+        ICollection<TextRedactionRequest> requests,
+        out string failureReason)
+    {
+        failureReason = string.Empty;
+        foreach (var item in touchedObjects)
+        {
+            var characters = item.Value;
+            if (characters.Count == 0 || characters.Any(character => string.IsNullOrEmpty(character.Text)))
+            {
+                failureReason = "元の符号とUnicode文字の対応を文字単位で取得できなかった";
+                return false;
+            }
+            if (NativeMethods.FPDFPageObj_GetMatrix(item.Key, out var matrix) == 0 ||
+                Math.Abs(matrix.B) > 0.0001f || Math.Abs(matrix.C) > 0.0001f)
+            {
+                failureReason = "回転または傾斜した元文字命令だった";
+                return false;
+            }
+
+            var fontSize = NativeMethods.FPDFTextObj_GetFontSize(item.Key);
+            if (!float.IsFinite(fontSize) || fontSize <= 0)
+            {
+                failureReason = "元文字命令のフォントサイズを取得できなかった";
+                return false;
+            }
+
+            var horizontalTravel = 0d;
+            var verticalTravel = 0d;
+            for (var index = 0; index + 1 < characters.Count; index++)
+            {
+                horizontalTravel += Math.Abs(characters[index + 1].OriginX - characters[index].OriginX);
+                verticalTravel += Math.Abs(characters[index + 1].OriginY - characters[index].OriginY);
+            }
+            var isVertical = verticalTravel > horizontalTravel * 1.25d;
+            var axisScale = isVertical ? Math.Abs(matrix.D) : Math.Abs(matrix.A);
+            var pointsPerAdjustmentUnit = fontSize * axisScale / 1000d;
+            if (!double.IsFinite(pointsPerAdjustmentUnit) || pointsPerAdjustmentUnit <= 0.0000001d)
+            {
+                failureReason = "元文字命令の文字送り尺度を取得できなかった";
+                return false;
+            }
+
+            var advances = new double[characters.Count];
+            for (var index = 0; index + 1 < characters.Count; index++)
+            {
+                var advance = isVertical
+                    ? Math.Abs(characters[index + 1].OriginY - characters[index].OriginY)
+                    : Math.Abs(characters[index + 1].OriginX - characters[index].OriginX);
+                if (!double.IsFinite(advance) || advance <= 0.0000001d)
+                {
+                    failureReason = "元文字命令の文字間隔を安全に再現できなかった";
+                    return false;
+                }
+                advances[index] = advance;
+            }
+            advances[^1] = characters.Count > 1
+                ? advances[^2]
+                : isVertical
+                    ? characters[0].Top - characters[0].Bottom
+                    : characters[0].Right - characters[0].Left;
+
+            var markName = $"PCO_RED_{pageNumber}_{Guid.NewGuid():N}";
+            var utf8Name = Marshal.StringToCoTaskMemUTF8(markName);
+            try
+            {
+                if (NativeMethods.FPDFPageObj_AddMark(item.Key, utf8Name) == IntPtr.Zero)
+                {
+                    failureReason = "元文字命令へ墨消し用マークを付けられなかった";
+                    return false;
+                }
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(utf8Name);
+            }
+
+            requests.Add(new TextRedactionRequest(
+                pageNumber,
+                markName,
+                characters.Select(character => character.Text).ToArray(),
+                characters.Select(character => character.Redacted).ToArray(),
+                advances,
+                pointsPerAdjustmentUnit,
+                isVertical));
+        }
+        return true;
+    }
+
+    private static bool TryMaterializePageObjectColors(IntPtr page)
+    {
+        var objectCount = NativeMethods.FPDFPage_CountObjects(page);
+        for (var index = 0; index < objectCount; index++)
+        {
+            var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+            if (pageObject == IntPtr.Zero) return false;
+            var objectType = NativeMethods.FPDFPageObj_GetType(pageObject);
+            if (objectType is not (1 or 2))
+                continue;
+            var fillMode = 1;
+            var stroke = 1;
+            if (objectType == 2 &&
+                NativeMethods.FPDFPath_GetDrawMode(pageObject, out fillMode, out stroke) == 0)
+                return false;
+            if (fillMode != 0)
+            {
+                if (NativeMethods.FPDFPageObj_GetFillColor(
+                        pageObject,
+                        out var red,
+                        out var green,
+                        out var blue,
+                        out var alpha) == 0 ||
+                    NativeMethods.FPDFPageObj_SetFillColor(pageObject, red, green, blue, alpha) == 0)
+                    return false;
+            }
+            if (stroke != 0)
+            {
+                if (NativeMethods.FPDFPageObj_GetStrokeColor(
+                        pageObject,
+                        out var red,
+                        out var green,
+                        out var blue,
+                        out var alpha) == 0 ||
+                    NativeMethods.FPDFPageObj_SetStrokeColor(pageObject, red, green, blue, alpha) == 0)
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// 文字選択範囲と重なる注釈だけを列挙します。範囲外のリンク等は元の構造のまま保持します。
+    /// </summary>
+    private static bool TryGetOverlappingAnnotationIndexes(
+        IntPtr page,
+        IReadOnlyList<PdfRedaction> redactions,
+        out IReadOnlyList<int> annotationIndexes)
+    {
+        var result = new List<int>();
+        for (var index = NativeMethods.FPDFPage_GetAnnotCount(page) - 1; index >= 0; index--)
+        {
+            var annotation = NativeMethods.FPDFPage_GetAnnot(page, index);
+            if (annotation == IntPtr.Zero)
+            {
+                annotationIndexes = [];
+                return false;
+            }
+            try
+            {
+                if (NativeMethods.FPDFAnnot_GetRect(annotation, out var bounds) == 0)
+                {
+                    annotationIndexes = [];
+                    return false;
+                }
+                if (redactions.Any(redaction => PdfRedactionGeometry.IntersectsRectangle(
+                        redaction,
+                        bounds.Left,
+                        bounds.Bottom,
+                        bounds.Right,
+                        bounds.Top,
+                        PdfRedactionGeometry.GetSafetyPadding(redaction))))
+                    result.Add(index);
+            }
+            finally
+            {
+                NativeMethods.FPDFPage_CloseAnnot(annotation);
+            }
+        }
+        annotationIndexes = result;
+        return true;
+    }
+
+    private static List<IntPtr> CreatePreservedTextFragments(
+        IntPtr document,
+        IReadOnlyList<PreservedTextFragment> fragments)
+    {
+        var result = new List<IntPtr>(fragments.Count);
+        try
+        {
+            foreach (var fragment in fragments)
+            {
+                var textObject = NativeMethods.FPDFPageObj_CreateTextObj(document, fragment.Font, fragment.FontSize);
+                if (textObject == IntPtr.Zero)
+                    throw CreatePdfException("墨消し範囲外のPDF文字を再構成できませんでした");
+                result.Add(textObject);
+
+                var unicode = Marshal.StringToHGlobalUni(fragment.Text + '\0');
+                try
+                {
+                    if (NativeMethods.FPDFText_SetText(textObject, unicode) == 0)
+                        throw new InvalidDataException($"墨消し範囲外の文字「{fragment.Text}」を元フォントで再構成できませんでした。");
+                }
+                finally { Marshal.FreeHGlobal(unicode); }
+
+                if (NativeMethods.FPDFTextObj_SetTextRenderMode(textObject, fragment.RenderMode) == 0 ||
+                    NativeMethods.FPDFPageObj_SetFillColor(
+                        textObject,
+                        fragment.Red,
+                        fragment.Green,
+                        fragment.Blue,
+                        fragment.Alpha) == 0)
+                    throw new InvalidDataException("再構成したPDF文字へ元の描画属性を設定できませんでした。");
+                PositionTextObjectInBounds(
+                    textObject,
+                    fragment.Text,
+                    fragment.Left,
+                    fragment.Bottom,
+                    fragment.Right,
+                    fragment.Top);
+            }
+            return result;
+        }
+        catch
+        {
+            foreach (var textObject in result) NativeMethods.FPDFPageObj_Destroy(textObject);
+            throw;
+        }
+    }
+
+    private static void PositionTextObjectInBounds(
+        IntPtr textObject,
+        string text,
+        double left,
+        double bottom,
+        double right,
+        double top)
+    {
+        if (NativeMethods.FPDFPageObj_GetBounds(
+                textObject,
+                out var sourceLeft,
+                out var sourceBottom,
+                out var sourceRight,
+                out var sourceTop) == 0 ||
+            sourceRight <= sourceLeft || sourceTop <= sourceBottom)
+            throw new InvalidDataException($"文字「{text}」の配置を計算できませんでした。");
+
+        var scaleX = (right - left) / (sourceRight - sourceLeft);
+        var scaleY = (top - bottom) / (sourceTop - sourceBottom);
+        var targetCenterX = (left + right) / 2d;
+        var targetCenterY = (bottom + top) / 2d;
+        var sourceCenterX = (sourceLeft + sourceRight) / 2d;
+        var sourceCenterY = (sourceBottom + sourceTop) / 2d;
+        NativeMethods.FPDFPageObj_Transform(
+            textObject,
+            scaleX,
+            0d,
+            0d,
+            scaleY,
+            targetCenterX - scaleX * sourceCenterX,
+            targetCenterY - scaleY * sourceCenterY);
+    }
+
+    private static IntPtr CreateRedactionRectangle(
+        double pageWidth,
+        double pageHeight,
+        PdfRedaction redaction)
+    {
+        if (!TryParseRgb(redaction.ColorHex, out var red, out var green, out var blue))
+            throw new InvalidDataException($"墨消し色「{redaction.ColorHex}」が不正です。");
+        var paintBounds = GetRedactionPaintBoundsForDiagnostics(pageWidth, pageHeight, redaction);
+        if (!paintBounds.IsValid)
+            throw new InvalidDataException("墨消し範囲がページ内にありません。");
+
+        var rectangle = NativeMethods.FPDFPageObj_CreateNewRect(
+            (float)paintBounds.Left,
+            (float)paintBounds.Bottom,
+            (float)paintBounds.Size.Width,
+            (float)paintBounds.Size.Height);
+        if (rectangle == IntPtr.Zero)
+            throw CreatePdfException("墨消し矩形を作成できませんでした");
+        if (NativeMethods.FPDFPageObj_SetFillColor(rectangle, red, green, blue, 255) == 0 ||
+            NativeMethods.FPDFPath_SetDrawMode(rectangle, 1, 0) == 0)
+        {
+            NativeMethods.FPDFPageObj_Destroy(rectangle);
+            throw new InvalidDataException("墨消し矩形へ塗り色を設定できませんでした。");
+        }
+        return rectangle;
+    }
+
+    /// <summary>
+    /// 文字選択の帯は編集画面で確認した保存座標をそのまま描きます。対象文字そのものは別途
+    /// 文字中心で判定して元命令から除去するため、描画時に帯を締め直したり広げたりしません。
+    /// 任意範囲だけは従来どおり描画丸め用の安全余白を加えます。
+    /// </summary>
+    internal static PdfRectangle GetRedactionPaintBoundsForDiagnostics(
+        double pageWidth,
+        double pageHeight,
+        PdfRedaction redaction)
+    {
+        var padding = redaction.ShapeKind == PdfRedactionShapeKind.TextSelection
+            ? 0d
+            : PdfRedactionGeometry.GetSafetyPadding(redaction);
+        var left = Math.Clamp(redaction.Bounds.Left - padding, 0d, pageWidth);
+        var right = Math.Clamp(redaction.Bounds.Right + padding, 0d, pageWidth);
+        var bottom = Math.Clamp(redaction.Bounds.Bottom - padding, 0d, pageHeight);
+        var top = Math.Clamp(redaction.Bounds.Top + padding, 0d, pageHeight);
+        return new PdfRectangle(
+            new PdfPoint(left, bottom),
+            new PdfSize(right - left, top - bottom));
+    }
+
+    /// <summary>
+    /// 文字選択では、字形ボックス同士の張り出しやカーニングが隣文字と重なっても、
+    /// 中心が帯に入った文字だけを対象にします。任意形状は従来どおり交差判定です。
+    /// </summary>
+    private static bool RedactionTargetsTextCharacter(
+        PdfRedaction redaction,
+        double left,
+        double bottom,
+        double right,
+        double top)
+    {
+        if (redaction.ShapeKind == PdfRedactionShapeKind.TextSelection && redaction.PathPoints.Count < 3)
+        {
+            const double coordinateTolerance = 0.01d;
+            var centerX = (left + right) / 2d;
+            var centerY = (bottom + top) / 2d;
+            return centerX >= redaction.Bounds.Left - coordinateTolerance &&
+                   centerX <= redaction.Bounds.Right + coordinateTolerance &&
+                   centerY >= redaction.Bounds.Bottom - coordinateTolerance &&
+                   centerY <= redaction.Bounds.Top + coordinateTolerance;
+        }
+        return PdfRedactionGeometry.IntersectsRectangle(
+            redaction,
+            left,
+            bottom,
+            right,
+            top,
+            PdfRedactionGeometry.GetSafetyPadding(redaction));
+    }
+
+    /// <summary>
     /// ページを一枚の新しい画像へ変換してから指定範囲を塗りつぶし、元のページ内容を破棄します。
     /// </summary>
     /// <remarks>
@@ -1924,7 +3113,7 @@ public sealed class PdfExportService
             }
 
             var redacted = redactions.Any(redaction =>
-                RectanglesIntersect(left, bottom, right, top, redaction.Bounds, padding: 1d));
+                RedactionTargetsTextCharacter(redaction, left, bottom, right, top));
             var text = unicode is > 0 and <= 0x10FFFF
                 ? char.ConvertFromUtf32((int)unicode)
                 : string.Empty;
@@ -2084,18 +3273,6 @@ public sealed class PdfExportService
         }
     }
 
-    private static bool RectanglesIntersect(
-        double left,
-        double bottom,
-        double right,
-        double top,
-        PdfRectangle target,
-        double padding = 0d) =>
-        right > target.Left - padding &&
-        left < target.Right + padding &&
-        top > target.Bottom - padding &&
-        bottom < target.Top + padding;
-
     private static void PaintRedaction(
         byte[] pixels,
         int stride,
@@ -2107,14 +3284,20 @@ public sealed class PdfExportService
     {
         if (!TryParseRgb(redaction.ColorHex, out var red, out var green, out var blue))
             throw new InvalidDataException($"墨消し色「{redaction.ColorHex}」が不正です。");
-        // 1 PDF pointの安全余白を設け、OCR枠と実際の描画端の丸め差による消し残しを防ぐ。
-        const double padding = 1d;
+        // 文字選択ではグリフ境界の外に出る縁取りや影も覆う。既存の文字単位指定にも同じ余白を適用する。
+        var padding = PdfRedactionGeometry.GetSafetyPadding(redaction);
         var left = Math.Clamp((int)Math.Floor((redaction.Bounds.Left - padding) / pageWidth * pixelWidth), 0, pixelWidth);
         var right = Math.Clamp((int)Math.Ceiling((redaction.Bounds.Right + padding) / pageWidth * pixelWidth), 0, pixelWidth);
         var top = Math.Clamp((int)Math.Floor((pageHeight - redaction.Bounds.Top - padding) / pageHeight * pixelHeight), 0, pixelHeight);
         var bottom = Math.Clamp((int)Math.Ceiling((pageHeight - redaction.Bounds.Bottom + padding) / pageHeight * pixelHeight), 0, pixelHeight);
         if (right <= left || bottom <= top)
             throw new InvalidDataException("墨消し範囲がページ内にありません。");
+        if (redaction.PathPoints.Count >= 3)
+        {
+            PaintPathRedaction(pixels, stride, pixelWidth, pixelHeight, pageWidth, pageHeight,
+                redaction.PathPoints, left, right, top, bottom, padding, red, green, blue);
+            return;
+        }
         for (var y = top; y < bottom; y++)
         {
             var row = y * stride;
@@ -2125,6 +3308,85 @@ public sealed class PdfExportService
                 pixels[offset + 1] = green;
                 pixels[offset + 2] = red;
                 pixels[offset + 3] = 255;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 自由形状を走査線で塗ります。頂点数×全画素ではなく、行ごとの交点計算と対象区間だけの
+    /// 書込みにすることで、大きなページやフリーハンド形状でも出力時間を抑えます。
+    /// </summary>
+    private static void PaintPathRedaction(
+        byte[] pixels,
+        int stride,
+        int pixelWidth,
+        int pixelHeight,
+        double pageWidth,
+        double pageHeight,
+        IReadOnlyList<PdfPoint> path,
+        int left,
+        int right,
+        int top,
+        int bottom,
+        double padding,
+        byte red,
+        byte green,
+        byte blue)
+    {
+        var intersections = new List<double>(path.Count * 3);
+        var intervals = new List<(int Left, int Right)>();
+        for (var pixelY = top; pixelY < bottom; pixelY++)
+        {
+            intersections.Clear();
+            intervals.Clear();
+            var pdfY = pageHeight - (pixelY + 0.5d) / pixelHeight * pageHeight;
+            CollectIntervals(pdfY - padding);
+            CollectIntervals(pdfY);
+            CollectIntervals(pdfY + padding);
+            if (intervals.Count == 0) continue;
+            intervals.Sort((first, second) => first.Left.CompareTo(second.Left));
+            var mergedLeft = intervals[0].Left;
+            var mergedRight = intervals[0].Right;
+            for (var index = 1; index <= intervals.Count; index++)
+            {
+                if (index < intervals.Count && intervals[index].Left <= mergedRight)
+                {
+                    mergedRight = Math.Max(mergedRight, intervals[index].Right);
+                    continue;
+                }
+                var row = pixelY * stride;
+                for (var pixelX = mergedLeft; pixelX < mergedRight; pixelX++)
+                {
+                    var offset = row + pixelX * 4;
+                    pixels[offset] = blue;
+                    pixels[offset + 1] = green;
+                    pixels[offset + 2] = red;
+                    pixels[offset + 3] = 255;
+                }
+                if (index < intervals.Count)
+                {
+                    mergedLeft = intervals[index].Left;
+                    mergedRight = intervals[index].Right;
+                }
+            }
+
+            void CollectIntervals(double sampleY)
+            {
+                intersections.Clear();
+                for (var pathIndex = 0; pathIndex < path.Count; pathIndex++)
+                {
+                    var first = path[pathIndex];
+                    var second = path[(pathIndex + 1) % path.Count];
+                    if ((first.Y > sampleY) == (second.Y > sampleY)) continue;
+                    intersections.Add(first.X + (sampleY - first.Y) * (second.X - first.X) / (second.Y - first.Y));
+                }
+                intersections.Sort();
+                for (var intersectionIndex = 0; intersectionIndex + 1 < intersections.Count; intersectionIndex += 2)
+                {
+                    var start = Math.Clamp((int)Math.Floor((intersections[intersectionIndex] - padding) / pageWidth * pixelWidth), left, right);
+                    var end = Math.Clamp((int)Math.Ceiling((intersections[intersectionIndex + 1] + padding) / pageWidth * pixelWidth), left, right);
+                    if (end > start) intervals.Add((start, end));
+                }
             }
         }
     }
@@ -4034,6 +5296,50 @@ public sealed class PdfExportService
         }
     }
 
+    /// <summary>診断用に、ページ直下のPDFオブジェクト種別ごとの件数を返します。</summary>
+    internal static (int Total, int Text, int Paths, int Images, int Forms) GetPageObjectCountsForDiagnostics(
+        string pdfPath,
+        int pageNumber)
+    {
+        EnsureInitialized();
+        var utf8Path = Marshal.StringToCoTaskMemUTF8(Path.GetFullPath(pdfPath));
+        var document = IntPtr.Zero;
+        var page = IntPtr.Zero;
+        try
+        {
+            document = NativeMethods.FPDF_LoadDocument(utf8Path, IntPtr.Zero);
+            if (document == IntPtr.Zero) throw CreatePdfException("診断対象PDFを開けませんでした");
+            if (pageNumber < 1 || pageNumber > NativeMethods.FPDF_GetPageCount(document))
+                throw new ArgumentOutOfRangeException(nameof(pageNumber));
+            page = NativeMethods.FPDF_LoadPage(document, pageNumber - 1);
+            if (page == IntPtr.Zero) throw CreatePdfException("診断対象ページを開けませんでした");
+
+            var text = 0;
+            var paths = 0;
+            var images = 0;
+            var forms = 0;
+            var total = NativeMethods.FPDFPage_CountObjects(page);
+            for (var index = 0; index < total; index++)
+            {
+                var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
+                switch (NativeMethods.FPDFPageObj_GetType(pageObject))
+                {
+                    case 1: text++; break;
+                    case 2: paths++; break;
+                    case 3: images++; break;
+                    case 5: forms++; break;
+                }
+            }
+            return (total, text, paths, images, forms);
+        }
+        finally
+        {
+            if (page != IntPtr.Zero) NativeMethods.FPDF_ClosePage(page);
+            if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
+            Marshal.FreeCoTaskMem(utf8Path);
+        }
+    }
+
     /// <summary>
     /// 診断テスト向けに、PDFの16進文字列と括弧付き文字列を文字送り補正へ変換できるかを返します。
     /// </summary>
@@ -4593,7 +5899,7 @@ public sealed class PdfExportService
                 right <= left || top <= bottom)
                 continue;
             if (redactions.Any(redaction =>
-                    RectanglesIntersect(left, bottom, right, top, redaction.Bounds, padding: 1d)))
+                    RedactionTargetsTextCharacter(redaction, left, bottom, right, top)))
                 return true;
         }
         return false;
@@ -5197,6 +6503,15 @@ public sealed class PdfExportService
         public float F;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FsRectF
+    {
+        public float Left;
+        public float Top;
+        public float Right;
+        public float Bottom;
+    }
+
     private static class NativeMethods
     {
         /// <summary>PDFiumネイティブライブラリを指定するP/Invoke用の論理名です。</summary>
@@ -5235,15 +6550,23 @@ public sealed class PdfExportService
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFTextObj_GetTextRenderMode(IntPtr textObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFTextObj_SetTextRenderMode(IntPtr textObject, int renderMode);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFPageObj_CreateTextObj(IntPtr document, IntPtr font, float fontSize);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFPageObj_CreateNewRect(float x, float y, float width, float height);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPath_SetDrawMode(IntPtr path, int fillMode, int stroke);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPath_GetDrawMode(IntPtr path, out int fillMode, out int stroke);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFText_SetText(IntPtr textObject, IntPtr text);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPageObj_GetFillColor(IntPtr pageObject, out uint red, out uint green, out uint blue, out uint alpha);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPageObj_SetFillColor(IntPtr pageObject, uint red, uint green, uint blue, uint alpha);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPageObj_GetStrokeColor(IntPtr pageObject, out uint red, out uint green, out uint blue, out uint alpha);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPageObj_SetStrokeColor(IntPtr pageObject, uint red, uint green, uint blue, uint alpha);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFPageObj_Transform(IntPtr pageObject, double a, double b, double c, double d, double e, double f);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFPage_InsertObject(IntPtr page, IntPtr pageObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_RemoveObject(IntPtr page, IntPtr pageObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFPageObj_Destroy(IntPtr pageObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_GenerateContent(IntPtr page);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_GetAnnotCount(IntPtr page);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFPage_GetAnnot(IntPtr page, int index);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFAnnot_GetRect(IntPtr annotation, out FsRectF rect);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFPage_CloseAnnot(IntPtr annotation);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPage_RemoveAnnot(IntPtr page, int index);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDF_SaveAsCopy(IntPtr document, ref FpdfFileWrite writer, uint flags);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern float FPDF_GetPageWidthF(IntPtr page);

@@ -52,7 +52,17 @@ public sealed record PdfPreviewResult(
     int PageNumber,
     double PageWidthPoints,
     double PageHeightPoints,
-    IReadOnlyList<PdfTextOverlayRegion> TextRegions);
+    IReadOnlyList<PdfTextOverlayRegion> TextRegions,
+    IReadOnlyList<PdfSelectableTextCharacter> SelectableCharacters);
+
+/// <summary>墨消しの文字選択で使用する、可視・不可視を問わない1文字のプレビュー境界です。</summary>
+public sealed record PdfSelectableTextCharacter(
+    string Text,
+    double Left,
+    double Top,
+    double Width,
+    double Height,
+    bool IsInvisible);
 
 /// <summary>
 /// PDFiumから取得した1文字分の境界と描画属性を表します。
@@ -279,7 +289,10 @@ public sealed class PdfPreviewService
                 var textRegions = textPage == IntPtr.Zero
                     ? []
                     : ExtractTextRegions(page, textPage, widthPoints, heightPoints, pixelWidth, pixelHeight);
-                return new PdfPreviewResult(image, pageCount, pageNumber, widthPoints, heightPoints, textRegions);
+                var selectableCharacters = textPage == IntPtr.Zero
+                    ? []
+                    : ExtractSelectableCharacters(textPage, widthPoints, heightPoints, pixelWidth, pixelHeight);
+                return new PdfPreviewResult(image, pageCount, pageNumber, widthPoints, heightPoints, textRegions, selectableCharacters);
             }
             finally
             {
@@ -290,6 +303,36 @@ public sealed class PdfPreviewService
                 Marshal.FreeCoTaskMem(utf8Path);
             }
         }
+    }
+
+    private static IReadOnlyList<PdfSelectableTextCharacter> ExtractSelectableCharacters(
+        IntPtr textPage,
+        double pageWidth,
+        double pageHeight,
+        int pixelWidth,
+        int pixelHeight)
+    {
+        var result = new List<PdfSelectableTextCharacter>();
+        var count = NativeMethods.FPDFText_CountChars(textPage);
+        for (var index = 0; index < count; index++)
+        {
+            var textObject = NativeMethods.FPDFText_GetTextObject(textPage, index);
+            var unicode = NativeMethods.FPDFText_GetUnicode(textPage, index);
+            if (textObject == IntPtr.Zero || unicode == 0 || unicode > 0x10FFFF ||
+                NativeMethods.FPDFText_GetCharBox(textPage, index, out var left, out var right, out var bottom, out var top) == 0 ||
+                right <= left || top <= bottom)
+                continue;
+            var alpha = 255u;
+            if (NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha) == 0) alpha = 255;
+            result.Add(new PdfSelectableTextCharacter(
+                char.ConvertFromUtf32((int)unicode),
+                left / pageWidth * pixelWidth,
+                (pageHeight - top) / pageHeight * pixelHeight,
+                (right - left) / pageWidth * pixelWidth,
+                (top - bottom) / pageHeight * pixelHeight,
+                NativeMethods.FPDFTextObj_GetTextRenderMode(textObject) == 3 || alpha <= 5));
+        }
+        return result;
     }
 
     private static IReadOnlyList<PdfTextOverlayRegion> ExtractTextRegions(
@@ -314,8 +357,13 @@ public sealed class PdfPreviewService
             regions);
         if (regions.Count == 0)
             ExtractCharacterRegions(textPage, pageWidth, pageHeight, pixelWidth, pixelHeight, regions);
-        var invisible = regions.Where(region => region.IsInvisible).ToArray();
-        return invisible.Length > 0 ? invisible : regions;
+
+        // A born-digital PDF already renders its visible text through PDFium. Exposing those
+        // same objects as an OCR editing overlay made an ordinary PDF look like a scanned page
+        // with transparent text placed on top of it. Only genuinely invisible text belongs in
+        // the OCR overlay; visible characters remain available separately through
+        // SelectableCharacters for text-selection redaction.
+        return regions.Where(region => region.IsInvisible).ToArray();
     }
 
     private static void ExtractCharacterRegions(

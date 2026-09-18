@@ -307,13 +307,22 @@ public partial class App
 
     private static void WritePersistenceTextPdf(string path)
     {
-        var content = "BT /F1 18 Tf 3 Tr 25 300 Td (ABCDEF) Tj ET\n";
+        var content =
+            "q 300 0 0 400 0 0 cm /Im1 Do Q\n" +
+            "0.82 0.90 0.96 rg 20 20 260 360 re f\n" +
+            "0 0 0 rg BT /F1 18 Tf 0 Tr 25 340 Td (VISIBLE TEXT) Tj ET\n" +
+            "BT /F1 18 Tf 3 Tr 25 300 Td (ABCDEF) Tj ET\n";
+        const string imageData = "EEF2F7>";
         string[] objects = [
             "<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources " +
+            "<< /Font << /F1 4 0 R >> /XObject << /Im1 6 0 R >> >> /Contents 5 0 R >>",
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-            $"<< /Length {content.Length} >>\nstream\n{content}endstream"
+            $"<< /Length {content.Length} >>\nstream\n{content}endstream",
+            $"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB " +
+            $"/BitsPerComponent 8 /Filter /ASCIIHexDecode /Length {imageData.Length} >>\n" +
+            $"stream\n{imageData}\nendstream",
         ];
         var pdf = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int>();

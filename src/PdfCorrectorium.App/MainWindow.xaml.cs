@@ -49,6 +49,9 @@ public partial class MainWindow : Window
     private bool _isAddingOcrRegion;
     /// <summary>囲み矩形を墨消し範囲として確定する操作中であることを示します。</summary>
     private bool _isAddingRedaction;
+    /// <summary>多角形またはフリーハンド墨消しの未確定プレビュー座標です。</summary>
+    private readonly List<Point> _redactionPathPoints = [];
+    private bool _isDrawingFreehandRedaction;
     /// <summary>位置またはサイズをドラッグ調整している墨消し範囲です。</summary>
     private RedactionOverlayViewModel? _transformedRedaction;
     /// <summary>現在ページ画像から次の墨消し色を1点取得する操作中です。</summary>
@@ -610,6 +613,29 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Enter && ViewModel.IsRedactionMode &&
+            ViewModel.RedactionInputMode == RedactionInputMode.Polygon && _redactionPathPoints.Count >= 3)
+        {
+            CompletePathRedaction(PdfRedactionShapeKind.Polygon);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape && ViewModel.IsRedactionMode && _redactionPathPoints.Count > 0)
+        {
+            CancelRedactionPath();
+            ViewModel.StatusMessageForInteraction("未確定の墨消し形状を取り消しました。");
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape && ViewModel.IsRedactionMode && ViewModel.SelectedRedaction is not null)
+        {
+            CancelRedactionTransform();
+            CancelPointerRectangle();
+            ViewModel.SelectedRedaction = null;
+            ViewModel.StatusMessageForInteraction("墨消し範囲の選択を解除しました。");
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Escape && ViewModel.IsRedactionMode)
         {
             CancelRedactionTransform();
@@ -1137,17 +1163,57 @@ public partial class MainWindow : Window
         CommitPendingEditorBindings();
         if (ViewModel.IsRedactionMode)
         {
+            // 文字マーカーは文字との対応を壊さないよう移動・サイズ変更させません。
+            // 帯をクリックした場合は新しい選択ドラッグを開始せず、削除等のための再選択だけ行います。
+            if (FindAncestor<Grid>(e.OriginalSource as DependencyObject) is
+                { DataContext: RedactionOverlayViewModel { IsTextSelection: true } marker })
+            {
+                ViewModel.SelectedRedaction = marker;
+                e.Handled = true;
+                return;
+            }
             if (FindAncestor<Thumb>(e.OriginalSource as DependencyObject) is { DataContext: RedactionOverlayViewModel }) return;
             ViewModel.SelectedRedaction = null;
+            var point = e.GetPosition(OverlayCanvas);
+            if (ViewModel.RedactionInputMode == RedactionInputMode.Polygon)
+            {
+                _redactionPathPoints.Add(point);
+                UpdateRedactionPathPreview();
+                if (e.ClickCount >= 2 && _redactionPathPoints.Count >= 3)
+                    CompletePathRedaction(PdfRedactionShapeKind.Polygon);
+                else
+                    ViewModel.StatusMessageForInteraction($"多角形の頂点 {_redactionPathPoints.Count}点。ダブルクリックまたはEnterで確定します。");
+                e.Handled = true;
+                return;
+            }
+            if (ViewModel.RedactionInputMode == RedactionInputMode.Freehand)
+            {
+                _redactionPathPoints.Clear();
+                _redactionPathPoints.Add(point);
+                _isDrawingFreehandRedaction = true;
+                UpdateRedactionPathPreview();
+                OverlayCanvas.CaptureMouse();
+                e.Handled = true;
+                return;
+            }
             _isAddingRedaction = true;
-            _marqueeStart = e.GetPosition(OverlayCanvas);
+            _marqueeStart = point;
             Canvas.SetLeft(MarqueeSelectionRectangle, _marqueeStart.X);
             Canvas.SetTop(MarqueeSelectionRectangle, _marqueeStart.Y);
             MarqueeSelectionRectangle.Width = 0;
             MarqueeSelectionRectangle.Height = 0;
-            MarqueeSelectionRectangle.Background = new SolidColorBrush(Color.FromArgb(92, 30, 30, 30));
-            MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(190, 30, 30));
-            MarqueeSelectionRectangle.Visibility = Visibility.Visible;
+            if (ViewModel.RedactionInputMode == RedactionInputMode.TextSelection)
+            {
+                MarqueeSelectionRectangle.Visibility = Visibility.Collapsed;
+                TextRedactionMarkerPreviewCanvas.Children.Clear();
+                TextRedactionMarkerPreviewCanvas.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                MarqueeSelectionRectangle.Background = new SolidColorBrush(Color.FromArgb(92, 30, 30, 30));
+                MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(190, 30, 30));
+                MarqueeSelectionRectangle.Visibility = Visibility.Visible;
+            }
             OverlayCanvas.CaptureMouse();
             e.Handled = true;
             return;
@@ -1181,19 +1247,50 @@ public partial class MainWindow : Window
 
     private void OverlayCanvas_OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (_isDrawingFreehandRedaction && e.LeftButton == MouseButtonState.Pressed)
+        {
+            var point = e.GetPosition(OverlayCanvas);
+            if (_redactionPathPoints.Count == 0 || (point - _redactionPathPoints[^1]).Length >= 2d)
+            {
+                _redactionPathPoints.Add(point);
+                UpdateRedactionPathPreview();
+            }
+            e.Handled = true;
+            return;
+        }
         if ((!_isMarqueeSelecting && !_isAddingOcrRegion && !_isAddingRedaction) || e.LeftButton != MouseButtonState.Pressed) return;
         var current = e.GetPosition(OverlayCanvas);
         var left = Math.Min(_marqueeStart.X, current.X);
         var top = Math.Min(_marqueeStart.Y, current.Y);
-        Canvas.SetLeft(MarqueeSelectionRectangle, left);
-        Canvas.SetTop(MarqueeSelectionRectangle, top);
-        MarqueeSelectionRectangle.Width = Math.Abs(current.X - _marqueeStart.X);
-        MarqueeSelectionRectangle.Height = Math.Abs(current.Y - _marqueeStart.Y);
+        var width = Math.Abs(current.X - _marqueeStart.X);
+        var height = Math.Abs(current.Y - _marqueeStart.Y);
+        if (_isAddingRedaction && ViewModel.RedactionInputMode == RedactionInputMode.TextSelection)
+        {
+            UpdateTextRedactionMarkerPreview(new Rect(left, top, width, height));
+        }
+        else
+        {
+            Canvas.SetLeft(MarqueeSelectionRectangle, left);
+            Canvas.SetTop(MarqueeSelectionRectangle, top);
+            MarqueeSelectionRectangle.Width = width;
+            MarqueeSelectionRectangle.Height = height;
+        }
         e.Handled = true;
     }
 
     private void OverlayCanvas_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isDrawingFreehandRedaction)
+        {
+            _isDrawingFreehandRedaction = false;
+            if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
+            var point = e.GetPosition(OverlayCanvas);
+            if (_redactionPathPoints.Count == 0 || (point - _redactionPathPoints[^1]).Length >= 1d)
+                _redactionPathPoints.Add(point);
+            CompletePathRedaction(PdfRedactionShapeKind.Freehand);
+            e.Handled = true;
+            return;
+        }
         if (_isAddingRedaction)
         {
             _isAddingRedaction = false;
@@ -1205,7 +1302,12 @@ public partial class MainWindow : Window
                 Math.Abs(end.X - _marqueeStart.X),
                 Math.Abs(end.Y - _marqueeStart.Y));
             ResetPointerRectangle();
-            if (bounds.Width < 8 || bounds.Height < 8 || ViewModel.AddManualRedaction(bounds) is null)
+            var isTextSelection = ViewModel.RedactionInputMode == RedactionInputMode.TextSelection;
+            var dragDistance = (end - _marqueeStart).Length;
+            var created = isTextSelection
+                ? dragDistance >= 4 && ViewModel.AddPdfTextRedactions(bounds) > 0
+                : bounds.Width >= 8 && bounds.Height >= 8 && ViewModel.AddManualRedaction(bounds) is not null;
+            if (!created)
             {
                 ViewModel.StatusMessageForInteraction("追加範囲が小さすぎるため、墨消し範囲を作成しませんでした。");
             }
@@ -1279,8 +1381,32 @@ public partial class MainWindow : Window
         _isAddingOcrRegion = false;
         _isAddingRedaction = false;
         _isMarqueeSelecting = false;
+        _isDrawingFreehandRedaction = false;
         if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
         ResetPointerRectangle();
+        CancelRedactionPath();
+    }
+
+    private void UpdateRedactionPathPreview()
+    {
+        RedactionPathPreview.Points = new PointCollection(_redactionPathPoints);
+        RedactionPathPreview.Visibility = _redactionPathPoints.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void CompletePathRedaction(PdfRedactionShapeKind kind)
+    {
+        var points = _redactionPathPoints.ToArray();
+        CancelRedactionPath();
+        if (points.Length < 3 || ViewModel.AddPathRedaction(points, kind) is null)
+            ViewModel.StatusMessageForInteraction("形状が小さすぎるか頂点が不足しているため、墨消し範囲を作成しませんでした。");
+    }
+
+    private void CancelRedactionPath()
+    {
+        _redactionPathPoints.Clear();
+        if (RedactionPathPreview is null) return;
+        RedactionPathPreview.Points.Clear();
+        RedactionPathPreview.Visibility = Visibility.Collapsed;
     }
 
     private void ResetPointerRectangle()
@@ -1288,11 +1414,43 @@ public partial class MainWindow : Window
         MarqueeSelectionRectangle.Visibility = Visibility.Collapsed;
         MarqueeSelectionRectangle.Background = new SolidColorBrush(Color.FromArgb(40, 120, 183, 255));
         MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(24, 117, 209));
+        TextRedactionMarkerPreviewCanvas.Children.Clear();
+        TextRedactionMarkerPreviewCanvas.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>文字選択中は囲み矩形ではなく、実際に確定される行単位の帯を表示します。</summary>
+    private void UpdateTextRedactionMarkerPreview(Rect selection)
+    {
+        TextRedactionMarkerPreviewCanvas.Children.Clear();
+        var color = ColorConverter.ConvertFromString(ViewModel.RedactionColorHex) is Color parsed
+            ? parsed
+            : Colors.Black;
+        foreach (var bounds in ViewModel.GetPdfTextRedactionBandPreview(selection))
+        {
+            var marker = new Border
+            {
+                Width = bounds.Width,
+                Height = bounds.Height,
+                Background = new SolidColorBrush(color) { Opacity = 0.45d },
+                BorderBrush = new SolidColorBrush(color) { Opacity = 0.9d },
+                BorderThickness = new Thickness(1d),
+                CornerRadius = new CornerRadius(Math.Min(3d, bounds.Height / 3d)),
+            };
+            Canvas.SetLeft(marker, bounds.Left);
+            Canvas.SetTop(marker, bounds.Top);
+            TextRedactionMarkerPreviewCanvas.Children.Add(marker);
+        }
+        TextRedactionMarkerPreviewCanvas.Visibility = Visibility.Visible;
     }
 
     private void RedactionColorButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string color }) ViewModel.SetRedactionColor(color);
+    }
+
+    private void RedactionInputModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        CancelPointerRectangle();
     }
 
     private void RedactionEyedropperButton_OnClick(object sender, RoutedEventArgs e)

@@ -23,7 +23,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - **文書情報の編集**：タイトル、作者、文書の言語、出力PDFのバージョンなどを変更できます。
 - **コメントとタグ**：文書、ページ、選択したOCR文字領域へコメントとタグを付け、解決状態や重要度を管理できます。
 - **ページ内リンク**：選択したOCR文字領域に移動先ページを設定し、アプリ内で移動できるほか、出力PDFへ内部リンクとして保存できます。
-- **墨消し**：選択文字・OCR領域・任意の矩形を色付きの墨消し範囲にし、標準色またはページからスポイトで取得した色を使って、背景画像を含めて復元できない形のPDFとして出力できます。
+- **墨消し**：PDF内の文字・OCR領域・矩形・多角形・フリーハンド範囲を色付きの墨消しにし、標準色またはページからスポイトで取得した色を使って、背景画像を含めて復元できない形のPDFとして出力できます。
 - **入力PDFの確認**：フォーム、署名、JavaScript、埋め込みファイル、レイヤー、非埋め込みフォントなど、編集・出力時に注意したい特性を表示します。
 - **作業の保存・PDF出力**：プロジェクトとして保存して編集を再開し、修正結果を別のPDFとして出力できます。
 
@@ -31,7 +31,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.161`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.171`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -49,7 +49,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - 編集用プレビューのページ配置（単一ページ／見開き）とスクロール方式（ページ切り替え／連続スクロール）を独立して選択可能。初回はPDFの初期表示指定に従い、意図的に変更した状態はプロジェクトへ保存。見開きのページ切替は移動先の2ページを先に準備して一括表示し、読み込み途中に単一ページへ見えるちらつきを防止。表紙の単独表示有無と左綴じ／右綴じを選べ、連続表示では表示範囲周辺だけを遅延描画してクリックしたページをその位置で編集面へ切り替え
 - ページ数表示、非同期サムネイル、前後ページへの移動、ページの挿入・削除・並べ替え、90度単位の回転、および各ページ構成操作のUndo/Redo。削除・並べ替え・回転は元PDFを複製せず論理ページ情報だけを更新し、挿入と最終出力の境界でだけPDFを実体化
 - プロジェクト外部のPDFと、プロジェクトに埋め込まれたPDFのプレビュー
-- PDFの文字オブジェクトから抽出したOCR文字列の半透明表示（不可視描画モードや透明度ゼロの文字を含む）
+- PDFiumによる通常PDFのネイティブ表示と、不可視描画モードまたは透明度ゼロの文字だけを対象にしたOCR編集用の半透明表示
 - NDLOCR-Liteの関連ファイル（JSON、XML、TXT、TEI）の自動検出
 - NDLOCR-LiteのJSON・XMLからの座標付きOCR領域の取り込みと、手動取り込み
 - OCR領域の選択と、文字列・位置・サイズ・回転・文字方向・確認状態・分割／結合・ロック・読み順の編集
@@ -60,7 +60,7 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 - 入力PDFのフォーム、署名、JavaScript、添付、レイヤー、増分更新、非埋め込みフォント等の注意事項表示
 - 文書・ページ・OCR領域に対するコメント、重要度、解決状態、タグの編集とプロジェクト保存
 - 選択OCR領域から別ページへ移動するリンクの設定、戻る／進む、Ctrl+クリックによる移動、出力PDFへのGoToリンク保存
-- 選択文字・OCR領域・任意矩形の墨消し指定、作成後の色変更・Deleteキーによる削除、ページ画像からのスポイト採色、編集表示の半透明／不透明切替、Undo/Redo、プロジェクト保存、および表示内容を高精細画像化しつつ墨消し範囲外の透明OCR文字を保持する安全なPDF出力
+- PDF内の可視／不可視文字を行単位の連続したマーカー状の帯へまとめる文字選択、選択OCR領域、任意矩形、多角形、フリーハンドの墨消し指定、作成後の色変更・Deleteキーによる削除、ページ画像からのスポイト採色、編集表示の半透明／不透明切替、Undo/Redo、プロジェクト保存。通常のPDF文字選択では対象文字を除去して矩形へ置き換え、元の画像・図形・範囲外テキストを保持し、任意範囲や直接編集できない構造ではページ画像化へ安全側フォールバックするPDF出力
 - OCR編集／読み順編集／校正・確認／墨消しを排他的に切り替える編集モード。墨消し中はOCR領域の移動・変形・削除を停止し、連続して範囲を指定可能。作成済みの墨消し範囲は直接移動し、8方向のハンドルでサイズ変更可能
 - 元PDFとは別のPDFへの安全な出力、出力後の検証、検証後の保存確定
 - プロジェクトの自動保存、容量上限付き世代バックアップ、バックアップからの復元、現在ページ周辺だけを保持するページサムネイルキャッシュ
@@ -71,11 +71,29 @@ PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認�
 
 実装済みの範囲は、古い設計資料に記載された初期の基盤段階より広がっています。Version 1.0に向けた未実装項目や既知の不具合は、[実装状況](IMPLEMENTATION_STATUS.md)と設計資料内の実装状況欄で管理しています。上記の機能一覧は、読み込み・保存・再出力時の完全な情報保持や、Version 1.0の全要件の達成を保証するものではありません。
 
-## 安全性の修正と残る制限（dev.161）
+## 安全性の修正と残る制限（dev.171）
+
+dev.171では、文字選択の墨消しを、編集画面で確認・保存したPDF座標の位置と大きさのまま出力します。出力時に字形・基準線・フォントの高さから別の矩形へ作り直さず、文字選択帯へ非表示の描画余白も加えません。このため、「基」「IDE」などを含む全範囲で、半透明／不透明の編集表示と出力PDFの位置・幅・高さが一致します。機密文字の除去は表示矩形とは独立して元の文字命令から行い、出力後も範囲内に抽出可能な文字が残っていないことを検査します。
+
+dev.170では、文字選択のドラッグ方向について、拡張前のポインター範囲に文字中心が入った文字だけを選びます。Y方向へほとんど動かさない操作の行ヒット範囲は維持しつつ、隣文字の外接枠へ触れただけで左隣の文字を選ぶことはありません。PDF出力時の上下端は、選択文字と同じ元文字列・同じ基準線だけから求めます。別フォントや日本語文字の高さが混入しないため、`IDE`の再現範囲は約14.1ポイントから約6.1ポイントへ縮まりました。左右端は選択した字形のPDF実測境界を維持します。
+
+dev.169では、文字を1字ずつ選択しても、同じPDF文字行に属する全文字を基準に上下端とプレビュー余白をそろえます。`g`のようなディセンダー、英大文字、日本語、短い字形を個別に選んでも同じ高さになり、左右端だけが実際に選択した文字へ合います。同じ行で重なる帯は色にかかわらず1本へ統合し、同色で隣接する帯も通常の字間をまたいで1本へ結合します。同じ文字の再選択では最新の色を優先し、矩形を重ねて残しません。編集画面だけでなくPDF出力直前にも整理するため、以前保存したプロジェクトにも適用されます。
+
+dev.168では、プレビュー用の余白付きマーカー帯と、PDF文字の削除判定・出力矩形を分離しました。文字中心が帯に入った文字だけを削除し、出力矩形は対象文字のPDF実座標から締め直すため、字形境界の張り出し、画面座標の丸め、帯の余白で前後の文字まで消したり覆ったりしません。実際の3本の保存済み帯では、29文字だけを除去し、隣接する括弧、`CLI`、助詞などを可視・抽出可能なまま保持しました。
+
+「PDF文字を選択」は、Y方向へほとんど動かさない横ドラッグでもポインター位置の文字行を選べます。縦書きでは同様に細い縦ドラッグを扱います。この補助範囲は文字を見つけるためだけに使い、墨消し帯には含めません。カーソルは十字ではなくIビームになります。
+
+文字選択で作った墨消しはページ画像へフォールバックしません。元の文字命令に付けたマークを保存後に解析し、`Tj`／`TJ`命令内の選択文字の符号だけを除去して、不透明矩形をPDFオブジェクトとして追加します。16進文字列と括弧付き文字列の両方に対応し、範囲外文字のフォント・字幅・位置と、元の画像・図形を維持します。注釈があるだけでは画像化せず、墨消し範囲と重なる注釈だけを除去して範囲外の注釈を保持します。元命令の安全な部分編集ができないフォーム内文字や回転文字などでは、ページを画像化せずPDF出力自体を中止し、理由を表示します。
+
+実際の205ページPDFでは、対象ページの15フォントと8画像・マスクを保持し、新しい全ページ画像を追加せず、7つの元文字命令から選択した29文字だけを除去して、範囲外19文字を元命令のまま維持できることを確認しています。出力後も保護範囲内の抽出文字が0字であることを再検査します。
+
+文字選択中は、通常の大きな選択矩形ではなく、選んだ行に沿うマーカー帯をその場で表示します。帯は前後行や隣文字を隠さないよう、縦余白を文字高の3%（0.5～1.2表示ピクセル）、横余白を0.25～0.75表示ピクセル、PDF出力時の追加安全余白を0.1ポイントとしています。確定後は自動的に選択を解除し、文字に結び付いた帯は移動・サイズ変更できません。帯のクリックで削除対象として再選択でき、ページ余白のクリックまたはEscapeで選択を解除できます。矩形・多角形・フリーハンドの任意範囲は、機密情報を残さないため従来どおり対象ページを高精細画像へ変換します。
+
+dev.163では、墨消しの入力方式を「矩形」「PDF文字を選択」「多角形」「フリーハンド」から選べます。PDF文字選択は元PDF内の可視文字と不可視文字を文字境界単位で取得し、囲んだ文字だけを墨消し候補にします。多角形は各頂点をクリックしてダブルクリックまたはEnterで確定し、フリーハンドはドラッグ軌跡を閉じた図形として確定します。非矩形範囲は外接矩形ではなく保存した輪郭で塗り、透明OCR文字の除去判定と出力後検証にも同じ輪郭を使います。フリーハンド点列は表示精度を保ちながら最大256点へ簡略化し、プロジェクト読込時は安全上4,096点を上限とします。
 
 dev.161では、1本の透明OCR文字行の一部だけに墨消しが重なった場合、行全体ではなく、1ポイントの安全余白を含む墨消し範囲と交差した文字だけを検索・コピー対象から除去します。交差しない行は元のPDFテキストオブジェクトを保ち、部分交差した行は墨消しの左右に残る文字列断片を元フォントと文字境界へ不可視で再構成します。出力検証は各文字境界を再検査し、墨消し範囲内に抽出可能な文字が1字でも残れば保存先へ確定しません。
 
-画質については、墨消しページに画像最適化を先に適用してから再画像化する二重JPEG圧縮を廃止し、元の表示内容から直接300dpi・JPEG品質99で生成するようにしました。A4相当では2481×3508画素となります。極端に大きなページでは、安定性のため長辺14,000画素・約96メガピクセルを上限とします。既存注釈、構造タグ、ベクター情報は墨消し対象ページでは引き続き画像化されます。
+安全側フォールバックの画質については、墨消しページに画像最適化を先に適用してから再画像化する二重JPEG圧縮を廃止し、元の表示内容から直接300dpi・JPEG品質99で生成します。A4相当では2481×3508画素となります。極端に大きなページでは、安定性のため長辺14,000画素・約96メガピクセルを上限とします。このフォールバックを使ったページでは、既存注釈、構造タグ、ベクター情報は画像化されます。
 
 dev.161では、画像最適化の行・列・内部形状判定を同じ画素走査へ統合し、PDFとは独立した画素配列の判定だけをCPU並列化しました。JPEG品質は従来どおり容量条件を満たす最高値を選びます。中間確定は最大192ページまたは768 MiBの早い方とし、メモリ上限による早期確定は維持しながら不要な全PDF再圧縮を減らします。実際の450ページ、14,275変更領域、443画像最適化、1墨消しを含むプロジェクトで、同一の118,694,840バイト出力を約164秒から約154秒へ短縮しました。処理時間はCPU、ストレージ、原稿画像により変わります。
 
@@ -143,7 +161,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 自動保存は設定した間隔、または約30秒間入力がない場合に実行します（5秒ごとに判定）。一度も保存していないプロジェクトは、元PDFを埋め込んだ復旧用ファイルを`workspaces/recovery/<project-id>.autosave.pdfocrproj`に保存します。復旧するには、このファイルを明示的に開いてください。起動時に復旧データを自動検出する機能は未実装です。復旧用ファイルへの保存だけでは、プロジェクトを保存済み扱いにはしません。
 
-**プロジェクトの互換性：** 新しく保存する形式は1.5です。現行dev.161は形式1.0、1.1、1.2、1.3、1.4、1.5を読み込めます。形式1.5は墨消し指定を追加するため、dev.151以前では開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
+**プロジェクトの互換性：** 新しく保存する形式は1.6です。現行dev.171は形式1.0～1.6を読み込めます。形式1.6は墨消し輪郭と入力方式を追加するため、dev.162以前では開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
 
 外部サービス連携／アプリ内でのOCR実行、ルビ、差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
 
@@ -185,7 +203,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン161では、ソリューション全体の製品バージョンが`1.0.0-dev.161`、アセンブリ／ファイルバージョンが`1.0.0.161`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン171では、ソリューション全体の製品バージョンが`1.0.0-dev.171`、アセンブリ／ファイルバージョンが`1.0.0.171`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
 変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.5、読み込みに必要な最小版はdev.152です。ローカルのビルド記録はGit履歴の代わりにはならないため、配布前にGitのコミットと送信結果も個別に確認します。
 
@@ -258,7 +276,7 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## ドキュメント
 
-[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの12点の図版を参照できます。図版には校正・確認、文書プロパティ、プロジェクトPDF保存方式表示、保存方式選択・入力注意・文書注釈、見開きの表紙・左右綴じ配置、墨消し、OCR編集／墨消しモード切替、墨消し範囲の移動・サイズ変更・色変更・削除・スポイト採色を含みます。`PDF-Correctorium-Design-Documentation.pdf`もdev.161のMarkdownと図版から再生成しています。
+[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの12点の図版を参照できます。図版には校正・確認、文書プロパティ、プロジェクトPDF保存方式表示、保存方式選択・入力注意・文書注釈、見開きの表紙・左右綴じ配置、墨消し、OCR編集／墨消しモード切替、墨消し範囲の移動・サイズ変更・色変更・削除・スポイト採色を含みます。`PDF-Correctorium-Design-Documentation.pdf`もdev.163のMarkdownと図版から再生成しています。
 
 ## ライセンス
 
@@ -297,7 +315,7 @@ This is a development version. Some features, including running new OCR on image
 
 ## Current milestone
 
-The current repository snapshot corresponds to the `v1.0.0-dev.161` development line. It includes:
+The current repository snapshot corresponds to the `v1.0.0-dev.171` development line. It includes:
 
 - C# / .NET 8 / WPF solution structure
 - Core OCR region model with vertical/horizontal writing and independent rotation
@@ -336,7 +354,15 @@ The current repository snapshot corresponds to the `v1.0.0-dev.161` development 
 
 The implemented application is broader than the original foundation milestone described in older design snapshots. Remaining Version 1.0 gaps and known defects are tracked in [Implementation status](IMPLEMENTATION_STATUS.md) and in the implementation-status sections of the design documentation. Features listed above are not a guarantee of complete round-trip preservation or of meeting every Version 1.0 requirement.
 
-## Safety fixes and remaining limitations (dev.161)
+## Safety fixes and remaining limitations (dev.171)
+
+Dev.171 paints every PDF-text redaction at the exact PDF-coordinate position and size reviewed and stored by the editor. Export no longer substitutes glyph-, baseline-, or font-derived geometry and adds no hidden paint padding to text-selection bands, so the editor's translucent/opaque preview and the exported PDF agree for ranges such as the blue `基`, `IDE`, and the orange title. Confidential character codes are still removed independently from the original text commands, and post-export validation still rejects extractable text inside the protected band.
+
+Dev.170 selects characters whose centres fall inside the original pointer range along the drag direction. The expanded perpendicular hit area still supports an almost zero-height drag, but touching the adjacent glyph box no longer selects the glyph to the left. PDF output derives vertical bounds only from the selected characters' original text object and baseline, so a neighbouring Japanese run or taller font cannot enlarge a short selection such as `IDE`. On the reproduced page-10 case, the affected band decreased from about 14.1 points to 6.1 points while keeping the selected glyphs' measured PDF horizontal bounds.
+
+Dev.169 normalizes the top, bottom, and preview padding of separately selected characters against their complete source-PDF text line. Capitals, short glyphs, Japanese glyphs, and descenders such as `g` therefore produce equal-height marks when selected one at a time; only the horizontal extent follows the selected characters. Overlapping same-line marks are consolidated regardless of colour, and same-colour marks separated only by normal glyph spacing are joined. Re-selecting a character keeps one range and gives the newest selection colour precedence. This cleanup runs in the editor and again immediately before export, so it also repairs previously saved projects.
+
+Dev.163 adds four redaction input methods: rectangle, PDF-text selection, polygon, and freehand. PDF-text selection reads both visible and invisible source-PDF character bounds and creates marks only for characters enclosed by the marquee. Polygon input finishes on double-click or Enter; freehand input closes the dragged trace. Shaped redactions use their persisted outline—not merely their bounding box—for paint, searchable-text exclusion, and post-export validation. Freehand traces are simplified to at most 256 points for responsive editing, while package validation rejects paths over 4,096 points.
 
 Dev.161 removes only the individual searchable characters whose bounds intersect a redaction plus its one-point safety margin. Unaffected invisible OCR lines retain their original PDF text objects; partially intersecting lines are rebuilt as invisible text fragments on the left and right of the protected range using their source font and character bounds. Post-export validation rejects the result if any extractable character remains inside a protected range.
 
@@ -410,7 +436,7 @@ The five issues reproduced in the dev.122 audit are now addressed: document swit
 
 Autosave runs at the configured interval or after about 30 seconds without input (checked every 5 seconds). Never-saved projects receive a source-embedded recovery package under `workspaces/recovery/<project-id>.autosave.pdfocrproj`. Open that file explicitly to recover; automatic recovery discovery at startup is not implemented. Recovery writes do not mark the project saved.
 
-**Project compatibility:** new saves use format 1.5. Current dev.161 reads formats 1.0, 1.1, 1.2, 1.3, 1.4, and 1.5. Format 1.5 adds persisted redaction marks, so dev.151 and earlier cannot open newly saved projects. Keep a backup when older-build compatibility is needed. The manifest records the saving build version.
+**Project compatibility:** new saves use format 1.6. Current dev.171 reads formats 1.0 through 1.6. Format 1.6 adds persisted redaction outlines and input kinds, so dev.162 and earlier cannot open newly saved projects. Keep a backup when older-build compatibility is needed. The manifest records the saving build version.
 
 External/in-app OCR, ruby, diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
 
@@ -452,9 +478,9 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 161 produces product version `1.0.0-dev.161` and assembly/file version `1.0.0.161` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 171 produces product version `1.0.0-dev.171` and assembly/file version `1.0.0.171` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
-Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.5 and its minimum reader is dev.152. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
+Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.6 and its minimum reader is dev.163. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
 
 ### Commands and prerequisites
 
@@ -526,7 +552,7 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## Documentation
 
-The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and twelve updated diagrams, including review, document properties, project PDF storage/annotations, facing-page cover/binding layouts, redaction, the OCR/redaction mode switch, and redaction move/resize/color/delete/eyedropper controls. `PDF-Correctorium-Design-Documentation.pdf` has also been regenerated from the dev.161 Markdown and diagrams.
+The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and twelve updated diagrams, including review, document properties, project PDF storage/annotations, facing-page cover/binding layouts, redaction, the OCR/redaction mode switch, and redaction move/resize/color/delete/eyedropper controls. `PDF-Correctorium-Design-Documentation.pdf` has also been regenerated from the dev.163 Markdown and diagrams.
 
 ## License
 

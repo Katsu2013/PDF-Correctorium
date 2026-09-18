@@ -103,6 +103,8 @@ public sealed partial class MainWindowViewModel
         {
             EditUnitIndex = (int)OcrEditUnit.Line;
         }
+        if (IsRedactionMode)
+            ConsolidateCurrentPageTextRedactions();
         OnPropertyChanged(nameof(EditorMode));
         OnPropertyChanged(nameof(IsOcrEditMode));
         OnPropertyChanged(nameof(IsReadingOrderMode));

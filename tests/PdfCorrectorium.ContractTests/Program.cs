@@ -38,7 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("OCR quality analyzer finds keyword-width outliers", KeywordWidthAnomalyAsync),
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
-    ("Project format 1.5 preserves and validates redactions", RedactionRoundTripAsync),
+    ("Project format 1.6 preserves and validates shaped redactions", RedactionRoundTripAsync),
 };
 
 static async Task ExternalRelativeSourceAsync()
@@ -281,8 +281,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.5", ProjectManifest.CurrentVersion, "Redaction projects require format 1.5.");
-    Equal("1.0.0-dev.152", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.5 must name the first compatible reader.");
+    Equal("1.6", ProjectManifest.CurrentVersion, "Shaped-redaction projects require format 1.6.");
+    Equal("1.0.0-dev.163", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.6 must name the first compatible reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -336,7 +336,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.5", manifest["formatVersion"]!.GetValue<string>(), "New containers require redaction support.");
+            Equal("1.6", manifest["formatVersion"]!.GetValue<string>(), "New containers require shaped-redaction support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();
@@ -897,6 +897,14 @@ static async Task RedactionRoundTripAsync()
                 {
                     PageId = pageId,
                     Bounds = new PdfRectangle(new PdfPoint(95, 195), new PdfSize(230, 34)),
+                    PathPoints =
+                    [
+                        new(95, 195),
+                        new(325, 195),
+                        new(300, 229),
+                        new(120, 229),
+                    ],
+                    ShapeKind = PdfRedactionShapeKind.Polygon,
                     ColorHex = "#102030",
                     SourceRegionId = regionId,
                     SourceCharacterStart = 0,
@@ -909,6 +917,12 @@ static async Task RedactionRoundTripAsync()
         var reopened = await package.OpenAsync(path);
         Equal(1, reopened.Redactions.Count, "A redaction must survive project round-trip.");
         Equal("#102030", reopened.Redactions[0].ColorHex, "The selected redaction color must survive project round-trip.");
+        Equal(PdfRedactionShapeKind.Polygon, reopened.Redactions[0].ShapeKind, "The redaction input kind must survive project round-trip.");
+        Equal(4, reopened.Redactions[0].PathPoints.Count, "The non-rectangular path must survive project round-trip.");
+        True(PdfRedactionGeometry.IntersectsRectangle(reopened.Redactions[0], 150, 205, 170, 215, 1),
+            "A character inside a polygon must intersect the protected area.");
+        True(!PdfRedactionGeometry.IntersectsRectangle(reopened.Redactions[0], 96, 225, 102, 228, 0),
+            "A character inside the bounding box but outside the polygon must remain available.");
         True((await package.ValidateAsync(path)).IsValid, "A bounded redaction project must validate.");
         True(await package.VerifySourceFileAsync(source with { IsEmbedded = true, RelativePath = null }, pdf),
             "An explicitly supplied export source must match its recorded size and fingerprint regardless of project storage mode.");

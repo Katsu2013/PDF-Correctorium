@@ -1,6 +1,12 @@
 # 12-01 運用・配布
 
-## 現行開発状況（2026-09-15 / dev.161）
+## 現行開発状況（2026-09-17 / dev.169）
+
+dev.169はPDF文字選択墨消しの行高さを、選択した1字ではなく同じ文字行全体から正規化する。同じ行で重なる範囲と、同色で通常の字間だけ離れた範囲は編集時と出力直前に1本へ統合し、旧プロジェクトの重複指定にも適用する。製品版は`1.0.0-dev.169`、数値版は`1.0.0.169`である。プロジェクト形式1.6と最小アプリ版dev.163は変更しない。最終配布先、入力指紋、検証結果は[実装状況](../../../../IMPLEMENTATION_STATUS.md)へ記録する。
+
+## 以前の開発状況（2026-09-15 / dev.163）
+
+dev.163はPDF文字選択、多角形、フリーハンド墨消しと輪郭共通判定を追加する。新規プロジェクト形式は1.6、最小アプリ版はdev.163である。形式1.0～1.5は読込互換とし、旧矩形墨消しは空輪郭として扱う。最終配布先、入力指紋、検証結果は[実装状況](../../../../IMPLEMENTATION_STATUS.md)へ記録する。
 
 dev.158はポータブルプロジェクトの隔離PDF出力、一時状態通知の競合、保存先置換時の不要な旧PDFバックアップ、墨消し全件反映検査を修正する。プロジェクト形式1.5と最小アプリ版dev.152は変更しない。製品版は`1.0.0-dev.158`、数値版は`1.0.0.158`である。検証済み配布先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.158-win-x64-20260914-092151`、入力指紋は`3A493628B6C926FAEC107FCB3176B1D0B511BCD80490BB3206DD0419E0E07B26`。最終検証結果は[実装状況](../../../../IMPLEMENTATION_STATUS.md)へ記録する。
 
@@ -70,7 +76,7 @@ Windows 11 x64向けPortable配布物があり、`portable.marker`、PDFium、qp
 
 出力先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-<version>-win-x64-<yyyyMMdd-HHmmss>`。版ラベルは共通ビルド設定の評価値から取得し、`IMPLEMENTATION_STATUS.md`の現行版とも一致を確認する。`-BuildLabel`には実際の版と異なる値を指定できない。依存復元が済んだオフライン環境では`-NoRestore`を使う。SDKの前提は[ビルド案内](../../../../README.md#build)を参照する。発行はframework-dependentであり、Portableは設定の配置方式を表す。対象環境には.NET 8 Desktop Runtimeが必要である。
 
-変更したアプリやビルド処理を渡す前に`Directory.Build.props`の`DevelopmentRevision`を進める。現行dev.158では製品版`1.0.0-dev.158`、全アセンブリ・ファイル版`1.0.0.158`となり、画面、保存マニフェスト、配布フォルダーに反映する。発行時は版番号・ビルド入力の指紋・出力バイナリーを検査して`build-info.json`を残す。プロジェクト形式1.5の`minimumApplicationVersion`は、この形式を導入したdev.152とする。`DEPENDENCIES.lock.json`と`tools/TestDependencyLock.ps1`により、PDFium、qpdfと付属DLLのSHA-256もリポジトリ内・配布先の双方で確認する。詳細は[必須の版管理ルール](../../../../VERSIONING.md)を参照する。同じソースの再検証ではリビジョンを維持できるが、配布フォルダーは毎回新しくする。
+変更したアプリやビルド処理を渡す前に`Directory.Build.props`の`DevelopmentRevision`を進める。現行dev.169では製品版`1.0.0-dev.169`、全アセンブリ・ファイル版`1.0.0.169`となり、画面、保存マニフェスト、配布フォルダーに反映する。発行時は版番号・ビルド入力の指紋・出力バイナリーを検査して`build-info.json`を残す。プロジェクト形式1.6の`minimumApplicationVersion`は、この形式を導入したdev.163とする。`DEPENDENCIES.lock.json`と`tools/TestDependencyLock.ps1`により、PDFium、qpdfと付属DLLのSHA-256もリポジトリ内・配布先の双方で確認する。詳細は[必須の版管理ルール](../../../../VERSIONING.md)を参照する。同じソースの再検証ではリビジョンを維持できるが、配布フォルダーは毎回新しくする。
 
 dev.140の最終検証に使用した配布先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.140-win-x64-20260910-013719`である。製品版`1.0.0-dev.140`、数値版`1.0.0.140`、配布フォルダー名、5つの管理対象バイナリー、プロジェクトマニフェストのアプリ版が一致し、15件のネイティブ依存記録を持つ。入力指紋は`9C6E7EDCA2B288A0C1D601123452191FE580ED8E581682E592813215A75343D9`である。文書UIの画像証跡は`outputs/.verification/final-dev140-20260910-013514593/document-ui/reading-order-badges.png`に保存した。
 

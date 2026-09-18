@@ -46,7 +46,7 @@ internal sealed class PdfNativeWorkerClient
             var metadata = await ReadJsonAsync<PreviewMetadata>(Path.Combine(directory, "result.json"), cancellationToken);
             var image = LoadFrozenBitmap(Path.Combine(directory, "preview.png"));
             return new PdfPreviewResult(image, metadata.PageCount, metadata.PageNumber, metadata.PageWidthPoints,
-                metadata.PageHeightPoints, metadata.TextRegions);
+                metadata.PageHeightPoints, metadata.TextRegions, metadata.SelectableCharacters);
         }
         finally { ReleaseOperationDirectory(directory); }
     }
@@ -237,7 +237,7 @@ internal sealed class PdfNativeWorkerClient
                                 encoder.Save(stream);
                             await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
                                 new PreviewMetadata(result.PageCount, result.PageNumber, result.PageWidthPoints,
-                                    result.PageHeightPoints, result.TextRegions), cancellationToken);
+                                    result.PageHeightPoints, result.TextRegions, result.SelectableCharacters), cancellationToken);
                             break;
                         }
                     case "characters":
@@ -412,5 +412,6 @@ internal sealed class PdfNativeWorkerClient
         int PageNumber,
         double PageWidthPoints,
         double PageHeightPoints,
-        IReadOnlyList<PdfTextOverlayRegion> TextRegions);
+        IReadOnlyList<PdfTextOverlayRegion> TextRegions,
+        IReadOnlyList<PdfSelectableTextCharacter> SelectableCharacters);
 }

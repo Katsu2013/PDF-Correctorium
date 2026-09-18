@@ -1106,6 +1106,13 @@
                                                         <DataTrigger Binding="{Binding IsRedactionMode}" Value="True">
                                                             <Setter Property="Cursor" Value="Cross" />
                                                         </DataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsRedactionMode}" Value="True" />
+                                                                <Condition Binding="{Binding RedactionInputModeIndex}" Value="1" />
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Cursor" Value="IBeam" />
+                                                        </MultiDataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </ListBox.Style>
@@ -1520,6 +1527,10 @@
                                                     Background="#28D32F2F"
                                                     BorderBrush="#FFD32F2F"
                                                     BorderThickness="1" />
+                                            <Canvas x:Name="TextRedactionMarkerPreviewCanvas"
+                                                    Visibility="Collapsed" />
+                                            <Polygon x:Name="RedactionPathPreview" Visibility="Collapsed"
+                                                     Fill="#40D32F2F" Stroke="#FFD32F2F" StrokeThickness="2" />
                                         </Canvas>
                                         <!-- 墨消し指定は編集時だけ半透明で表示し、PDF出力時は指定色で確定する。 -->
                                         <ItemsControl x:Name="RedactionOverlayLayer" ItemsSource="{Binding RedactionItems}"
@@ -1542,7 +1553,11 @@
                                                                 Background="{Binding ColorHex}"
                                                                 Opacity="{Binding DataContext.RedactionPreviewOpacity, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 BorderBrush="#FFFF3B30" BorderThickness="2" />
-                                                        <Thumb Tag="Move" Cursor="SizeAll" Background="Transparent" Margin="5"
+                                                        <Path x:Name="RedactionPreviewPath" Data="{Binding ShapeGeometry}" Stretch="Fill"
+                                                              Fill="{Binding ColorHex}"
+                                                              Opacity="{Binding DataContext.RedactionPreviewOpacity, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              Stroke="#FFFF3B30" StrokeThickness="2" Visibility="Collapsed" />
+                                                        <Thumb x:Name="MoveHandle" Tag="Move" Cursor="SizeAll" Background="Transparent" Margin="5"
                                                                DragStarted="RedactionThumb_OnDragStarted"
                                                                DragDelta="RedactionThumb_OnDragDelta"
                                                                DragCompleted="RedactionThumb_OnDragCompleted"
@@ -1571,9 +1586,26 @@
                                                                Visibility="Collapsed" DragStarted="RedactionThumb_OnDragStarted" DragDelta="RedactionThumb_OnDragDelta" DragCompleted="RedactionThumb_OnDragCompleted" />
                                                     </Grid>
                                                     <DataTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPath}" Value="True">
+                                                            <Setter TargetName="RedactionPreviewBorder" Property="Visibility" Value="Collapsed" />
+                                                            <Setter TargetName="RedactionPreviewPath" Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsTextSelection}" Value="True">
+                                                            <Setter TargetName="RedactionPreviewBorder" Property="CornerRadius" Value="3" />
+                                                            <Setter TargetName="RedactionPreviewBorder" Property="BorderThickness" Value="1" />
+                                                            <Setter TargetName="MoveHandle" Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                                             <Setter TargetName="RedactionPreviewBorder" Property="BorderBrush" Value="#FFFFFFFF" />
                                                             <Setter TargetName="RedactionPreviewBorder" Property="BorderThickness" Value="2.5" />
+                                                            <Setter TargetName="RedactionPreviewPath" Property="Stroke" Value="#FFFFFFFF" />
+                                                            <Setter TargetName="RedactionPreviewPath" Property="StrokeThickness" Value="2.5" />
+                                                        </DataTrigger>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsSelected}" Value="True" />
+                                                                <Condition Binding="{Binding IsTextSelection}" Value="False" />
+                                                            </MultiDataTrigger.Conditions>
                                                             <Setter TargetName="NorthHandle" Property="Visibility" Value="Visible" />
                                                             <Setter TargetName="NorthEastHandle" Property="Visibility" Value="Visible" />
                                                             <Setter TargetName="EastHandle" Property="Visibility" Value="Visible" />
@@ -1582,7 +1614,7 @@
                                                             <Setter TargetName="SouthWestHandle" Property="Visibility" Value="Visible" />
                                                             <Setter TargetName="WestHandle" Property="Visibility" Value="Visible" />
                                                             <Setter TargetName="NorthWestHandle" Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
+                                                        </MultiDataTrigger>
                                                     </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -1764,11 +1796,23 @@
                         <Separator Margin="0,14" />
                         <StackPanel x:Name="RedactionPanel" Visibility="{Binding IsRedactionMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Border Background="#FFF4F4" BorderBrush="#D32F2F" BorderThickness="1" CornerRadius="4" Padding="9" Margin="0,0,0,9">
-                            <TextBlock Text="墨消しモードです。ページ上をドラッグして範囲を指定します。作成後は範囲内をドラッグして移動し、周囲のハンドルでサイズを変更できます。EscキーでOCR編集へ戻ります。"
+                            <TextBlock Text="墨消しモードです。文字選択、矩形、多角形、フリーハンドから指定方法を選べます。作成後は移動・サイズ変更でき、Escキーで未確定形状を取り消します。"
                                        TextWrapping="Wrap" Foreground="#8F1F1F" FontWeight="SemiBold" />
                         </Border>
-                        <TextBlock Text="指定範囲はプロジェクトでは非破壊です。PDF出力時は対象ページを高精細画像化し、範囲外の透明OCR文字だけを保持して確定します。"
+                        <TextBlock Text="指定範囲はプロジェクトでは非破壊です。PDF文字選択は元のページ構造を保って対象文字だけを矩形へ置き換えます。安全に構造保持できない場合は画像化せず出力を中止します。任意範囲は対象ページを高精細画像化して確定します。"
                                    TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,8" />
+                        <Label Content="指定方法(_M)" Padding="0" Target="{Binding ElementName=RedactionInputModeComboBox}" />
+                        <ComboBox x:Name="RedactionInputModeComboBox" SelectedIndex="{Binding RedactionInputModeIndex, Mode=TwoWay}"
+                                  IsEnabled="{Binding HasDocument}"
+                                  SelectionChanged="RedactionInputModeComboBox_OnSelectionChanged"
+                                  Margin="0,2,0,7" AutomationProperties.AccessKey="Alt+M">
+                            <ComboBoxItem Content="矩形" />
+                            <ComboBoxItem Content="PDF文字を選択" />
+                            <ComboBoxItem Content="多角形" />
+                            <ComboBoxItem Content="フリーハンド" />
+                        </ComboBox>
+                        <TextBlock Text="文字選択は可視・透明テキストを囲み、同じ行をマーカー状の連続した墨消し帯にします。多角形はクリックで頂点を追加し、ダブルクリックまたはEnterで確定します。"
+                                   TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" />
                         <Label Content="墨消し色(_C)" Padding="0" Target="{Binding ElementName=RedactionColorTextBox}" />
                         <DockPanel Margin="0,3,0,6">
                             <Border DockPanel.Dock="Right" Width="30" Height="24" Margin="6,0,0,0"

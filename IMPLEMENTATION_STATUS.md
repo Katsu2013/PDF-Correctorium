@@ -1,6 +1,96 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.161
+## Current repository snapshot: v1.0.0-dev.171
+
+### Exact editor-to-PDF text-redaction geometry (2026-09-18)
+
+- Text-selection rectangles are now painted from the exact PDF-coordinate band stored by the editor. Export no longer replaces the reviewed band with newly calculated glyph, baseline or font metrics, and it adds no hidden paint padding to text-selection bands. Position, width and height therefore remain the same between the translucent/opaque editor preview and the exported PDF.
+- Security remains independent from presentation geometry: selected PDF character codes are still removed from their original `Tj`/`TJ` commands by centre-in-band matching, and post-export validation still rejects any extractable character left in a protected band. Images, paths and out-of-range text remain native.
+- The user's seven page-10 bands were compared numerically after export. The stored blue-heading range `135.415–146.514 × 492.567–503.384` was emitted within SVG float quantization (`135.453–146.543`, with the same 10.817-point height); all other bands likewise retained their editor dimensions, including the `IDE` range and the orange title range.
+- The permanent redaction diagnostic now rejects any export-time position, size or padding change to a stored text-selection band. The adjacent-glyph pointer-centre test from dev.170 remains in place.
+- Final verification completed with a warning-free Release build, 28 contract tests, 17 source-versioning checks, 18 published-versioning checks, the source and packaged redaction diagnostics, and the packaged smoke diagnostic. The user's 205-page project was exported from both the source build and the portable build; both outputs retained seven native redaction paths at the same coordinates and passed qpdf syntax and stream validation. Evidence is stored under `outputs/.verification/dev171-final-20260918-121500`.
+
+Product version is `1.0.0-dev.171` and numeric version is `1.0.0.171`. Project format remains 1.6. Git metadata remains unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.170
+
+### Baseline- and pointer-aligned text redaction (2026-09-18)
+
+- PDF output now derives a text-selection band’s vertical bounds only from characters in the same original text object and on the same baseline. A neighbouring Japanese run or a taller font can no longer enlarge a short Latin selection such as `IDE`; the reproduced page-10 range decreased from approximately 14.1 points to 6.1 points while retaining the selected glyphs’ measured horizontal bounds.
+- Horizontal text dragging now uses the unexpanded pointer range and character centres along the writing direction. The perpendicular hit area can still be expanded for an almost-zero-height drag, but merely touching an adjacent glyph box no longer selects the glyph to its left.
+- The permanent redaction diagnostic covers adjacent-glyph hit testing, preservation of measured glyph width, exclusion of a taller neighbouring text object and compact same-object baseline metrics. The user’s seven-range page-10 project completed through the structure-preserving path, removed 41 selected characters from seven original text objects, kept 56 out-of-range characters in their original commands, retained native page structure, rendered cleanly and passed qpdf syntax/stream validation.
+- Release compilation and the isolated redaction diagnostic pass with no warnings or errors. Project format remains 1.6.
+
+Product version is `1.0.0-dev.170` and numeric version is `1.0.0.170`. Git metadata remains unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.169
+
+### Same-line text-redaction normalization and consolidation (2026-09-17)
+
+- Separately selected characters now use the full source-PDF line as their vertical reference. Capitals, short glyphs and descenders therefore receive the same top, bottom and preview padding when selected one at a time; only the horizontal extent follows the selected characters.
+- Overlapping text-selection redactions are consolidated regardless of colour, with the newest selection colour winning. Same-colour ranges that touch or are separated only by normal glyph spacing on the same line are joined into one continuous marker. Re-selecting the same character no longer leaves stacked redaction objects.
+- Consolidation runs both while editing and immediately before export. Existing projects therefore receive the fix even when exported without first reopening redaction mode. Entering redaction mode also consolidates the current page as one Undo-able action.
+- The user's saved page-10 project exported without rasterization. Six consolidated ranges removed 36 selected characters from six original text objects while retaining 39 out-of-range characters in their original commands; page 10 retained 15 fonts and 8 source image/mask entries, rendered cleanly and passed qpdf syntax/stream validation.
+- Release compilation and the expanded isolated redaction diagnostic pass with no warnings or errors. The diagnostic covers equal line height for separately selected capital/descender glyphs, adjacent-range joining, duplicate suppression, newest-colour precedence and export-time cleanup of saved ranges.
+
+Product version is `1.0.0-dev.169` and numeric version is `1.0.0.169`. Project format remains 1.6. Git metadata remains unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.168
+
+### Exact glyph-bound text redaction and word-processor selection interaction (2026-09-17)
+
+- Text-selection export no longer uses the padded preview band to decide which PDF characters are removed. A character is selected only when its center lies inside the saved text band, and the opaque output rectangle is tightened again from the selected characters' native PDF coordinates. This prevents overlapping glyph boxes, preview rounding and marker padding from deleting or covering the preceding/following character.
+- Text marker horizontal preview padding is limited to 0.25–0.75 pixels and final PDF safety padding to 0.1 point. The user's saved three-band recovery project exported page 10 without rasterizing it: 29 selected characters were removed from 3 original text objects, 16 out-of-range characters stayed in the original commands, and the surrounding `「`, `CLI`, `ら`, `を`, `に` and `をそ` remained extractable and visible. qpdf reported no syntax or stream errors.
+- A text drag now gets a line hit area even when its Y movement is zero or nearly zero; vertical text receives the corresponding narrow X hit area. The hit-area expansion is used only to find characters and never becomes an output rectangle. A four-pixel pointer movement is sufficient for text selection, while ordinary rectangle redaction retains its eight-by-eight minimum.
+- PDF text selection uses the I-beam cursor. Automated redaction diagnostics cover zero-height horizontal drags and exact selected-versus-remaining visible character counts; document-UI diagnostics cover the effective I-beam cursor. Final packaged evidence is recorded under `outputs/.verification/dev168-final-20260917-01`.
+
+Product version is `1.0.0-dev.168` and numeric version is `1.0.0.168`. Git metadata remains unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.167
+
+### Guaranteed structure-preserving PDF text redaction and compact bands (2026-09-17)
+
+- PDF text-selection redactions never fall back to a full-page bitmap. The exporter marks each original PDF text command, then removes only the selected encoded glyphs from its `Tj`/`TJ` operand and adds native opaque rectangle objects. Hexadecimal and escaped literal PDF strings are both supported. Fonts, text matrices, glyph advances, images, paths and unselected text commands remain native; an unsupported structure aborts before the destination is committed.
+- The user's 205-page source and four saved text-selection redactions were exported through the isolated worker. Page 10 retained all 15 font resources and the same 8 source image/mask entries, added no full-page raster image, removed 29 selected characters from 7 original text objects, kept 19 out-of-range characters in their original commands, rendered with the original page colours, and passed searchable-text validation plus qpdf syntax/stream validation.
+- Text selection is shown as compact, line-aligned marker bands while dragging. Bands use 3% vertical padding clamped to 0.5–1.2 preview pixels and a 0.5-point export safety margin, so tightly spaced neighbouring lines are not covered. Text bands cannot be moved or resized; creation clears the selection automatically, clicking a band reselects it for deletion, clicking blank page space clears it, and Escape clears only the selected band before leaving redaction mode.
+- Release builds complete with no warnings or errors. Contract 28, document-UI 193, source versioning 17 and dependency-lock checks pass. The isolated redaction diagnostic covers compact-band conversion, immediate deselection, non-resizable text bands, hexadecimal and literal PDF text commands, structure-preserving partial text, native object counts, protected-range validation, shaped-range fallback and reopen. Final packaged evidence is recorded under `outputs/.verification/dev167-final-20260917-01`; the exact timestamped portable directory and source fingerprint are recorded by its `build-info.json` and reported at handoff.
+
+Product version is `1.0.0-dev.167` and numeric version is `1.0.0.167`. Git metadata remains unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.165
+
+### Structure-preserving PDF text redaction and native visible-text preview (2026-09-16)
+
+- Text-selection redactions on ordinary PDF page text now remove the intersecting direct text objects and append opaque PDF path rectangles without flattening the page. Partially intersected text objects are split into surviving fragments and rebuilt with the source font, fill color, render mode and original character-union bounds; images, vector paths and unrelated text objects remain native.
+- The structure-preserving path is deliberately limited to direct, unrotated fill/invisible text with no page annotations. Arbitrary rectangles, polygons, freehand ranges, form-contained text, rotated/sheared text and special stroke/clip rendering continue through the 300 DPI safety fallback. Post-export character-boundary validation and qpdf compaction remain mandatory for both paths.
+- The PDF editor no longer turns ordinary visible page text into editable OCR overlay boxes. PDFium continues to render the complete page, while the OCR overlay now contains only genuinely invisible text. Visible and invisible characters remain independently available to PDF text-selection redaction.
+- The isolated redaction diagnostic now exports a structure-preserving text-selection result before its existing shaped-redaction fallback result, verifies that native path/image counts are retained and that the exporter reports the structural path, then reopens and validates the fallback output as before.
+- The fixed mixed-content fixture contains a native background image, vector path, visible text and invisible OCR. A partial selection replaced only the leading visible/invisible characters, retained the remaining visible `E TEXT`, and preserved direct page objects (5 text, 3 paths and 1 image in the packaged output). Both the structure-preserving and shaped-fallback PDFs rendered correctly, contained no extractable character inside protected ranges, contained no verbatim original full text after qpdf reconstruction and passed qpdf syntax/stream checks. Results: `outputs/.verification/dev165-persistence-20260916-01`, `outputs/.verification/dev165-redaction-partial-20260916-01` and `outputs/.verification/dev165-packaged-20260916-01`.
+- The repository-root Release solution build completed with no warnings or errors. Contract 28, persistence 59, source versioning 17 and published versioning 18 checks passed; the packaged smoke diagnostic also exited 0. Versioning results: `outputs/.verification/dev165-versioning-final-20260916-01` and `outputs/.verification/dev165-versioning-published-20260916-01`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.165-win-x64-20260916-160106`. Product version `1.0.0-dev.165`, numeric version `1.0.0.165`, title/About, distribution label and principal binaries agree. SDK 10.0.400; source fingerprint `D4A8DA73ED4213BF52DDD7CEFC0A7447A80C62A70ADA8589BE0A4D7CE419FF8D`. Git metadata was unavailable to the publication script, so no commit or dirty-state claim is made.
+
+## Previous repository snapshot: v1.0.0-dev.164
+
+### Marker-style PDF text redaction and expanded safety coverage (2026-09-16)
+
+- Source-PDF text selection now merges selected character boxes by visual line and creates one continuous, padded marker-style band per line. One drag remains one Undo operation, while the status message reports both the selected character count and generated band count.
+- Text-selection marks receive a 2.5-point export safety margin in addition to their stored padded bounds. Raster painting, invisible searchable-text exclusion and post-export character-boundary validation all use the same margin. Existing projects containing the earlier character-sized text-selection marks also receive the larger margin when exported.
+- The redaction diagnostic checks that synthetic characters on two lines become exactly two padded bands, that actual source-PDF characters produce fewer line bands than selected characters and remain one Undo operation, and that text-selection marks use the larger export safety margin before exercising the isolated PDF export and searchable-text validation path.
+- The repository-root Release build completed with no warnings or errors. Contract 28, document-UI 193 and pre-publication versioning 17 checks passed. The isolated redaction output retained searchable OCR outside the protected range, rejected searchable characters inside it, stored the flattened page at 300 DPI, reopened and rendered, and passed qpdf syntax/stream validation. Source results: `outputs/.verification/dev164-final-20260916-134611977`.
+
+### PDF text, polygon and freehand redaction input (2026-09-15)
+
+- Redaction input now supports four explicit methods: rectangle, source-PDF text selection, polygon and freehand. PDF text selection uses both visible and invisible character boxes from the rendered source page and creates only the intersecting character marks as one undoable operation. OCR-region redaction remains available.
+- Polygon input finishes on double-click or Enter. Freehand input closes the dragged trace and simplifies dense input to at most 256 points. Escape cancels only an unfinished outline before returning to the existing mode-cancel behavior.
+- Project format 1.6 persists `shapeKind` and PDF-coordinate `pathPoints`. Validation rejects invalid kinds, non-finite or out-of-page points, paths outside the 3-to-4,096-point limit and bounds that disagree with the calculated outline. Formats 1.0 through 1.5 remain readable and legacy rectangle marks retain their prior meaning.
+- A shared Core geometry service supplies compatible rectangle paths, bounds, point containment and rectangle intersection. Preview, searchable-OCR exclusion and post-export validation therefore use the same saved outline. Non-rectangular output uses a bounded scanline fill; legacy rectangles retain the fast rectangular path.
+- The repository-root Release solution build completed with no warnings or errors. Contract 28, document-UI 193 and the expanded isolated redaction diagnostic passed. The diagnostic proved visible source-PDF text selection, single-step Undo, bounded freehand simplification, polygon package round-trip and polygon PDF output. Source result: `outputs/.verification/dev163-focused-20260915-220654242`.
+- The design PDF was regenerated as 114 pages from the dev.163 Markdown and 12 existing SVG diagrams. Its metadata reports dev.163, qpdf found no syntax or stream errors, all 114 pages rendered at a common size with no blank page, and representative cover and final diagram pages rendered cleanly. Result: `outputs/.verification/design-pdf-dev163-certified-20260915-221248922`.
+
+Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.163-win-x64-20260915-220810`. Product version `1.0.0-dev.163`, numeric version `1.0.0.163`, title/About, distribution label and principal binaries agree. Source fingerprint `EC89AB06AEE2AE2A3AAEB2540517F828C8EFF2FC58E4BEFA8598D6667FAE2AD5`. Pre-publication versioning 17 and published versioning 18 checks passed. Packaged document-UI 193, shaped-redaction output and qpdf checks passed at `outputs/.verification/packaged-dev163-20260915-220835670`; published versioning result: `outputs/.verification/versioning-dev163-published-20260915-220835670`.
+
+## Previous repository snapshot: v1.0.0-dev.161
 
 ### Character-precise redaction and large-document export acceleration (2026-09-15)
 

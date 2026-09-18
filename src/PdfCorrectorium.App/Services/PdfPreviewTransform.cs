@@ -23,6 +23,9 @@ public static class PdfPreviewTransform
         var regions = source.TextRegions
             .Select(region => RotateRegion(region, source.Image.PixelWidth, source.Image.PixelHeight, rotation))
             .ToArray();
+        var characters = source.SelectableCharacters
+            .Select(character => RotateCharacter(character, source.Image.PixelWidth, source.Image.PixelHeight, rotation))
+            .ToArray();
         var swapsAxes = rotation is 90 or 270;
         return new PdfPreviewResult(
             transformed,
@@ -30,7 +33,8 @@ public static class PdfPreviewTransform
             logicalPageNumber,
             swapsAxes ? source.PageHeightPoints : source.PageWidthPoints,
             swapsAxes ? source.PageWidthPoints : source.PageHeightPoints,
-            regions);
+            regions,
+            characters);
     }
 
     public static IReadOnlyList<PdfTextOverlayRegion> RotateRegions(
@@ -69,6 +73,35 @@ public static class PdfPreviewTransform
                 Width = region.Height,
                 Height = region.Width,
                 RotationDegrees = Normalize(region.RotationDegrees + 270),
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(rotation)),
+        };
+
+    private static PdfSelectableTextCharacter RotateCharacter(
+        PdfSelectableTextCharacter character,
+        double sourceWidth,
+        double sourceHeight,
+        int rotation) => rotation switch
+        {
+            0 => character,
+            90 => character with
+            {
+                Left = sourceHeight - character.Top - character.Height,
+                Top = character.Left,
+                Width = character.Height,
+                Height = character.Width,
+            },
+            180 => character with
+            {
+                Left = sourceWidth - character.Left - character.Width,
+                Top = sourceHeight - character.Top - character.Height,
+            },
+            270 => character with
+            {
+                Left = character.Top,
+                Top = sourceWidth - character.Left - character.Width,
+                Width = character.Height,
+                Height = character.Width,
             },
             _ => throw new ArgumentOutOfRangeException(nameof(rotation)),
         };

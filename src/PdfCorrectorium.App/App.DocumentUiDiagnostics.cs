@@ -82,6 +82,7 @@ public partial class App
                 "EditUnitSelector", "StatusZoomSlider", "StatusZoomComboBox",
                 "StatusZoomOutButton", "StatusZoomInButton",
                 "RedactionMenuItem", "OcrEditToolbarButton", "RedactionToolbarButton", "EditorModeSelector",
+                "RedactionInputModeComboBox",
             };
             ICommand[] documentCommands =
             [
@@ -198,6 +199,15 @@ public partial class App
             Check(Control("RedactionPanel").Visibility == Visibility.Visible &&
                   ((TextBlock)Control("PropertiesPaneTitle")).Text == LocalizationService.Translate("墨消しプロパティ"),
                 "Redaction mode shows its dedicated property controls.");
+            var redactionInputModes = (ComboBox)Control("RedactionInputModeComboBox");
+            Check(redactionInputModes.Items.Count == 4 && redactionInputModes.SelectedIndex == 0,
+                "Redaction mode offers rectangle, PDF text, polygon and freehand input with rectangle as the default.");
+            redactionInputModes.SelectedIndex = (int)RedactionInputMode.TextSelection;
+            await LayoutAsync();
+            Check(((ListBox)Control("OverlayCanvas")).Cursor == Cursors.IBeam,
+                "PDF text redaction uses an I-beam cursor instead of the area-selection crosshair.");
+            redactionInputModes.SelectedIndex = (int)RedactionInputMode.Rectangle;
+            await LayoutAsync();
             var sampleBitmap = new WriteableBitmap(2, 2, 96, 96, PixelFormats.Bgra32, null);
             sampleBitmap.WritePixels(new Int32Rect(0, 0, 2, 2), new byte[]
             {

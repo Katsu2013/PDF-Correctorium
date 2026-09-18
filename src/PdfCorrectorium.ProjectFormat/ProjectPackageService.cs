@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.Core.Geometry;
 
 namespace PdfCorrectorium.ProjectFormat;
 
@@ -646,7 +647,8 @@ public sealed class ProjectPackageService
             Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
             !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0 ||
             Limits.MaximumCommentCount <= 0 || Limits.MaximumTagCount <= 0 ||
-            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumRedactionCount <= 0 || Limits.MaximumCommentCharacters <= 0 ||
+            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumRedactionCount <= 0 ||
+            Limits.MaximumRedactionPathPoints <= 0 || Limits.MaximumCommentCharacters <= 0 ||
             Limits.MaximumTagNameCharacters <= 0)
             throw new InvalidOperationException("Project package resource limits must be positive finite values.");
     }
@@ -735,6 +737,25 @@ public sealed class ProjectPackageService
                 issues.Add(new("redactions.bounds", "A redaction contains invalid or out-of-page bounds.", true));
             if (!IsColorHex(redaction.ColorHex))
                 issues.Add(new("redactions.color", "A redaction color is invalid.", true));
+            if (!Enum.IsDefined(redaction.ShapeKind))
+                issues.Add(new("redactions.shapeKind", "A redaction shape kind is invalid.", true));
+            if ((redaction.ShapeKind is PdfRedactionShapeKind.Polygon or PdfRedactionShapeKind.Freehand) && redaction.PathPoints.Count < 3)
+                issues.Add(new("redactions.pathRequired", "A free-shaped redaction must contain at least three path points.", true));
+            if (redaction.PathPoints.Count is > 0 and < 3 ||
+                redaction.PathPoints.Count > Limits.MaximumRedactionPathPoints ||
+                redaction.PathPoints.Any(point => !point.IsFinite || point.X < 0 || point.Y < 0 ||
+                    (page.WidthPoints > 0 && point.X > page.WidthPoints + 0.01) ||
+                    (page.HeightPoints > 0 && point.Y > page.HeightPoints + 0.01)))
+                issues.Add(new("redactions.path", "A redaction path contains invalid, excessive or out-of-page points.", true));
+            else if (redaction.PathPoints.Count >= 3)
+            {
+                var pathBounds = PdfRedactionGeometry.GetBounds(redaction.PathPoints);
+                if (!pathBounds.IsValid || Math.Abs(pathBounds.Left - redaction.Bounds.Left) > 0.02 ||
+                    Math.Abs(pathBounds.Bottom - redaction.Bounds.Bottom) > 0.02 ||
+                    Math.Abs(pathBounds.Right - redaction.Bounds.Right) > 0.02 ||
+                    Math.Abs(pathBounds.Top - redaction.Bounds.Top) > 0.02)
+                    issues.Add(new("redactions.pathBounds", "A redaction path does not match its stored bounds.", true));
+            }
             (Guid Id, OcrTextRegion Region)? source = null;
             if (redaction.SourceRegionId is { } sourceRegionId)
             {

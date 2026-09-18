@@ -2717,8 +2717,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             var redactedPageCount = _project.Redactions.Select(item => item.PageId).Distinct().Count();
             var proceedWithRedaction = MessageBox.Show(
                 $"墨消し範囲 {_project.Redactions.Count:N0}件を{redactedPageCount:N0}ページへ確定します。" +
-                "\n\n機密情報を元の文字・背景画像・注釈から復元できないよう、対象ページの表示内容を高精細画像へ変換します。" +
-                "墨消し範囲外の透明OCR文字は検索・コピー用に保持しますが、範囲に接する文字行と既存注釈・構造情報は失われます。" +
+                "\n\nPDF文字選択の墨消しは、対応する可視・不可視文字だけを除去して矩形へ置き換え、" +
+                "元の背景画像・図形・範囲外テキストを保ちます。構造を保った安全な文字除去ができない場合は、" +
+                "ページを画像化せず出力を中止します。矩形・多角形・フリーハンドの任意範囲は、" +
+                "機密情報を残さないため対象ページを高精細画像へ変換します。" +
                 "\nプロジェクトと元PDFは変更せず、出力PDFだけに確定します。" +
                 "\n\nこの内容でPDF出力を続けますか？",
                 "墨消しを確定",
@@ -2782,7 +2784,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 $"\n元PDFサイズ: {FormatFileSize(sourceBytes)}" +
                 $"\nサイズ変化: {sizeChange:P1}" +
                 $"\n変更ページ: {result.ModifiedPages}\n変更領域: {result.ModifiedRegions}" +
-                $"\n墨消し範囲: {result.AppliedRedactions}（画像化ページ: {result.RedactedPages}）\n最適化画像: {result.OptimizedImages}",
+                $"\n墨消し範囲: {result.AppliedRedactions}（確定ページ: {result.RedactedPages}）\n最適化画像: {result.OptimizedImages}",
                 "PDF Correctorium",
                 MessageBoxButton.OK,
                 outcome.Warning is null ? MessageBoxImage.Information : MessageBoxImage.Warning);
@@ -2892,7 +2894,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OcrDataSourceText = "OCR付随ファイルを検索しています...";
         _ndlOcrDocument = companion;
         OcrDataSourceText = _ndlOcrDocument is null
-            ? "PDFテキストレイヤー"
+            ? "PDFネイティブ表示"
             : $"{_ndlOcrDocument.SourceKind}（付随ファイル: {_ndlOcrDocument.CompanionFiles.Count}件）";
         LoadBookmarkItems(_project.Bookmarks);
         PageItems.Clear();
@@ -3300,6 +3302,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             PreviewImage = result.Image;
             PreviewPixelWidth = result.Image.PixelWidth;
             PreviewPixelHeight = result.Image.PixelHeight;
+            SetSelectablePdfCharacters(result.SelectableCharacters);
             _pageMetrics[result.PageNumber] = new PageMetrics(result.Image.PixelWidth, result.Image.PixelHeight, result.PageWidthPoints, result.PageHeightPoints);
             var companionRegions = GetCompanionRegions(_ndlOcrDocument, _project, result.PageNumber, result);
             var overlayRegions = companionRegions.Count > 0 ? companionRegions : result.TextRegions;
@@ -3318,7 +3321,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             if (companionRegions.Count > 0)
                 OcrDataSourceText = $"{_ndlOcrDocument!.SourceKind}（このページ: {companionRegions.Count}領域）";
             else if (result.TextRegions.Count > 0)
-                OcrDataSourceText = $"PDFテキストレイヤー（このページ: {result.TextRegions.Count}領域）";
+                OcrDataSourceText = $"透明OCRテキスト（このページ: {result.TextRegions.Count}領域）";
+            else
+                OcrDataSourceText = "PDFネイティブ表示（編集対象の透明OCRなし）";
             PageSummary = $"{result.PageNumber} / {result.PageCount} ページ";
             StatusMessage = $"{result.PageNumber}ページを表示しました。";
             NotifyNavigationState();

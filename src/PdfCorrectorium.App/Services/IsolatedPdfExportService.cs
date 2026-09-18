@@ -307,6 +307,7 @@ internal sealed class IsolatedPdfExportService(
         "editing" => "変更ページの反映中",
         "checkpointing" => "中間結果の確定とメモリ解放中",
         "saving" => "一時PDFの保存中",
+        "redacting" => "文字選択の墨消し確定中",
         "calibrating" => "文字位置の校正中",
         "spacing" => "文字送りの反映中",
         "compacting" => "PDFの圧縮中",

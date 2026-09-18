@@ -68,18 +68,34 @@ public sealed record PdfInternalLink
     public bool IsEnabled { get; init; } = true;
 }
 
+/// <summary>墨消し範囲を作成した入力方法です。</summary>
+public enum PdfRedactionShapeKind
+{
+    Rectangle,
+    TextSelection,
+    Polygon,
+    Freehand,
+}
+
 /// <summary>
 /// 元PDFを変更せず、最終PDF出力時にだけ確定する墨消し範囲です。
 /// </summary>
 /// <remarks>
-/// 範囲はページ左下原点のPDFポイントで保持します。出力時は対象ページ全体を
-/// 画像化してから範囲を塗りつぶし、元の文字・画像・注釈を出力ページへ残しません。
+/// 範囲はページ左下原点のPDFポイントで保持します。PDF文字選択は対象の直接テキスト
+/// オブジェクトを除去して塗り矩形へ置換します。任意範囲や安全に直接編集できないPDFは、
+/// 対象ページ全体を画像化してから範囲を塗りつぶします。
 /// </remarks>
 public sealed record PdfRedaction
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid PageId { get; init; }
     public required PdfRectangle Bounds { get; init; }
+    /// <summary>
+    /// 自由形状の輪郭をページ左下原点のPDFポイントで保持します。
+    /// 空の場合は旧形式と同じく<see cref="Bounds"/>全体を矩形として扱います。
+    /// </summary>
+    public IReadOnlyList<PdfPoint> PathPoints { get; init; } = [];
+    public PdfRedactionShapeKind ShapeKind { get; init; } = PdfRedactionShapeKind.Rectangle;
     public string ColorHex { get; init; } = "#000000";
     public Guid? SourceRegionId { get; init; }
     public int? SourceCharacterStart { get; init; }
@@ -253,7 +269,10 @@ public sealed record PdfCorrectoriumProject
     public IReadOnlyList<ProjectTag> Tags { get; init; } = [];
     /// <summary>アプリ内移動と出力PDFのGoTo注釈に使用する内部リンクです。</summary>
     public IReadOnlyList<PdfInternalLink> InternalLinks { get; init; } = [];
-    /// <summary>PDF出力時に内容を復元不能な形で除去するページ内矩形です。</summary>
+    /// <summary>
+    /// PDF出力時に内容を復元不能な形で除去するページ内範囲です。PDF文字選択は対応する
+    /// 文字オブジェクトを除去して矩形へ置換し、それ以外は安全性を優先してページを画像化します。
+    /// </summary>
     public IReadOnlyList<PdfRedaction> Redactions { get; init; } = [];
     /// <summary>元PDFからしおりを読み込み済みかを示します。</summary>
     public bool BookmarksInitialized { get; init; }

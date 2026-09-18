@@ -1462,6 +1462,12 @@ public partial class App : Application
         await viewModel.LoadPdfForDiagnosticsAsync(inputPath);
         if (viewModel.PreviewPixelWidth < 40 || viewModel.PreviewPixelHeight < 40)
             throw new InvalidDataException("The test PDF did not produce a usable page preview.");
+        var sourcePreview = await previewService.RenderPageAsync(inputPath, 1, viewModel.PreviewPixelWidth);
+        if (sourcePreview.TextRegions.Any(region => !region.IsInvisible))
+            throw new InvalidDataException("Visible PDF text was incorrectly exposed as an editable OCR overlay.");
+        var sourceVisibleCharacters = sourcePreview.SelectableCharacters.Count(character => !character.IsInvisible);
+        if (sourceVisibleCharacters < 2)
+            throw new InvalidDataException("The test PDF did not contain enough visible PDF text for partial redaction.");
         var editedText = "PDFPDF";
         var addedOverlay = viewModel.AddManualOcrRegion(new Rect(
             viewModel.PreviewPixelWidth * 0.65,
@@ -1482,13 +1488,198 @@ public partial class App : Application
         if (!viewModel.IsRedactionMode || viewModel.CanEditGeometry || viewModel.CanAddOcrRegion)
             throw new InvalidDataException("Redaction mode did not exclusively disable OCR geometry editing.");
         viewModel.SetRedactionColor("#102030");
+        viewModel.RedactionInputModeIndex = (int)RedactionInputMode.TextSelection;
+        var thinDragCharacter = sourcePreview.SelectableCharacters.First(character =>
+            !character.IsInvisible && !string.IsNullOrWhiteSpace(character.Text));
+        var thinDragBands = viewModel.GetPdfTextRedactionBandPreview(new Rect(
+            thinDragCharacter.Left - 1d,
+            thinDragCharacter.Top + thinDragCharacter.Height / 2d,
+            Math.Max(8d, thinDragCharacter.Width + 2d),
+            0d));
+        if (thinDragBands.Count == 0)
+            throw new InvalidDataException("A horizontal text drag with negligible Y movement did not select its text line.");
+        var markerBands = MainWindowViewModel.BuildTextRedactionBands(
+        [
+            new PdfSelectableTextCharacter("A", 100, 100, 18, 32, false),
+            new PdfSelectableTextCharacter("B", 124, 102, 17, 30, false),
+            new PdfSelectableTextCharacter("C", 149, 101, 19, 31, false),
+            new PdfSelectableTextCharacter("D", 102, 160, 18, 30, false),
+            new PdfSelectableTextCharacter("E", 128, 161, 18, 29, false),
+        ], 600, 800);
+        if (markerBands.Count != 2 || markerBands[0].Left >= 100 || markerBands[0].Right <= 168 ||
+            markerBands[0].Top >= 100 || markerBands[0].Bottom <= 132 ||
+            markerBands[0].Height >= 35 || markerBands[0].Bottom >= 140 ||
+            PdfRedactionGeometry.GetSafetyPadding(new PdfRedaction
+            {
+                Bounds = new PdfRectangle(new PdfPoint(0, 0), new PdfSize(10, 10)),
+                ShapeKind = PdfRedactionShapeKind.TextSelection,
+            }) >=
+            PdfRedactionGeometry.DefaultSafetyPaddingPoints)
+            throw new InvalidDataException("PDF text selection was not converted into compact marker-style line bands.");
+        var lineReferenceCharacters = new[]
+        {
+            new PdfSelectableTextCharacter("A", 10, 100, 16, 30, false),
+            new PdfSelectableTextCharacter("g", 28, 106, 14, 36, false),
+            new PdfSelectableTextCharacter("i", 44, 104, 7, 26, false),
+        };
+        var capitalBand = MainWindowViewModel.BuildTextRedactionBands(
+            [lineReferenceCharacters[0]], 600, 800, lineReferenceCharacters).Single();
+        var descenderBand = MainWindowViewModel.BuildTextRedactionBands(
+            [lineReferenceCharacters[1]], 600, 800, lineReferenceCharacters).Single();
+        if (Math.Abs(capitalBand.Top - descenderBand.Top) > 0.01d ||
+            Math.Abs(capitalBand.Height - descenderBand.Height) > 0.01d)
+            throw new InvalidDataException("Separately selected adjacent characters did not use the same line height.");
+        var storedMarker = new PdfRedaction
+        {
+            Bounds = new PdfRectangle(new PdfPoint(135.415, 492.567), new PdfSize(11.099, 10.817)),
+            ShapeKind = PdfRedactionShapeKind.TextSelection,
+        };
+        var paintedMarker = PdfExportService.GetRedactionPaintBoundsForDiagnostics(500, 700, storedMarker);
+        if (Math.Abs(paintedMarker.Left - storedMarker.Bounds.Left) > 0.0001d ||
+            Math.Abs(paintedMarker.Bottom - storedMarker.Bounds.Bottom) > 0.0001d ||
+            Math.Abs(paintedMarker.Right - storedMarker.Bounds.Right) > 0.0001d ||
+            Math.Abs(paintedMarker.Top - storedMarker.Bounds.Top) > 0.0001d)
+            throw new InvalidDataException("A text-redaction output no longer matched the marker shown in the editor.");
+        var adjacentSelectionCharacters = new[]
+        {
+            new PdfSelectableTextCharacter("左", 100, 100, 12, 16, false),
+            new PdfSelectableTextCharacter("右", 112, 100, 12, 16, false),
+        };
+        var adjacentHitSelection = new Rect(109, 98, 18, 20);
+        var adjacentPointerSelection = new Rect(113, 106, 10, 0);
+        var midpointSelectedCharacters = MainWindowViewModel.GetSelectablePdfCharactersForDiagnostics(
+            adjacentSelectionCharacters, adjacentHitSelection, adjacentPointerSelection);
+        if (midpointSelectedCharacters.Length != 1 || midpointSelectedCharacters[0].Text != "右")
+            throw new InvalidDataException("A text drag selected the adjacent glyph whose box only touched the expanded hit range.");
+        var mergePageId = Guid.NewGuid();
+        var firstMarker = new PdfRedaction
+        {
+            PageId = mergePageId,
+            Bounds = new PdfRectangle(new PdfPoint(10, 20), new PdfSize(8, 12)),
+            ColorHex = "#000000",
+            ShapeKind = PdfRedactionShapeKind.TextSelection,
+        };
+        var adjacentMarker = new PdfRedaction
+        {
+            PageId = mergePageId,
+            Bounds = new PdfRectangle(new PdfPoint(19, 20.5), new PdfSize(8, 11.5)),
+            ColorHex = "#000000",
+            ShapeKind = PdfRedactionShapeKind.TextSelection,
+        };
+        var mergedMarkers = MainWindowViewModel.MergeTextSelectionRedactions(
+            [firstMarker], [adjacentMarker], mergePageId, out var adjacentMergeCount);
+        var duplicateMarker = adjacentMarker with { ColorHex = "#F9A825" };
+        mergedMarkers = MainWindowViewModel.MergeTextSelectionRedactions(
+            mergedMarkers, [duplicateMarker], mergePageId, out var duplicateMergeCount);
+        if (mergedMarkers.Count != 1 || adjacentMergeCount != 1 || duplicateMergeCount != 1 ||
+            mergedMarkers[0].Bounds.Left != firstMarker.Bounds.Left ||
+            mergedMarkers[0].Bounds.Right != adjacentMarker.Bounds.Right ||
+            !string.Equals(mergedMarkers[0].ColorHex, duplicateMarker.ColorHex, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Adjacent or duplicate text marker bands were not consolidated into one range.");
+        var exportMarkers = PdfExportService.ConsolidateTextSelectionRedactionsForExport(
+            [firstMarker, adjacentMarker, duplicateMarker]);
+        if (exportMarkers.Count != 1 ||
+            exportMarkers[0].Bounds.Left != firstMarker.Bounds.Left ||
+            exportMarkers[0].Bounds.Right != adjacentMarker.Bounds.Right ||
+            !string.Equals(exportMarkers[0].ColorHex, duplicateMarker.ColorHex, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Saved adjacent or duplicate text markers were not consolidated before export.");
+        var actualTextSelection = new Rect(
+            0,
+            0,
+            viewModel.PreviewPixelWidth * 0.22,
+            viewModel.PreviewPixelHeight * 0.35);
+        var selectedVisibleCharacters = sourcePreview.SelectableCharacters.Count(character =>
+            !character.IsInvisible && !string.IsNullOrWhiteSpace(character.Text) &&
+            actualTextSelection.IntersectsWith(
+                new Rect(character.Left, character.Top, character.Width, character.Height)));
+        var selectedPdfCharacters = viewModel.AddPdfTextRedactions(actualTextSelection);
+        var actualMarkerBands = viewModel.ProjectForDiagnostics?.Redactions.ToArray() ?? [];
+        if (selectedPdfCharacters <= 0 ||
+            actualMarkerBands.Length == 0 || actualMarkerBands.Length >= selectedPdfCharacters ||
+            actualMarkerBands.Any(item => item.ShapeKind != PdfRedactionShapeKind.TextSelection) ||
+            viewModel.SelectedRedaction is not null)
+            throw new InvalidDataException("Visible PDF text could not be converted to marker-style line redactions.");
+        var markerOverlay = viewModel.RedactionItems.FirstOrDefault()
+            ?? throw new InvalidDataException("The text marker did not appear in the editor overlay.");
+        if (!markerOverlay.IsTextSelection ||
+            viewModel.PreviewRedactionBounds(markerOverlay.Id, markerOverlay.Bounds))
+            throw new InvalidDataException("Text markers must stay bound to their selected PDF characters and remain non-resizable.");
+
+        var structuredOutputPath = Path.Combine(
+            Path.GetDirectoryName(outputPath)!,
+            Path.GetFileNameWithoutExtension(outputPath) + ".structured.pdf");
+        var structuredExportProject = viewModel.ProjectForDiagnostics! with
+        {
+            PdfStorageMode = ProjectPdfStorageMode.Embedded,
+            Pages = viewModel.ProjectForDiagnostics.Pages
+                .Select(page => page with { ImageOptimization = new PageImageOptimization() })
+                .ToList(),
+            SourcePdf = viewModel.ProjectForDiagnostics.SourcePdf with
+            {
+                IsEmbedded = true,
+                RelativePath = null,
+                AbsolutePathHint = inputPath,
+            },
+        };
+        var sourceObjectCounts = PdfExportService.GetPageObjectCountsForDiagnostics(inputPath, 1);
+        var structuredResult = (await new IsolatedPdfExportService(packageService, paths)
+            .ExportAsync(inputPath, structuredOutputPath, structuredExportProject)).Result;
+        var structuredObjectCounts = PdfExportService.GetPageObjectCountsForDiagnostics(structuredOutputPath, 1);
+        var structuredPreview = await previewService.RenderPageAsync(
+            structuredOutputPath,
+            1,
+            viewModel.PreviewPixelWidth);
+        var remainingVisibleCharacters = structuredPreview.SelectableCharacters.Count(character => !character.IsInvisible);
+        if (structuredResult.AppliedRedactions != actualMarkerBands.Length ||
+            !structuredResult.Warnings.Any(warning => warning.Contains("元の画像・図形・範囲外テキストを保持", StringComparison.Ordinal)))
+            throw new InvalidDataException("PDF text selection did not use the structure-preserving redaction path.");
+        if (remainingVisibleCharacters != sourceVisibleCharacters - selectedVisibleCharacters)
+            throw new InvalidDataException(
+                $"Partial visible-text redaction removed a neighbouring character or preserved a selected character " +
+                $"(source={sourceVisibleCharacters}, selected={selectedVisibleCharacters}, output={remainingVisibleCharacters}).");
+        if (structuredObjectCounts.Paths < sourceObjectCounts.Paths ||
+            structuredObjectCounts.Images < sourceObjectCounts.Images ||
+            structuredObjectCounts.Total <= actualMarkerBands.Length)
+            throw new InvalidDataException(
+                $"Structure-preserving redaction discarded native page objects: " +
+                $"source={sourceObjectCounts}, output={structuredObjectCounts}.");
+
+        viewModel.UndoCommand.Execute(null);
+        if (viewModel.ProjectForDiagnostics?.Redactions.Count != 0)
+            throw new InvalidDataException("PDF text redactions were not undone as one operation.");
+
+        viewModel.RedactionInputModeIndex = (int)RedactionInputMode.Freehand;
+        var freehandPoints = Enumerable.Range(0, 600)
+            .Select(index => new Point(
+                viewModel.PreviewPixelWidth * (0.60 + index / 600d * 0.20),
+                viewModel.PreviewPixelHeight * (0.60 + Math.Sin(index / 20d) * 0.03)))
+            .Append(new Point(viewModel.PreviewPixelWidth * 0.60, viewModel.PreviewPixelHeight * 0.66))
+            .ToArray();
+        var freehand = viewModel.AddPathRedaction(freehandPoints, PdfRedactionShapeKind.Freehand)
+            ?? throw new InvalidDataException("A freehand redaction could not be created.");
+        if (freehand.PathPoints.Count > 256)
+            throw new InvalidDataException("Freehand input was not simplified to the bounded point count.");
+        viewModel.UndoCommand.Execute(null);
+        if (viewModel.ProjectForDiagnostics?.Redactions.Count != 0)
+            throw new InvalidDataException("The freehand redaction was not undoable.");
+
+        viewModel.RedactionInputModeIndex = (int)RedactionInputMode.Polygon;
         var bounds = new Rect(
             viewModel.PreviewPixelWidth * 0.2,
             viewModel.PreviewPixelHeight * 0.2,
             viewModel.PreviewPixelWidth * 0.35,
             viewModel.PreviewPixelHeight * 0.12);
-        var redaction = viewModel.AddManualRedaction(bounds)
-            ?? throw new InvalidDataException("The redaction range could not be added.");
+        var polygonPoints = new[]
+        {
+            new Point(bounds.Left + bounds.Width * 0.08, bounds.Top),
+            new Point(bounds.Right - bounds.Width * 0.08, bounds.Top),
+            new Point(bounds.Right, bounds.Top + bounds.Height * 0.50),
+            new Point(bounds.Right - bounds.Width * 0.08, bounds.Bottom),
+            new Point(bounds.Left + bounds.Width * 0.08, bounds.Bottom),
+            new Point(bounds.Left, bounds.Top + bounds.Height * 0.50),
+        };
+        var redaction = viewModel.AddPathRedaction(polygonPoints, PdfRedactionShapeKind.Polygon)
+            ?? throw new InvalidDataException("The non-rectangular redaction range could not be added.");
         if (!viewModel.IsRedactionMode)
             throw new InvalidDataException("Redaction mode did not remain active after adding an area.");
         viewModel.UndoCommand.Execute(null);
@@ -1516,8 +1707,10 @@ public partial class App : Application
 
         await viewModel.SaveProjectForDiagnosticsAsync(projectPath, ProjectPdfStorageMode.Relative);
         var reopenedProject = await packageService.OpenAsync(projectPath);
-        if (reopenedProject.Redactions.Count != 1 || reopenedProject.Redactions[0].ColorHex != "#102030")
-            throw new InvalidDataException("The redaction range or color did not round-trip through the project package.");
+        if (reopenedProject.Redactions.Count != 1 || reopenedProject.Redactions[0].ColorHex != "#102030" ||
+            reopenedProject.Redactions[0].ShapeKind != PdfRedactionShapeKind.Polygon ||
+            reopenedProject.Redactions[0].PathPoints.Count != polygonPoints.Length)
+            throw new InvalidDataException("The shaped redaction range or color did not round-trip through the project package.");
 
         var result = (await new IsolatedPdfExportService(packageService, paths)
             .ExportAsync(inputPath, outputPath, portableExportProject)).Result;
@@ -1567,6 +1760,7 @@ public partial class App : Application
         _diagnostics?.Write(
             "redaction-test.pass",
             $"Redactions: {result.AppliedRedactions}; pages: {result.RedactedPages}; " +
+            $"structured objects: {structuredObjectCounts}; structured output: {structuredOutputPath}; " +
             $"flattened image: {flattenedImageSize.Width}x{flattenedImageSize.Height}; " +
             $"preserved OCR text: {editedText}; output: {outputPath}; project: {projectPath}");
         Shutdown(0);

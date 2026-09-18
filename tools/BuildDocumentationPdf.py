@@ -76,7 +76,7 @@ class DesignDocTemplate(BaseDocTemplate):
             topMargin=18 * mm, bottomMargin=17 * mm,
             title="PDF Correctorium 開発・設計ドキュメント",
             author="PDF Correctorium Project",
-            subject="PDF Correctorium dev.161 implementation and design specification",
+            subject="PDF Correctorium dev.163 implementation and design specification",
         )
         self.styles = styles
         frame = Frame(self.leftMargin, self.bottomMargin, self.width, self.height, id="normal")
@@ -86,7 +86,7 @@ class DesignDocTemplate(BaseDocTemplate):
         canvas.saveState()
         canvas.setFont("DocSans", 7.5)
         canvas.setFillColor(colors.HexColor("#64748B"))
-        canvas.drawString(18 * mm, 9 * mm, "PDF Correctorium 開発・設計ドキュメント - dev.161")
+        canvas.drawString(18 * mm, 9 * mm, "PDF Correctorium 開発・設計ドキュメント - dev.163")
         canvas.drawRightString(A4[0] - 18 * mm, 9 * mm, str(doc.page))
         canvas.restoreState()
 
@@ -267,7 +267,7 @@ def build(source_root: Path, output: Path, chrome: Path) -> None:
         Spacer(1, 38 * mm),
         Paragraph("PDF Correctorium", styles["Title"]),
         Paragraph("開発・設計ドキュメント", styles["Title"]),
-        Paragraph("実装基準: v1.0.0-dev.161 / プロジェクト形式 1.5", styles["Subtitle"]),
+        Paragraph("実装基準: v1.0.0-dev.163 / プロジェクト形式 1.6", styles["Subtitle"]),
         Spacer(1, 12 * mm),
         Paragraph("2026-09-15 再生成版", styles["Subtitle"]),
         PageBreak(),
