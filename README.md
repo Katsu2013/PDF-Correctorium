@@ -6,28 +6,48 @@
 
 ## 概要（日本語）
 
-PDF Correctoriumは、**OCRでPDFに付けられた透明テキストを確認・修正するWindowsアプリ**です。文字の読み取り間違いや位置のずれを修正できるほか、ページの追加・削除・並べ替えなどの簡単なページ編集、しおりの修正、文書情報の編集にも対応しています。
+PDF Correctorium（PDFコレクトリウム）は、**ページの並べ替え・回転・結合、復元できない確実な墨消し、しおり（目次）の作成から、OCR透明テキスト（検索用テキスト）の精密な文字修正までを1本で行える、Windows向け完全無料・インストール不要のPDF総合編集・校正ツール**です。
 
-元のPDFを残したまま作業でき、編集内容を保存して後から再開したり、修正結果を別のPDFファイルとして出力したりできます。
+パソコンにインストールせずUSBメモリ等からもすぐに使え、元のPDFファイルを直接上書きしない**元データを壊さない安全設計**を採用しています。編集内容はプロジェクト（`.pdfocrproj`）にいつでも保存して続きから再開でき、作業結果を新しいPDFとして画質を落とさず安全に出力できます。
+
+### こんな用途に便利です
+- 📑 **書類整理・ページ向き修正**：サムネイルのマウス操作でページの並べ替え・90度回転・白紙削除。他のPDFからのページ結合も写真や図面の画質を落とさず素早く完了。
+- 🛡️ **機密情報・個人情報の確実な墨消し**：黒四角を置くだけの一般的なPDFソフトと異なり、裏側の文字データそのものを完全に消去。背景色に合わせたスポイト機能や、保存後に文字が残っていないかの自動チェックを搭載。
+- 🔖 **電子書籍・資料の目次（しおり）作り**：クリックで飛べる階層目次の作成、タイトルや作成者情報、PDFを開いたときの最初の表示（見開き・連続スクロール等）を最適化。
+- ✏️ **スキャン文書の検索性向上（OCR文字の校正）**：文字の誤認識の修正、枠の位置や大きさ、文字の間隔、縦書き・読む順番を直して、検索しやすい高品質なPDFに。
 
 ### できること
 
-- **文字の修正**：OCRの読み取り間違いを直し、文字を追加・削除できます。
-- **位置・サイズの調整**：透明テキストの位置、大きさ、回転、文字ごとの間隔を調整できます。
-- **縦書き・横書きの設定**：日本語の縦書きを含め、文字方向や読み順を編集できます。
-- **文字領域の整理**：領域の分割・結合や、不要な領域の削除ができます。
-- **検索・一括置換**：同じ読み取り間違いを探し、まとめて修正できます。
-- **校正・確認**：未確認・要再確認などの状態で対象を絞り込み、順番に確認できます。
-- **ページの編集**：ページの追加・削除・並べ替え・回転ができ、元に戻す／やり直しにも対応します。
-- **しおりの編集**：しおりの追加・修正・削除や、階層・順序の整理ができます。
-- **文書情報の編集**：タイトル、作者、文書の言語、出力PDFのバージョンなどを変更できます。
-- **コメントとタグ**：文書、ページ、選択したOCR文字領域へコメントとタグを付け、解決状態や重要度を管理できます。
-- **ページ内リンク**：選択したOCR文字領域に移動先ページを設定し、アプリ内で移動できるほか、出力PDFへ内部リンクとして保存できます。
-- **墨消し**：PDF内の文字・OCR領域・矩形・多角形・フリーハンド範囲を色付きの墨消しにし、標準色またはページからスポイトで取得した色を使って、背景画像を含めて復元できない形のPDFとして出力できます。
-- **入力PDFの確認**：フォーム、署名、JavaScript、埋め込みファイル、レイヤー、非埋め込みフォントなど、編集・出力時に注意したい特性を表示します。
-- **作業の保存・PDF出力**：プロジェクトとして保存して編集を再開し、修正結果を別のPDFとして出力できます。
+#### 📑 ページの編集・結合・整理
+- **直感的なサムネイル操作**：マウスのドラッグ＆ドロップでの並べ替え、90度単位の回転、不要ページの削除。写真やイラストを再圧縮しないため画質が劣化しません。
+- **他のPDFからページを差し込み**：別のPDFから必要なページを取り込んで、今の文書へ結合・挿入できます。
+- **安心の取り消し・やり直し**：ページの追加・削除・並べ替え・回転を含むすべての操作を何度でもやり直せます。
 
-現在は開発版です。アプリ内で画像から新たにOCRを実行する機能など、未実装の項目もあります。詳しくは「現在の開発状況」と「残る制限」をご確認ください。
+#### 🛡️ 二度と復元できない確実な墨消し（マスキング）
+- **多彩な指定方法**：「PDFの文字を選択」「四角形」「自由な多角形」「フリーハンド（手描き）」から柔軟に範囲を指定。
+- **文字だけ消して画質を保つ高度な出力**：文字を選んで墨消しした場合、文字データのみを消去し、写真や図面、範囲外の文字は鮮明なまま残します。
+- **安全な画像化マスキング**：手描きなど複雑な形の場合は、ページを高画質のまま1枚の画像にして安全に保護します。
+- **スポイト機能 & 出力後の自動チェック**：書類の背景色に合わせた目立たないマスキングが可能。保存後に文字が残っていないかも厳格に自動確認します。
+
+#### 🔖 しおり（目次）・文書情報・コメント
+- **しおり（目次）の作成・編集**：新規追加、修正、削除、ジャンプ先の指定、マウス操作による階層（親子関係）の整理。
+- **文書プロパティの設定**：タイトル、作成者、文書の言語、PDFを開いたときの初期表示（見開きやスクロール方法）の指定。
+- **コメント・タグ・リンク**：文書、ページ、文字枠へのコメントや重要度タグの付与、特定ページへジャンプする内部リンクの作成。
+
+#### ✏️ OCRテキスト（透明文字）の精密校正・修正
+- **文字・位置・間隔の修正**：誤認識された文字の打ち直し、枠の位置・大きさ・角度・文字ごとの間隔をマウスや数値で細かく調整。
+- **日本語組版への対応**：縦書き・横書きの混在や、文章を読む順番を視覚的に整理。
+- **校正・確認モード**：枠の誤ズレを防ぎながら、未確認の文字をキー操作やボタンでテンポよく連続チェック。
+- **検索・一括置換 & 品質チェック**：書類全体から同じ間違いを探して一括修正したり、文字枠の異常を自動検知。
+- **NDLOCR-Lite 連携**：国立国会図書館の「NDLOCR-Lite」出力（JSON/XML）から高精度な文字枠データを取り込み可能。
+
+#### 💾 プロジェクト管理 & 快適な作業環境
+- **2つの保存スタイル**：ファイルサイズを節約する「通常モード」と、元PDFも一緒にまとめて持ち運べる「ポータブルモード」。
+- **自動保存 & バックアップ**：作業が止まったときの自動保存や、過去のバックアップからの復元。
+- **開いたPDFの特性確認**：フォーム、署名、埋め込みファイルなど、編集・保存時に注意したいポイントを表示。
+- **多言語・設定管理**：日本語／英語の即時切替、パネル配置の保存、ショートカットのカスタマイズ。
+
+現在は開発版です。アプリ内で画像から新たにOCRを実行する機能など、未実装の項目もあります。詳しくは「現在の開発状況」と「安全性の修正と残る制限」をご確認ください。
 
 ## 現在の開発状況
 
@@ -276,7 +296,11 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## ドキュメント
 
-[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの12点の図版を参照できます。図版には校正・確認、文書プロパティ、プロジェクトPDF保存方式表示、保存方式選択・入力注意・文書注釈、見開きの表紙・左右綴じ配置、墨消し、OCR編集／墨消しモード切替、墨消し範囲の移動・サイズ変更・色変更・削除・スポイト採色を含みます。`PDF-Correctorium-Design-Documentation.pdf`もdev.163のMarkdownと図版から再生成しています。
+[設計資料の目次](outputs/PdfCorrectorium-Documentation/README.md)から、仕様の正本となるMarkdownと更新済みの12点の図版を参照できます。図版には校正・確認、文書プロパティ、プロジェクトPDF保存方式表示、保存方式選択・入力注意・文書注釈、見開きの表紙・左右綴じ配置、墨消し、OCR編集／墨消しモード切替、墨消し範囲の移動・サイズ変更・色変更・削除・スポイト採色を含みます。`PDF-Correctorium-Design-Documentation.pdf`もdev.171のMarkdownと図版から再生成しています。
+
+## 開発体制・クレジット
+
+本プロジェクトの設計、実装、テスト、およびドキュメント作成は、OpenAI の **ChatGPT Codex** を活用したAIペアプログラミング・共同開発によって行われています。
 
 ## ライセンス
 
@@ -290,26 +314,46 @@ Apache License 2.0です。第三者コンポーネントは`THIRD-PARTY-NOTICES
 
 ## Overview (English)
 
-PDF Correctorium is a **Windows application for reviewing and correcting invisible OCR text layers in PDFs**. Alongside fixing recognition errors and misplaced text, it supports basic page editing such as adding, deleting, and reordering pages, as well as editing bookmarks and document information.
+PDF Correctorium is a **free, portable Windows application for comprehensive PDF editing, secure irreversible redaction, bookmark and metadata management, and precision invisible OCR text proofreading**.
 
-You can work without changing the source PDF, save your edits to resume later, and export the corrected result as a separate PDF file.
+It requires no installation, leaves no registry traces, and runs directly from any folder or USB drive. Built on a **safe non-destructive editing architecture**, it never overwrites your original PDF files. Work is preserved in dedicated projects (`.pdfocrproj`) and can be exported at any time to clean, sanitized, high-quality PDFs without unintended visual degradation.
+
+### Ideal For
+- 📑 **Organizing documents & fixing orientations**: Reorder pages via drag-and-drop thumbnails, rotate 90 degrees, remove blank pages, or merge pages from other PDFs with zero image quality loss.
+- 🛡️ **Sanitizing confidential & personal data**: Unlike simple annotation boxes that merely cover up text, PDF Correctorium permanently eliminates character codes at the PDF operator level. Features eyedropper color sampling and post-export automated verification (guaranteeing 0 extractable characters).
+- 🔖 **Creating bookmarks & configuring reading views**: Build multi-level table-of-contents bookmarks, adjust document properties, and configure initial viewing preferences (facing pages, right-to-left binding, continuous scrolling).
+- ✏️ **Fixing scanned PDF searchability (OCR correction)**: Correct misrecognized characters, bounding box misalignments, individual character advances, vertical writing, and reading orders for high-accuracy searchable PDFs.
 
 ### What you can do
 
-- **Correct text**: Fix OCR recognition errors and add or remove characters.
-- **Adjust position and size**: Change the position, size, rotation, and character spacing of invisible text.
-- **Set writing direction**: Edit writing direction and reading order, including vertical Japanese text.
-- **Organize text regions**: Split or merge regions and delete unnecessary ones.
-- **Search and replace**: Find repeated recognition errors and correct them in bulk.
-- **Proofread and review**: Filter regions by states such as unreviewed or needs-review and check them in sequence.
-- **Edit pages**: Add, delete, reorder, and rotate pages.
-- **Edit bookmarks**: Add, modify, and delete bookmarks, and organize their hierarchy and order.
-- **Edit document information**: Change the title, author, document language, output PDF version, and other properties.
-- **Add comments and tags**: Attach comments and tags to the document, a page, or a selected OCR region, including importance and resolved state.
-- **Create in-document links**: Assign a destination page to a selected OCR region, follow it in the app, and save it as an internal PDF link on export.
-- **Redact content**: Mark selected characters, OCR regions, or arbitrary rectangles with a chosen color and export a PDF in which the underlying page content cannot be recovered.
-- **Review input characteristics**: Surface notices for forms, signatures, JavaScript, embedded files, layers, non-embedded fonts, and other characteristics that may affect editing or export.
-- **Save your work and export PDFs**: Save a project to resume editing later and export the corrected result as a separate PDF.
+#### 📑 Page Editing, Merging & Reorganization
+- **Intuitive thumbnail operations**: Drag-and-drop reordering, 90-degree rotation, and blank or unwanted page deletion. Operates on logical pages without re-encoding existing page images.
+- **External page insertion & merging**: Insert pages from other PDF documents into the current file.
+- **Full Undo/Redo**: All page additions, deletions, reordering, and rotations can be undone and redone effortlessly.
+
+#### 🛡️ Secure Irreversible Redaction (Sanitization)
+- **Flexible input modes**: "Select PDF Text", Rectangle, Polygon, and Freehand selection modes.
+- **Vector-preserving output**: When selecting text, target character draw operators are eliminated while preserving surrounding images, vector artwork, and non-redacted text with native sharpness.
+- **300 DPI high-definition raster fallback**: Arbitrary polygons and freehand regions safely rasterize the page image while maintaining unredacted OCR text.
+- **Eyedropper color matching & automatic export verification**: Sample background colors directly from the page. Exports are automatically inspected to confirm zero extractable characters remain in the protected zones.
+
+#### 🔖 Bookmarks, Document Properties & Annotations
+- **Bookmark hierarchy editing**: Add, edit, remove, set destinations, and organize parent-child bookmark hierarchies via drag-and-drop.
+- **Document property management**: Edit title, author, subject, keywords, document language, PDF version, and initial display mode (single page, facing spreads, reading direction).
+- **Comments, tags & internal links**: Add comments (with severity and resolution status) and tags to documents, pages, or OCR regions. Create clickable in-document GoTo links.
+
+#### ✏️ Precision OCR Text Proofreading & Correction
+- **Text, position & advance editing**: Correct mistyped characters, and fine-tune box bounds, rotation, and per-character advances using 8-directional handles or numerical sliders.
+- **Japanese typography support**: Supports mixed vertical/horizontal text blocks and visual reading-order sorting.
+- **Dedicated Proofreading Mode**: Inspect unreviewed text sequentially according to reading order while preventing accidental box displacement.
+- **Search, bulk replace & OCR quality analysis**: Document-wide search/replace and automated detection of suspicious character spans and anomalous bounding boxes.
+- **NDLOCR-Lite integration**: Automatically detect and import high-precision character boundary data from National Diet Library NDLOCR-Lite (JSON/XML).
+
+#### 💾 Project Management & Comfortable Workspace
+- **Dual project storage modes**: "Normal mode" (relative reference for large files) and "Portable mode" (self-contained with embedded PDF).
+- **Autosave & generation backups**: Configurable automatic saves on idle and multi-generation backup recovery.
+- **Input characteristic warnings**: Detect and notify about forms, digital signatures, JavaScript, attachments, layers, and non-embedded fonts.
+- **Multi-language & workspace customization**: Instant Japanese/English UI switching, workspace panel presets, and shortcut customization.
 
 This is a development version. Some features, including running new OCR on images within the application, are not yet implemented. See "Current milestone" and "Safety fixes and remaining limitations" below for details.
 
@@ -390,7 +434,7 @@ As a separate known limitation, an exploratory normal OCR-rotation diagnostic ag
 
 Dev.151 reads Catalog `/PageLayout` and `/ViewerPreferences /Direction` when a PDF is first opened and uses them for the editor's layout, flow, cover placement, and binding. Missing hints use the PDF defaults of Single Page and L2R. An intentional editor-view change is stored in the optional project `EditorViewState` and restored ahead of the document hint; merely applying the initial or restored state does not mark the project dirty. Document Properties now includes Continuous Facing Pages and exports it as `/TwoColumnLeft` or `/TwoColumnRight`.
 
-The non-interactive page-render diagnostic no longer blocks the UI dispatcher. Explicit page navigation uses a foreground PDF worker while thumbnails, continuous-view neighbors and document scans use a separate background worker. Startup logs are process-specific, concurrent application instances merge only preferences changed since their own load, and page-working sessions cannot mistake another process's newly created directory for an abandoned session. Standard `dotnet test` always executes the 27 dependency-free contract checks.
+The non-interactive page-render diagnostic no longer blocks the UI dispatcher. Explicit page navigation uses a foreground PDF worker while thumbnails, continuous-view neighbors and document scans use a separate background worker. Startup logs are process-specific, concurrent application instances merge only preferences changed since their own load, and page-working sessions cannot mistake another process's newly created directory for an abandoned session. Standard `dotnet test` always executes the 28 dependency-free contract checks.
 
 Dev.148 separated page layout (Single Page / Facing Pages) from flow (Page by Page / Continuous Scrolling), allowing all four combinations, including continuous facing spreads. When a cover or final page has no partner, the empty side shows only the canvas background—no artificial white page, border, or shadow. Continuous facing view retains spread geometry and at most 12 nearby page images rather than every rendered page. The legacy Continuous Pages preference migrates to Single Page plus Continuous Scrolling.
 
@@ -552,7 +596,11 @@ Start-Process -FilePath ".\src\PdfCorrectorium.App\bin\Release\net8.0-windows7.0
 
 ## Documentation
 
-The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and twelve updated diagrams, including review, document properties, project PDF storage/annotations, facing-page cover/binding layouts, redaction, the OCR/redaction mode switch, and redaction move/resize/color/delete/eyedropper controls. `PDF-Correctorium-Design-Documentation.pdf` has also been regenerated from the dev.163 Markdown and diagrams.
+The [design documentation index](outputs/PdfCorrectorium-Documentation/README.md) links the normative Markdown and twelve updated diagrams, including review, document properties, project PDF storage/annotations, facing-page cover/binding layouts, redaction, the OCR/redaction mode switch, and redaction move/resize/color/delete/eyedropper controls. `PDF-Correctorium-Design-Documentation.pdf` has also been regenerated from the dev.171 Markdown and diagrams.
+
+## Development & Credits
+
+This project is designed, implemented, tested, and documented with the assistance of OpenAI's **ChatGPT Codex** through collaborative AI pair-programming.
 
 ## License
 
