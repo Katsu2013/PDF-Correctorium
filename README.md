@@ -10,6 +10,31 @@ PDF Correctorium（PDFコレクトリウム）は、**ページの並べ替え�
 
 パソコンにインストールせずUSBメモリ等からもすぐに使え、元のPDFファイルを直接上書きしない**元データを壊さない安全設計**を採用しています。編集内容はプロジェクト（`.pdfocrproj`）にいつでも保存して続きから再開でき、作業結果を新しいPDFとして画質を落とさず安全に出力できます。
 
+### プロジェクトの目標と特徴
+
+PDF Correctorium は、**「日常業務で高価な市販ソフトの代わりに使える、実用的なオープンソースPDF総合エディタ」** の実現を目指して開発されています。
+現在は開発途上のため、市販ソフトと比べて本文直接編集や標準注釈など未対応の機能も多くありますが、特定の作業において以下のような特徴を備えています：
+
+- 🆚 **一般的な市販ソフト・有料PDFツールとの違い**:
+  - **完全無料 (Apache 2.0)**: 高額な年間サブスクリプションや有償ライセンスの費用負担がありません。
+  - **完全ポータブル**: レジストリを汚さず、USBメモリ等からどのWindows PCでも即座に起動できます。
+  - **安全な墨消し**: 見た目だけでなく文字描画命令から消去し、自動検証を備えています。
+  - **OCR透明テキストの精密校正**: 文字枠の位置・送り幅・日本語縦書き・読み順の細やかな微調整が可能です。
+- 🛡️ **Web上のオンライン編集ツールとの違い**:
+  - **完全ローカル処理による安心設計**: ファイルを外部サーバーやクラウドへ一切送信しないため、機密書類・契約書・個人情報も安全に処理できます。
+  - **容量・回数・ページ数の制限なし**: 「○MBまで」「1日○回まで」などの制限や待ち時間がなく、分厚いPDFでも快適に編集できます。
+  - **完全オフライン動作**: ネット接続のない環境でも即座に動作。写真や図面の画質も再圧縮せずそのまま維持。
+
+> [!NOTE]
+> **💡 現バージョン (v1.0.0-dev.171) で未対応の機能（今後の実装候補）**  
+> 本アプリは日常業務で使えるPDF総合エディタを目指して開発途上です。一般的な市販ソフトに備わっている以下の機能は、現バージョンではまだ対応していません：  
+> - 既存本文テキストの直接打ち直し・誤字修正  
+> - 埋め込み画像の直接差し替え・リサイズ  
+> - 蛍光ペン（ハイライト）・下線・電子印鑑・付箋メモなどの標準注釈（`/Annots`）  
+> - パスワード設定・印刷禁止等のセキュリティ暗号化  
+> - アプリ単体での新規OCR文字認識（外部NDLOCR-Lite連携のみ）  
+> 
+> これらの機能拡張計画や、客観的な比較一覧については [開発ロードマップ (ROADMAP.md)](ROADMAP.md) をご覧ください。
 ### こんな用途に便利です
 - 📑 **書類整理・ページ向き修正**：サムネイルのマウス操作でページの並べ替え・90度回転・白紙削除。他のPDFからのページ結合も写真や図面の画質を落とさず素早く完了。
 - 🛡️ **機密情報・個人情報の確実な墨消し**：黒四角を置くだけの一般的なPDFソフトと異なり、裏側の文字データそのものを完全に消去。背景色に合わせたスポイト機能や、保存後に文字が残っていないかの自動チェックを搭載。
@@ -318,6 +343,31 @@ PDF Correctorium is a **free, portable Windows application for comprehensive PDF
 
 It requires no installation, leaves no registry traces, and runs directly from any folder or USB drive. Built on a **safe non-destructive editing architecture**, it never overwrites your original PDF files. Work is preserved in dedicated projects (`.pdfocrproj`) and can be exported at any time to clean, sanitized, high-quality PDFs without unintended visual degradation.
 
+### Project Vision & Key Characteristics
+
+PDF Correctorium is actively developed with the goal of becoming a **practical open-source alternative to expensive commercial PDF editors** for everyday use.
+While currently missing many standard capabilities of mature commercial software (such as direct text editing and standard annotations), it currently provides the following distinct characteristics:
+
+- 🆚 **vs Commercial Desktop Tools**:
+  - **100% Free & Open Source (Apache 2.0)**: No recurring subscription fees or purchase costs.
+  - **Fully Portable**: Runs directly from any directory or USB drive with zero registry dependencies.
+  - **Operator-Level Redaction**: Eliminates character codes directly from PDF streams with post-export verification.
+  - **Precision OCR Proofreading**: Fine-tune invisible bounding boxes, character advances, and vertical reading orders.
+- 🛡️ **vs Web-Based Online Services**:
+  - **Safe Local Processing**: Files are processed entirely on your local machine and **never uploaded to external cloud servers**, keeping confidential contracts and personal records private.
+  - **Zero Arbitrary Quotas**: No file size caps, page count ceilings, daily limits, or paywalls. Process large documents freely.
+  - **Offline & Instant**: Works in air-gapped environments without network latency, and preserves native image sharpness without lossy recompression.
+
+> [!NOTE]
+> **💡 Current Limitations & Upcoming Feature Areas (v1.0.0-dev.171)**  
+> PDF Correctorium is actively under development. Several features commonly found in commercial software are **not yet supported in the current release (planned for future updates)**:  
+> - Direct in-place editing of body text  
+> - Replacing or resizing embedded images  
+> - Standard annotations (highlights, underlines, stamps, sticky notes via `/Annots`)  
+> - Password protection and permission encryption  
+> - Built-in standalone OCR engine (requires external NDLOCR-Lite import)  
+> 
+> For an objective functional comparison and our future candidate backlog, see our [Development Roadmap (ROADMAP.md)](ROADMAP.md).
 ### Ideal For
 - 📑 **Organizing documents & fixing orientations**: Reorder pages via drag-and-drop thumbnails, rotate 90 degrees, remove blank pages, or merge pages from other PDFs with zero image quality loss.
 - 🛡️ **Sanitizing confidential & personal data**: Unlike simple annotation boxes that merely cover up text, PDF Correctorium permanently eliminates character codes at the PDF operator level. Features eyedropper color sampling and post-export automated verification (guaranteeing 0 extractable characters).

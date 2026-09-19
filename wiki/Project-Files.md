@@ -1,6 +1,6 @@
-﻿# プロジェクト形式 (.pdfocrproj)
+# プロジェクト形式 (.pdfocrproj)
 
-PDF Correctorium は、元PDFを直接上書き破壊しない **非破壊編集アーキテクチャ** を採用しています。
+PDF Correctorium は、元のPDFファイルを直接上書きしない **元データを壊さない安全設計** を採用しています。
 
 ---
 
