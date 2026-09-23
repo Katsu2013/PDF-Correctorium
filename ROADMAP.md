@@ -97,6 +97,37 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 * [ ] **ワンクリック検索可能PDF化**: スキャン画像PDFを読み込み、1クリックで透明テキストレイヤーを生成
 * [ ] **自動傾き補正・ノイズ除去**: スキャン画像の傾きを自動検知して水平補正
 
+#### ⚡ 最適化・構造修復・フォーム機能
+* [ ] **PDFファイルサイズ最適化・軽量化**: 重複オブジェクト統合、高圧縮ストリーム化、画像の指定DPIダウンサンプリング
+* [ ] **破損PDFの自動修復**: 壊れたXREFや構文エラーをqpdf自己修復パーサーで再構築して救出
+* [ ] **Web表示最適化（リニアライズ）**: ブラウザで1ページ目から瞬時に開けるFast Web View構造化
+* [ ] **フォーム（AcroForm）の平坦化**: 入力済み申請書や請求書を固定描画化し、改ざんや文字消失を防止
+
+#### 🛠️ 業務支援・高度な文書操作機能
+* [ ] **PDFの比較・差分検証（Diff）**: 2つのPDFの同一ページをピクセルおよび文字単位で比較し変更箇所をハイライト
+* [ ] **添付ファイル（Embedded Files）管理**: PDF内への関連データ（Office/ZIP/インボイスXML等）の埋め込み・抽出
+* [ ] **N-up（割り付け集約）＆ 小冊子面付け**: 2/4ページを1枚に集約印刷、または中綴じ印刷用ページ並べ替え
+* [ ] **見開きページの左右分割**: A3見開きスキャンPDFを無劣化でA4単ページ×2枚に自動分割
+* [ ] **メタデータの完全消去（サニタイズ）**: 作成者・編集履歴・XMPメタデータを完全除去（不可逆墨消しと連携）
+* [ ] **パスワード保護の一括解除**: 既知パスワードを持つ暗号化PDFの一括復号化・平文保存
+* [ ] **スキャン画像の傾き補正（Deskew）**: 手動スライダー/2点基準線指定・自動検出＋無劣化マトリクス回転（CTM）
+* [ ] **ページ余白調整・用紙リサイズ**: CropBox調整による無劣化トリミング・自動余白カット、用紙サイズ拡張・とじしろマージン追加
+
+#### 🖼️ 画像処理・ベクター変換・外部連携機能
+* [ ] **PDF内の埋め込み画像抽出**: ページ全体ではなく、埋め込まれた写真・ロゴを生データのまま無劣化で一括抽出
+* [ ] **ページの画像変換（連番画像書き出し）**: 指定DPI（72〜600）での高品質ラスタライズ（PNG/JPEG/TIFF/WebP）
+* [ ] **ページのSVG（ベクター画像）変換**: 拡大しても線や文字がボケないベクターSVG出力（Web埋め込み・CAD/デザイン流用）
+* [ ] **画像の差し替え・外部エディタ連携編集**: レイアウト（Matrix）を崩さない画像置換、Photoshopやペイント等との自動同期編集
+* [ ] **画像・SVGからのページインポート**: 複数画像（PNG/JPEG等）のドラッグ＆ドロップ一括PDF化、無劣化JPEGパススルー、SVGピュアベクター変換差し込み
+
+#### 📑 Office文書へのエクスポート機能
+* [ ] **Office形式への変換・エクスポート**: PDFの文字・表・スライド構造を解析し、再編集可能な Word（.docx）、Excel（.xlsx）、PowerPoint（.pptx）へ完全ローカル・オフライン変換
+
+#### ♿ アクセシビリティ・タグ付きPDF・音声読み上げ機能
+* [ ] **タグ付きPDF（Tagged PDF / PDF/UA）作成**: 見出し・段落・表・ヘッダー/フッター除外（Artifact）の論理構造タグ付け
+* [ ] **ルビ（ふりがな）タグと発音設定**: `<Ruby>` タグによる親文字・ルビのペアリング、`/ActualText` による難読漢字の読み方指定と2重読み防止
+* [ ] **Windows標準音声合成（TTS）連携＆追従ハイライト**: 新世代WinRT自然音声（Ayumi/Haruka/Ichiro/Natural Voice）による朗読、現在読み上げ文のカラオケ風ハイライト・自動スクロール
+
 ---
 
 <a id="english"></a>
@@ -189,3 +220,34 @@ The project plans to explore and implement the following feature areas to evolve
 * [ ] **Embedded Offline OCR Engine**: Bundle lightweight OCR engines (Tesseract / NDLOCR-Lite).
 * [ ] **One-Click Searchable PDF**: Automatically generate invisible text layers from scanned PDFs.
 * [ ] **Automated Deskew & Clean-up**: Detect page orientation skew and auto-straighten scans.
+
+#### ⚡ Optimization, Repair & Forms
+* [ ] **PDF File Size Optimization**: Deduplicate objects, generate object streams, and downsample high-DPI images.
+* [ ] **Corrupted PDF Auto-Repair**: Salvage damaged xref tables and malformed streams using qpdf recovery parsing.
+* [ ] **Web Streaming Optimization (Linearize)**: Fast Web View linearization for instant in-browser display.
+* [ ] **Form (AcroForm) Flattening**: Permanently flatten interactive form fields to prevent tampering and missing fonts.
+
+#### 🛠️ Workflow, Comparison & Advanced Utilities
+* [ ] **Visual & Text PDF Comparison (Diff)**: Compare two PDF versions with pixel-level and text-coordinate difference highlighting.
+* [ ] **Embedded File Attachments**: Attach or extract supplementary files (Office docs, ZIP, Factur-X/ZUGFeRD invoice XML).
+* [ ] **N-up Page Layout & Booklet Imposition**: Print 2/4 pages per sheet or rearrange pages for saddle-stitch booklet binding.
+* [ ] **Spread Page Split**: Losslessly split 2-page scans (e.g. A3) into two single pages (A4) via CropBox adjustment.
+* [ ] **Metadata Sanitization & Anonymization**: Completely strip authors, editing history, and XMP metadata (paired with redaction).
+* [ ] **Batch Password Removal (Decryption)**: Batch-decrypt password-protected PDFs with known credentials.
+* [ ] **Scan Deskew (Orientation Leveling)**: Manual slider / 2-point guideline calibration & auto-deskew with lossless Matrix (CTM) rotation.
+* [ ] **Page Margins & Sheet Resizing**: Lossless CropBox trimming, auto-white-margin crop, and sheet expansion / binding gutter margins.
+
+#### 🖼️ Image Utilities, Vector Conversion & External Editing
+* [ ] **Embedded Image Extraction**: Extract raw photos and logos at original resolutions without quality loss.
+* [ ] **Page to Image Rendering**: Export pages as high-resolution images (PNG, JPEG, TIFF, WebP) at custom DPI.
+* [ ] **Page to Vector SVG Conversion**: Infinitely scalable SVG vector conversion for web embedding and CAD/illustration reuse.
+* [ ] **Image Replacement & External Editor Round-Trip**: In-place image swapping preserving layout matrices, plus auto-sync editing with external tools (Photoshop, Paint, etc.).
+* [ ] **Image & SVG Page Import**: Drag-and-drop batch conversion of images (PNG, JPEG passthrough) and crisp SVG vectors into native PDF pages.
+
+#### 📑 Office Document Export
+* [ ] **Office Export (Word / Excel / PowerPoint)**: Reconstruct text flow, tabular data, and slide geometry into editable .docx, .xlsx, and .pptx files fully offline.
+
+#### ♿ Accessibility, Tagged PDF & Audio Reading (TTS)
+* [ ] **Tagged PDF (PDF/UA) Creation**: Logical structural tagging for Headings (H1–H6), Paragraphs, Tables, and Header/Footer suppression (Artifacts).
+* [ ] **Ruby (Furigana) & Phonetic ActualText**: `<Ruby>` structural tags and `/ActualText` pronunciation mapping to prevent duplicate vocalization.
+* [ ] **Windows Native TTS & Karaoke Highlight**: Modern WinRT Natural Voice integration (Ayumi/Haruka/Ichiro/Neural) with real-time sentence highlighting and auto-scrolling.

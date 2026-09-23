@@ -130,6 +130,9 @@ public sealed partial class MainWindowViewModel
         ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
         ActivateOcrEditModeCommand.RaiseCanExecuteChanged();
         ActivateRedactionModeCommand.RaiseCanExecuteChanged();
+        SelectLineUnitCommand?.RaiseCanExecuteChanged();
+        SelectParagraphUnitCommand?.RaiseCanExecuteChanged();
+        SelectCharacterUnitCommand?.RaiseCanExecuteChanged();
         RefreshRedactionCommandState();
         RefreshReviewItems();
         StatusMessage = EditorMode switch

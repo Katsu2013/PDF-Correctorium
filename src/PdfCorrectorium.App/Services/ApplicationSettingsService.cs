@@ -44,7 +44,7 @@ public enum FacingPageBindingDirection
 /// </remarks>
 public sealed record ApplicationSettings
 {
-    public const int CurrentFormatVersion = 16;
+    public const int CurrentFormatVersion = 17;
     /// <summary>最近開いたファイルの表示件数。0は表示と新規記録を停止します。</summary>
     public int RecentFileLimit { get; init; } = 10;
     /// <summary>設定ファイルの移行判定に使用する形式バージョンです。</summary>
@@ -65,6 +65,8 @@ public sealed record ApplicationSettings
     public bool ShowPropertiesPanel { get; init; } = true;
     /// <summary>画面下部の状態・倍率表示を表示するかを指定します。</summary>
     public bool ShowStatusBar { get; init; } = true;
+    /// <summary>起動時にリボンUIを表示するかを指定します。falseではクラシックメニュー／ツールバーを表示します。</summary>
+    public bool UseRibbonUi { get; init; } = true;
     /// <summary>編集画面のページ表示方法です。PDFへ保存する初期表示設定とは独立しています。</summary>
     public DocumentViewMode DocumentViewMode { get; init; } = DocumentViewMode.SinglePage;
     /// <summary>編集画面をページ切り替えまたは連続スクロールのどちらで表示するかを指定します。</summary>

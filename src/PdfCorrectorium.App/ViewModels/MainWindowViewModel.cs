@@ -495,6 +495,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         AddSelectedRedactionsCommand = new RelayCommand(AddSelectedRedactions, CanAddSelectedRedactions);
         DeleteSelectedRedactionCommand = new RelayCommand(DeleteSelectedRedaction, () => IsRedactionMode && SelectedRedaction is not null);
         ClearCurrentPageRedactionsCommand = new RelayCommand(ClearCurrentPageRedactions, () => IsRedactionMode && RedactionItems.Count > 0);
+        ToggleRibbonUiModeCommand = new RelayCommand(() => IsRibbonUiMode = !IsRibbonUiMode);
+        ActivateReadingOrderModeCommand = new RelayCommand(() => EditorModeIndex = (int)EditorInteractionMode.ReadingOrder, () => CanUsePreview);
+        ActivateReviewModeCommand = new RelayCommand(() => EditorModeIndex = (int)EditorInteractionMode.Review, () => CanUsePreview);
+        SelectLineUnitCommand = new RelayCommand(() => EditUnitIndex = (int)OcrEditUnit.Line, () => CanUseOcrEditControls);
+        SelectParagraphUnitCommand = new RelayCommand(() => EditUnitIndex = (int)OcrEditUnit.Paragraph, () => CanUseOcrEditControls);
+        SelectCharacterUnitCommand = new RelayCommand(() => EditUnitIndex = (int)OcrEditUnit.Character, () => CanUseOcrEditControls);
         ExitCommand = new RelayCommand(_close);
         InitializeReview();
         InitializeProjectFeatures();
@@ -532,6 +538,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(DocumentViewModeOptions));
         OnPropertyChanged(nameof(SelectedDocumentViewModeOption));
         OnPropertyChanged(nameof(DocumentViewModeDescription));
+        OnPropertyChanged(nameof(UiModeToggleText));
+        OnPropertyChanged(nameof(UiModeToggleToolTip));
     }
 
     /// <summary>確認状態と書字方向の選択肢を現在の表示言語で再構築します。</summary>
@@ -637,6 +645,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public RelayCommand DecreaseLineCharacterSizeCommand { get; }
     public RelayCommand IncreaseLineCharacterSizeCommand { get; }
     public RelayCommand DeleteOcrRegionsCommand { get; }
+    public RelayCommand ToggleRibbonUiModeCommand { get; }
+    public RelayCommand ActivateReadingOrderModeCommand { get; }
+    public RelayCommand ActivateReviewModeCommand { get; }
+    public RelayCommand SelectLineUnitCommand { get; }
+    public RelayCommand SelectParagraphUnitCommand { get; }
+    public RelayCommand SelectCharacterUnitCommand { get; }
     public RelayCommand ToggleAddOcrRegionModeCommand { get; }
     public RelayCommand ExitCommand { get; }
     /// <summary>設定、ログ、キャッシュ等を保存するアプリケーション側の配置形態です。</summary>
@@ -729,6 +743,27 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             _applicationSettings with { ShowStatusBar = value },
             nameof(ShowStatusBar));
     }
+    /// <summary>リボンUIモードで表示するか、クラシックメニュー／ツールバーで表示するかを切り替えます。</summary>
+    public bool IsRibbonUiMode
+    {
+        get => _applicationSettings.UseRibbonUi;
+        set
+        {
+            if (_applicationSettings.UseRibbonUi == value) return;
+            _applicationSettings = _applicationSettings with { UseRibbonUi = value };
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsClassicUiMode));
+            OnPropertyChanged(nameof(UiModeToggleToolTip));
+            OnPropertyChanged(nameof(UiModeToggleText));
+            OnPropertyChanged(nameof(CurrentApplicationSettings));
+            _ = SaveDisplaySettingsAsync();
+        }
+    }
+    /// <summary>クラシックメニュー／ツールバー表示が有効かを示します。</summary>
+    public bool IsClassicUiMode => !IsRibbonUiMode;
+    public string UiModeToggleToolTip => LocalizationService.Translate(
+        IsRibbonUiMode ? "クラシックメニュー／ツールバーへ切り替え" : "リボンUIへ切り替え");
+    public string UiModeToggleText => LocalizationService.Translate(IsRibbonUiMode ? "クラシック表示" : "リボン表示");
     /// <summary>現在のページ配置。スクロール方式および出力PDFの初期表示設定とは独立しています。</summary>
     public DocumentViewMode DocumentViewMode
     {
@@ -1030,6 +1065,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ToggleAddOcrRegionModeCommand.RaiseCanExecuteChanged();
         ActivateOcrEditModeCommand.RaiseCanExecuteChanged();
         ActivateRedactionModeCommand.RaiseCanExecuteChanged();
+        ActivateReadingOrderModeCommand?.RaiseCanExecuteChanged();
+        ActivateReviewModeCommand?.RaiseCanExecuteChanged();
+        SelectLineUnitCommand?.RaiseCanExecuteChanged();
+        SelectParagraphUnitCommand?.RaiseCanExecuteChanged();
+        SelectCharacterUnitCommand?.RaiseCanExecuteChanged();
         RefreshRedactionCommandState();
     }
     public string SourceHash { get => _sourceHash; private set => Set(ref _sourceHash, value); }
@@ -1400,6 +1440,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             var facingPageLayoutChanged =
                 _applicationSettings.FacingPagesShowCoverSeparately != normalized.FacingPagesShowCoverSeparately ||
                 _applicationSettings.FacingPagesBindingDirection != normalized.FacingPagesBindingDirection;
+            var ribbonUiChanged = _applicationSettings.UseRibbonUi != normalized.UseRibbonUi;
             _applicationSettings = normalized;
             if (documentViewModeChanged || facingPageLayoutChanged) RecordEditorViewOverride();
             RefreshRecentFiles();
@@ -1413,6 +1454,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowPageListPanel));
             OnPropertyChanged(nameof(ShowPropertiesPanel));
             OnPropertyChanged(nameof(ShowStatusBar));
+            if (ribbonUiChanged)
+            {
+                OnPropertyChanged(nameof(IsRibbonUiMode));
+                OnPropertyChanged(nameof(IsClassicUiMode));
+                OnPropertyChanged(nameof(UiModeToggleToolTip));
+                OnPropertyChanged(nameof(UiModeToggleText));
+            }
             OnPropertyChanged(nameof(DocumentViewMode));
             OnPropertyChanged(nameof(DocumentPageFlowMode));
             OnPropertyChanged(nameof(SelectedDocumentViewModeOption));

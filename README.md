@@ -26,7 +26,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
   - **完全オフライン動作**: ネット接続のない環境でも即座に動作。写真や図面の画質も再圧縮せずそのまま維持。
 
 > [!NOTE]
-> **💡 現バージョン (v1.0.0-dev.171) で未対応の機能（今後の実装候補）**  
+> **💡 現バージョン (v1.0.0-dev.174) で未対応の機能（今後の実装候補）**
 > 本アプリは日常業務で使えるPDF総合エディタを目指して開発途上です。一般的な市販ソフトに備わっている以下の機能は、現バージョンではまだ対応していません：  
 > - 既存本文テキストの直接打ち直し・誤字修正  
 > - 埋め込み画像の直接差し替え・リサイズ  
@@ -76,7 +76,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.171`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.173`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -115,6 +115,14 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 - 外部のテストフレームワークに依存しない契約テスト実行機能
 
 実装済みの範囲は、古い設計資料に記載された初期の基盤段階より広がっています。Version 1.0に向けた未実装項目や既知の不具合は、[実装状況](IMPLEMENTATION_STATUS.md)と設計資料内の実装状況欄で管理しています。上記の機能一覧は、読み込み・保存・再出力時の完全な情報保持や、Version 1.0の全要件の達成を保証するものではありません。
+
+## ファイルBackstage（dev.174）
+
+リボンの左端に「ファイル」タブを追加しました。選ぶと別ウィンドウではなく、QATを残したままメイン画面をファイル操作専用のBackstageへ切り替えます。PDF／プロジェクト／OCRデータの読込、上書き・別名保存、PDF出力、文書プロパティ、設定、バージョン情報、終了、最近開いたファイルをまとめ、ホームから重複していたファイル操作を撤去しました。戻るボタンまたはEscで直前のリボンタブへ戻り、Alt+FとF6／Shift+F6でも操作できます。
+
+## リボンUIとクイックアクセスツールバー（dev.173）
+
+dev.173では、作業効率を高める「リボンUI」（ホーム、編集・校正、表示・検証の3タブ構成）と、最上部の「クイックアクセスツールバー（QAT）」を改善しました。QATとリボンの文字・アイコン・操作面を拡大し、ホバー／選択／キーボードフォーカスを明瞭化しています。「編集・校正」はOCR編集、読み順編集、校正・確認、墨消しの現在モードに必要な実在コマンドだけを表示し、「表示・検証」では表紙単独表示、綴じ方向、OCR品質、文書情報、検証、復旧を直接選べます。リボン／クラシック表示の選択は設定形式17へ保存され、次回起動時に復元されます。F6/Shift+F6によるペイン巡回と従来のショートカットは両UIで維持されます。現行仕様は [リボンUI・UI切り替え仕様 (RIBBON-UI.md)](RIBBON-UI.md)、初期案からの試行錯誤、要望の反映状況、未決事項は [リボンUI検討履歴](ribbon_discussion_history.md) を参照してください。
 
 ## 安全性の修正と残る制限（dev.171）
 
@@ -250,7 +258,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン171では、ソリューション全体の製品バージョンが`1.0.0-dev.171`、アセンブリ／ファイルバージョンが`1.0.0.171`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン174では、ソリューション全体の製品バージョンが`1.0.0-dev.174`、アセンブリ／ファイルバージョンが`1.0.0.174`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
 変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.5、読み込みに必要な最小版はdev.152です。ローカルのビルド記録はGit履歴の代わりにはならないため、配布前にGitのコミットと送信結果も個別に確認します。
 
@@ -584,7 +592,7 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 171 produces product version `1.0.0-dev.171` and assembly/file version `1.0.0.171` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 173 produces product version `1.0.0-dev.173` and assembly/file version `1.0.0.173` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
 Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.6 and its minimum reader is dev.163. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
 

@@ -47,6 +47,7 @@ public partial class App
                 PreviousCharacterShortcut = "Ctrl+Shift+F8",
                 NextCharacterShortcut = "",
                 ShowPropertyHelpText = true,
+                UseRibbonUi = false,
                 DocumentViewMode = DocumentViewMode.FacingPages,
                 DocumentPageFlowMode = DocumentPageFlowMode.Continuous,
                 FacingPagesShowCoverSeparately = false,
@@ -60,6 +61,7 @@ public partial class App
             await SettingsTransferService.ExportAsync(export, original);
             var imported = await SettingsTransferService.ImportAsync(export);
             Check(JsonSerializer.Serialize(imported) == JsonSerializer.Serialize(original.Normalize()), "All settings and presets round-trip, including hidden thumbnail size and unassigned shortcuts.");
+            Check(!imported.UseRibbonUi, "The selected classic UI mode round-trips through settings export/import.");
             Check(imported.DocumentViewMode == DocumentViewMode.FacingPages &&
                 imported.DocumentPageFlowMode == DocumentPageFlowMode.Continuous &&
                 !imported.FacingPagesShowCoverSeparately &&
@@ -156,7 +158,8 @@ public partial class App
             var upgraded = await SettingsTransferService.ImportAsync(Path.Combine(output, "legacy-export.json"));
             Check(upgraded.FormatVersion == ApplicationSettings.CurrentFormatVersion && upgraded.WorkspacePresets.Count == 0 && upgraded.PageListWidth == 160, "Older exported settings receive preset defaults and bounded widths.");
             await File.WriteAllTextAsync(service.SettingsPath, """{"formatVersion":11,"pageListWidth":280,"previousCharacterShortcut":"Ctrl+Shift+F8"}""");
-            Check(service.Load().PageListWidth == 280 && service.Load().WorkspacePresets.Count == 0, "Existing raw local v11 settings remain loadable.");
+            Check(service.Load().PageListWidth == 280 && service.Load().WorkspacePresets.Count == 0 && service.Load().UseRibbonUi,
+                "Existing raw local settings remain loadable and migrate to the ribbon default when no UI mode was saved.");
             await service.SaveAsync(original);
             using (var cancellation = new CancellationTokenSource())
             {
@@ -196,6 +199,14 @@ public partial class App
             main.ClosePromptOverride = () => MessageBoxResult.No;
             vm.ErrorDialogOverride = (message, ex) => throw new InvalidOperationException(message, ex);
             Check(await vm.ApplyApplicationSettingsAsync(original), "Settings apply without a PDF loaded.");
+            Check(!vm.IsRibbonUiMode && vm.IsClassicUiMode, "Applying saved settings restores classic UI mode before the window is shown.");
+            vm.IsRibbonUiMode = true;
+            for (var attempt = 0; attempt < 50 && !new ApplicationSettingsService(paths).Load().UseRibbonUi; attempt++)
+                await Task.Delay(20);
+            var reopenedVm = new MainWindowViewModel(new ProjectPackageService(), new PdfPreviewService(), new PdfExportService(),
+                new NdlOcrCompanionService(), new DiagnosticLog(paths.LogDirectory), paths, () => { });
+            Check(reopenedVm.IsRibbonUiMode && !reopenedVm.IsClassicUiMode,
+                "Switching UI mode persists immediately and is restored by the next application instance.");
             main.WindowStartupLocation = WindowStartupLocation.Manual;
             main.Left = -20000; main.Top = -20000; main.Width = 1400; main.Height = 850;
             main.ShowActivated = false; main.ShowInTaskbar = false; main.Show();

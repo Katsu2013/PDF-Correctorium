@@ -162,6 +162,12 @@ public partial class App
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             var menu = (MenuItem)main.FindName("RecentFilesMenuItem");
             Check(menu.IsEnabled && menu.Items.Count == 3, "Actual WPF recent menu displays all entries with the current count.");
+            main.OpenBackstage();
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            var backstageRecentFiles = (ItemsControl)main.FindName("BackstageRecentFilesList");
+            Check(main.IsBackstageOpen && backstageRecentFiles.Items.Count == 3,
+                "File Backstage displays all recent entries from the same history.");
+            main.CloseBackstage(false);
             // Off-screen, non-activated windows cannot keep a popup open. Use WPF's actual
             // generator to prepare its containers without sending global input to the desktop.
             var generator = (System.Windows.Controls.Primitives.IItemContainerGenerator)menu.ItemContainerGenerator;

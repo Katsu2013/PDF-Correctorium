@@ -1,6 +1,35 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.171
+## Current repository snapshot: v1.0.0-dev.174
+
+### File Backstage and ribbon file-command separation (2026-09-23)
+
+- Added a leftmost **File** ribbon tab. It opens a client-area Backstage view while keeping the QAT visible and preserving the document canvas, selection, page position and editor mode behind it.
+- Backstage groups PDF/project/OCR opening, project save/save-as, PDF export, document properties, settings, version information, exit and recent files. File operations were removed from Home, eliminating the earlier Home/File duplication.
+- The Back button or Escape restores the previously selected non-File ribbon tab. Alt+F opens File; F6/Shift+F6 cycles through Back, file commands and recent files. Switching to classic UI closes Backstage.
+- Added Japanese/English Backstage localization, automation names and permanent keyboard diagnostics. The diagnostic renders Japanese and English Backstage screenshots in its output directory.
+- Final verification completed with a warning-free Release build, 28 contract tests, 194 document-UI checks, 3,794 keyboard checks, 104 settings checks and 77 recent-file checks. Source and packaged smoke tests, 17 source-versioning checks, 18 published-versioning checks and dependency-lock verification all passed. Evidence is stored under `outputs/.verification/dev174-final-20260923-190000`.
+- Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.174-win-x64-20260923-185602`. `GetBuildVersion.ps1` confirms product/informational version `1.0.0-dev.174`, four-part file/assembly version `1.0.0.174`, distribution label `v1.0.0-dev.174` and matching published binary metadata.
+
+Product version is `1.0.0-dev.174` and numeric version is `1.0.0.174`. Project format remains 1.6. Application settings format remains 17.
+
+## Previous repository snapshot: v1.0.0-dev.173
+
+### Ribbon UI, contextual editing and persisted UI mode (2026-09-23)
+
+- Enlarged the QAT and ribbon command surfaces, labels and vector icons. Hover, checked and keyboard-focus states now have distinct chrome; the ribbon tab template no longer suppresses the focus visual.
+- QAT Save, Export, Undo and Redo buttons now have purpose-built icons, tooltips, automation names and Alt+1 through Alt+4 access keys. The UI switch uses Alt+5; Home, Edit / Review and View / Validate use Alt+H, Alt+E and Alt+V.
+- The **Edit / Review** tab is contextual. OCR editing shows edit units, region, alignment and character-advance commands; reading-order mode shows move/recalculate commands; review mode shows filtering, navigation, verify-and-next and quality analysis; redaction mode shows its existing input method and range commands. No placeholder command is exposed.
+- The **View / Validate** tab now exposes separate-cover and binding-direction controls, OCR quality, document properties, project validation and backup recovery beside panel/layout controls.
+- Renamed ambiguous Japanese labels, including `プロジェクト`, `幅に合わせる`, `校正・確認`, `他ページへ反映` and `品質チェック`; added dedicated search, replace, undo, redo, validation, recovery, document-information and quality icons.
+- `ApplicationSettings` format 17 persists `UseRibbonUi`. A missing value in older settings migrates to the ribbon default, while a saved classic/ribbon selection is restored by the next application instance. Settings and keyboard diagnostics cover migration, reopening, QAT metadata and contextual commands.
+- Preserved the left-pane page/bookmark toolbar and all classic menus, commands and shortcuts. F6 / Shift+F6 continues to choose the visible ribbon or classic toolbar as the top keyboard pane.
+- Final verification: warning-free Release build; 28 contract, 194 document-UI, 3,789 keyboard, 104 settings and 76 recent-file checks; source and packaged smoke tests; 17 source-versioning and 18 published-versioning checks. The first settings run reached the new persistence checks but missed one existing asynchronous facing-page wait; a clean rerun passed all 104 checks. The first source-versioning launch also received one transient malformed JSON stream from `dotnet msbuild`; a new-output rerun passed all 17 checks. Evidence: `outputs/.verification/dev173-final-20260923-135819`.
+- Certified portable output: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.173-win-x64-20260923-140332`. `GetBuildVersion.ps1` confirms product/informational version `1.0.0-dev.173`, four-part file/assembly version `1.0.0.173`, distribution label `v1.0.0-dev.173`, manifest metadata and dependency hashes.
+
+Product version is `1.0.0-dev.173` and numeric version is `1.0.0.173`. Project format remains 1.6. Application settings format is 17.
+
+## Previous repository snapshot: v1.0.0-dev.171
 
 ### Exact editor-to-PDF text-redaction geometry (2026-09-18)
 

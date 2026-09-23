@@ -235,12 +235,85 @@ public partial class App
             // Menu captions/scopes/command bindings are checked below without activating
             // Windows menu mode in the user's foreground application. Hidden-window tests
             // cannot certify the complete physical Alt+F -> O/S/A interaction.
+            // Verify classic toolbar pane navigation
+            vm.IsRibbonUiMode = false;
+            await Layout(main);
             var toolbar = (ToolBar)main.FindName("MainToolbarPanel");
             toolbar.Items.OfType<Button>().First(b => b.IsEnabled).Focus();
             main.MoveKeyboardPane(false);
             Check(((TabControl)main.FindName("KeyboardNavigationTabs")).IsKeyboardFocusWithin, "F6 moves from the toolbar to the navigation pane.");
             main.MoveKeyboardPane(true);
             Check(toolbar.IsKeyboardFocusWithin, "Shift+F6 returns to the toolbar.");
+
+            // Verify ribbon pane navigation
+            vm.IsRibbonUiMode = true;
+            await Layout(main);
+            var ribbon = (TabControl)main.FindName("MainRibbonTabControl");
+            ribbon.Focus();
+            main.MoveKeyboardPane(false);
+            Check(((TabControl)main.FindName("KeyboardNavigationTabs")).IsKeyboardFocusWithin, "F6 moves from the ribbon to the navigation pane.");
+            main.MoveKeyboardPane(true);
+            Check(ribbon.IsKeyboardFocusWithin, "Shift+F6 returns to the ribbon.");
+            var ribbonTabs = ribbon.Items.OfType<TabItem>().ToArray();
+            Check(ribbonTabs.Length == 4 && ribbonTabs.All(tab =>
+                    !string.IsNullOrWhiteSpace(AutomationProperties.GetName(tab)) &&
+                    !string.IsNullOrWhiteSpace(AutomationProperties.GetAccessKey(tab))),
+                "Every ribbon tab has an automation name and a working access key.");
+            ribbon.SelectedIndex = 0;
+            await Layout(main);
+            Snapshot(main, "MainWindow-Backstage-ja-JP");
+            Check(main.IsBackstageOpen && ((FrameworkElement)main.FindName("BackstageView")).IsVisible,
+                "The File tab opens the full client-area Backstage view.");
+            LocalizationService.SetLanguage("en-US");
+            LocalizationService.Apply(main);
+            vm.RefreshLocalization();
+            await Layout(main);
+            Snapshot(main, "MainWindow-Backstage-en-US");
+            Check(ribbonTabs[0].Header?.ToString() == "File" && KeyboardElements((FrameworkElement)main.FindName("BackstageView"))
+                    .OfType<TextBlock>().Any(text => text.Text == "Recent Files"),
+                "Backstage file navigation localizes to English.");
+            LocalizationService.SetLanguage("ja-JP");
+            LocalizationService.Apply(main);
+            vm.RefreshLocalization();
+            await Layout(main);
+            var backstageBack = (Button)main.FindName("BackstageBackButton");
+            var backstageCommands = (StackPanel)main.FindName("BackstagePrimaryCommands");
+            var backstageRecent = (ItemsControl)main.FindName("BackstageRecentFilesList");
+            Check(!string.IsNullOrWhiteSpace(AutomationProperties.GetName(backstageBack)) &&
+                  backstageCommands.Children.OfType<Button>().All(button =>
+                      !string.IsNullOrWhiteSpace(AutomationProperties.GetName(button))),
+                "Backstage navigation and file commands expose automation names.");
+            backstageBack.Focus();
+            main.MoveKeyboardPane(false);
+            Check(backstageCommands.IsKeyboardFocusWithin || backstageRecent.IsKeyboardFocusWithin,
+                "F6 moves through the visible Backstage command regions.");
+            main.CloseBackstage();
+            await Layout(main);
+            Check(!main.IsBackstageOpen && ribbon.SelectedIndex == 1,
+                "Closing Backstage returns to the previous ribbon tab.");
+            var qatNames = new[] { "プロジェクトを上書き保存", "編集済みPDFを別名で出力", "元に戻す", "やり直す" };
+            var qatButtons = KeyboardElements((FrameworkElement)main.FindName("QuickAccessToolbar")).OfType<Button>()
+                .Where(button => qatNames.Contains(AutomationProperties.GetName(button), StringComparer.Ordinal)).ToArray();
+            Check(qatButtons.Length == qatNames.Length && qatButtons.All(button =>
+                    !string.IsNullOrWhiteSpace(button.ToolTip?.ToString()) &&
+                    !string.IsNullOrWhiteSpace(AutomationProperties.GetAccessKey(button))),
+                "Every icon-only QAT command exposes a tooltip, automation name and access key.");
+            ribbon.SelectedIndex = 2;
+            foreach (var (mode, expectedName) in new[]
+            {
+                ((int)EditorInteractionMode.ReadingOrder, "読み順を再計算"),
+                ((int)EditorInteractionMode.Review, "確認済みにして次へ"),
+                ((int)EditorInteractionMode.Redaction, "このページの墨消しをすべて解除"),
+            })
+            {
+                vm.EditorModeIndex = mode;
+                await Layout(main);
+                Check(KeyboardElements(main).OfType<Button>().Any(button =>
+                        AutomationProperties.GetName(button) == expectedName && IsKeyboardBranchActive(button)),
+                    $"Edit/review ribbon presents the active {((EditorInteractionMode)mode)} commands.");
+            }
+            vm.EditorModeIndex = (int)EditorInteractionMode.OcrEditing;
+            ribbon.SelectedIndex = 1;
             main.Hide();
 
             foreach (var gesture in new[] { "Alt+A", "Alt+D1", "Ctrl+Tab", "Alt+F4", "F6", "Ctrl+C" })

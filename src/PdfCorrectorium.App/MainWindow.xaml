@@ -231,9 +231,791 @@
                 </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
+        <Style x:Key="QatIconButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="Margin" Value="2,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+        </Style>
+        <Style x:Key="RibbonTabItemStyle" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Padding" Value="18,6,18,6" />
+            <Setter Property="Margin" Value="0,0,2,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabChrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,2" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="HeaderContent" ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="#F1F5F9" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabChrome" Property="Background" Value="White" />
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="TabChrome" Property="BorderBrush" Value="#2563EB" />
+                                <Setter TargetName="TabChrome" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RibbonBigButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="MinWidth" Value="60" />
+            <Setter Property="MaxWidth" Value="92" />
+            <Setter Property="Height" Value="78" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+        </Style>
+        <Style x:Key="RibbonBigToggleStyle" TargetType="ToggleButton">
+            <Setter Property="MinWidth" Value="60" />
+            <Setter Property="MaxWidth" Value="92" />
+            <Setter Property="Height" Value="78" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ToggleChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="#F1F5F9" />
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="#CBD5E1" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="#2563EB" />
+                                <Setter TargetName="ToggleChrome" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ToggleChrome" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RibbonSmallButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="7,2" />
+            <Setter Property="Margin" Value="2,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+        </Style>
+        <Style x:Key="RibbonSmallToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="7,2" />
+            <Setter Property="Margin" Value="2,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowDuration" Value="12000" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="ToggleChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="#F1F5F9" />
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="#CBD5E1" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ToggleChrome" Property="BorderBrush" Value="#2563EB" />
+                                <Setter TargetName="ToggleChrome" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ToggleChrome" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="RibbonGroupBorderStyle" TargetType="Border">
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="0,0,1,0" />
+            <Setter Property="Padding" Value="8,4,8,3" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style x:Key="RibbonGroupTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="#64748B" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+        </Style>
+        <Style x:Key="RibbonTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="4,2,4,0">
+                                <TabPanel IsItemsHost="True" />
+                            </Border>
+                            <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="4,3">
+                                <ContentPresenter ContentSource="SelectedContent" />
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BackstageNavButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Padding" Value="14,4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style x:Key="BackstageRecentButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#D7DEE6" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
     </Window.Resources>
     <Grid Background="{StaticResource AppBackgroundBrush}">
     <DockPanel KeyboardNavigation.TabNavigation="Local">
+        <!-- === クイックアクセスツールバー (QAT) === -->
+        <Border x:Name="QuickAccessToolbar" DockPanel.Dock="Top" Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="0,0,0,1" Height="36">
+            <DockPanel LastChildFill="True">
+                <!-- 右側: UIモード切替ボタン (リボン ⇄ クラシック) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Button Command="{Binding ToggleRibbonUiModeCommand}" Style="{StaticResource ModernButtonStyle}"
+                            Height="28" Padding="11,2" ToolTip="{Binding UiModeToggleToolTip}"
+                            AutomationProperties.Name="{Binding UiModeToggleToolTip}" kb:KeyboardAccess.Key="5">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding UiModeToggleText}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- 左側: QATボタン群 -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <TextBlock Text="PDF Correctorium" FontWeight="SemiBold" FontSize="12" Foreground="#475569" VerticalAlignment="Center" Margin="2,0,10,0" />
+                    <Rectangle Width="1" Height="20" Fill="#CBD5E1" Margin="0,0,5,0" />
+                    <Button Command="{Binding SaveProjectCommand}" Style="{StaticResource QatIconButtonStyle}" ToolTip="プロジェクトを上書き保存 (Ctrl+S)"
+                            AutomationProperties.Name="プロジェクトを上書き保存" kb:KeyboardAccess.Key="1">
+                        <Viewbox Width="18" Height="18">
+                            <Path StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.SaveProject}" Fill="#263746">
+                                <Path.Stroke>
+                                    <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+                                </Path.Stroke>
+                            </Path>
+                        </Viewbox>
+                    </Button>
+                    <Button Command="{Binding ExportPdfCommand}" Style="{StaticResource QatIconButtonStyle}" ToolTip="編集済みPDFを別名で出力"
+                            AutomationProperties.Name="編集済みPDFを別名で出力" kb:KeyboardAccess.Key="2">
+                        <Viewbox Width="18" Height="18">
+                            <Path Fill="#FFC83B3B" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.ExportPdf}" />
+                        </Viewbox>
+                    </Button>
+                    <Rectangle Width="1" Height="20" Fill="#CBD5E1" Margin="5,0" />
+                    <Button Command="{Binding UndoCommand}" Style="{StaticResource QatIconButtonStyle}" ToolTip="元に戻す (Ctrl+Z)"
+                            AutomationProperties.Name="元に戻す" kb:KeyboardAccess.Key="3">
+                        <Viewbox Width="18" Height="18">
+                            <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Undo}" />
+                        </Viewbox>
+                    </Button>
+                    <Button Command="{Binding RedoCommand}" Style="{StaticResource QatIconButtonStyle}" ToolTip="やり直す (Ctrl+Y)"
+                            AutomationProperties.Name="やり直す" kb:KeyboardAccess.Key="4">
+                        <Viewbox Width="18" Height="18">
+                            <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Redo}" />
+                        </Viewbox>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid>
+        <DockPanel x:Name="EditorShell" KeyboardNavigation.TabNavigation="Local">
+
+        <!-- === リボンUIコンテナ === -->
+        <Border DockPanel.Dock="Top" Visibility="{Binding IsRibbonUiMode, Converter={StaticResource BooleanToVisibilityConverter}}"
+                Background="White" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
+            <TabControl x:Name="MainRibbonTabControl" Style="{StaticResource RibbonTabControlStyle}" SelectedIndex="1"
+                        SelectionChanged="MainRibbonTabControl_OnSelectionChanged">
+                <!-- 【ファイル】は通常のコマンド面ではなく、作業領域を置き換えるBackstageビューを開く。 -->
+                <TabItem x:Name="RibbonFileTab" Header="ファイル" Style="{StaticResource RibbonTabItemStyle}"
+                         AutomationProperties.Name="ファイル" kb:KeyboardAccess.Key="F" />
+                <!-- 【ホーム】タブ -->
+                <TabItem Header="ホーム" Style="{StaticResource RibbonTabItemStyle}" AutomationProperties.Name="ホーム" kb:KeyboardAccess.Key="H">
+                    <StackPanel Orientation="Horizontal" Height="98" VerticalAlignment="Top">
+                        <!-- モード切替グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="モード切替" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <ToggleButton Command="{Binding ActivateOcrEditModeCommand}" IsChecked="{Binding IsOcrEditMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="OCR編集モードへ切り替え">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Border Width="22" Height="18" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.6" CornerRadius="2" Margin="0,2,0,4">
+                                                <TextBlock Text="T" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Text="OCR編集" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <ToggleButton Command="{Binding ActivateReadingOrderModeCommand}" IsChecked="{Binding IsReadingOrderMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="読み順編集モードへ切り替え">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="18" Margin="0,2,0,4">
+                                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.ReadingEarlier}" />
+                                            </Viewbox>
+                                            <TextBlock Text="読み順" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <ToggleButton Command="{Binding ActivateReviewModeCommand}" IsChecked="{Binding IsReviewMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="校正・確認モードへ切り替え">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="18" Margin="0,2,0,4">
+                                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="2.0" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.RotationReset}" />
+                                            </Viewbox>
+                                            <TextBlock Text="校正・確認" FontSize="12" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <ToggleButton Command="{Binding ActivateRedactionModeCommand}" IsChecked="{Binding IsRedactionMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="墨消しモードへ切り替え">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Border Width="22" Height="14" Background="#263746" CornerRadius="1" Margin="0,4,0,6" />
+                                            <TextBlock Text="墨消し" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 表示・移動グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="表示・移動" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel VerticalAlignment="Center">
+                                        <Button Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoPrevious}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="前のページ">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.PreviousPage}" />
+                                                </Viewbox>
+                                                <TextBlock Text="前へ" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="次のページ">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.NextPage}" />
+                                                </Viewbox>
+                                                <TextBlock Text="次へ" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- ページ番号 -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                                        <TextBox Width="38" Height="22" Padding="2,1" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                 IsEnabled="{Binding HasDocument}" Text="{Binding SelectedPage.PageNumber, Mode=OneWay}"
+                                                 GotKeyboardFocus="ToolbarPageNumberBox_OnGotKeyboardFocus"
+                                                 PreviewKeyDown="ToolbarPageNumberBox_OnPreviewKeyDown"
+                                                 LostKeyboardFocus="ToolbarPageNumberBox_OnLostKeyboardFocus" ToolTip="ページ番号を入力して Enter" />
+                                        <TextBlock Text=" / " VerticalAlignment="Center" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Text="{Binding PageItems.Count}" MinWidth="20" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="11" />
+                                    </StackPanel>
+
+                                    <StackPanel VerticalAlignment="Center" Margin="2,0">
+                                        <Button Click="FitWidthButton_OnClick" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="幅に合わせる">
+                                            <TextBlock Text="幅に合わせる" FontSize="12" />
+                                        </Button>
+                                        <Button Click="FitPageButton_OnClick" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="ページ全体を表示">
+                                            <TextBlock Text="全体表示" FontSize="11" />
+                                        </Button>
+                                    </StackPanel>
+
+                                    <Button Command="{Binding ActualSizeCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="100%（原寸）で表示">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="20" Height="20" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.ActualSize}" />
+                                            </Viewbox>
+                                            <TextBlock Text="100%" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 検索・校正グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="検索・校正" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Click="FindOcrTextMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="透明テキストを検索 (Ctrl+F)">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Search}" />
+                                            </Viewbox>
+                                            <TextBlock Text="検索" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="ReplaceOcrTextMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="透明テキストを置換 (Ctrl+H)">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Replace}" />
+                                            </Viewbox>
+                                            <TextBlock Text="置換" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="CommentsAndTags_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="コメントとタグの管理">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Bookmark}" />
+                                            </Viewbox>
+                                            <TextBlock Text="コメント" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </StackPanel>
+                </TabItem>
+
+                <!-- 【編集・校正】タブ：現在の編集モードに必要な操作だけを表示する -->
+                <TabItem Header="編集・校正" Style="{StaticResource RibbonTabItemStyle}" AutomationProperties.Name="編集・校正" kb:KeyboardAccess.Key="E">
+                    <StackPanel Orientation="Horizontal" Height="98" VerticalAlignment="Top">
+                        <!-- 編集単位グループ (OCR編集モード時のみ有効) -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}" Visibility="{Binding IsOcrEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="編集単位" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal" IsEnabled="{Binding CanUseOcrEditControls}">
+                                    <ToggleButton Command="{Binding SelectParagraphUnitCommand}" IsChecked="{Binding IsParagraphEditMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="段落単位で選択・編集します">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Border Width="20" Height="16" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="0,2,0,4">
+                                                <TextBlock Text="¶" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Text="段落編集" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <ToggleButton Command="{Binding SelectLineUnitCommand}" IsChecked="{Binding IsLineEditMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="行単位で選択・編集します">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Border Width="20" Height="16" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="0,2,0,4">
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <Rectangle Height="1.5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" Margin="2,1" />
+                                                    <Rectangle Height="1.5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" Margin="2,1" />
+                                                </StackPanel>
+                                            </Border>
+                                            <TextBlock Text="行編集" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <ToggleButton Command="{Binding SelectCharacterUnitCommand}" IsChecked="{Binding IsCharacterEditMode, Mode=OneWay}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="文字単位で選択・編集します">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Border Width="20" Height="16" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="0,2,0,4">
+                                                <TextBlock Text="A" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Text="文字編集" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 領域操作グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}" Visibility="{Binding IsOcrEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="領域操作" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <ToggleButton IsChecked="{Binding IsAddOcrRegionMode, Mode=TwoWay}" IsEnabled="{Binding CanAddOcrRegion}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="透明テキスト領域を追加。オンにしてドラッグします。">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.AddOcrRegion}" />
+                                            </Viewbox>
+                                            <TextBlock Text="領域追加" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                    <Button Command="{Binding DeleteOcrRegionsCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択した透明テキスト領域を削除 (Delete)">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Delete}" />
+                                            </Viewbox>
+                                            <TextBlock Text="選択削除" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <ToggleButton IsChecked="{Binding IsOcrOverlayVisible}" IsEnabled="{Binding CanUsePreview}"
+                                                  Style="{StaticResource RibbonBigToggleStyle}" ToolTip="OCRオーバーレイを表示／非表示">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.OcrVisibility}" />
+                                            </Viewbox>
+                                            <TextBlock Text="OCR表示" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 配置・文字送りグループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}" Visibility="{Binding IsOcrEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="配置・文字送り" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <!-- 左右整列 -->
+                                    <StackPanel VerticalAlignment="Center">
+                                        <Button Command="{Binding AlignLeftCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を左揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignLeft}" />
+                                                </Viewbox>
+                                                <TextBlock Text="左揃え" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding AlignHorizontalCenterCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を左右中央揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignHorizontalCenter}" />
+                                                </Viewbox>
+                                                <TextBlock Text="中央揃え" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding AlignRightCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を右揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignRight}" />
+                                                </Viewbox>
+                                                <TextBlock Text="右揃え" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- 上下整列 -->
+                                    <StackPanel VerticalAlignment="Center" Margin="2,0">
+                                        <Button Command="{Binding AlignTopCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を上揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignTop}" />
+                                                </Viewbox>
+                                                <TextBlock Text="上揃え" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding AlignVerticalCenterCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を上下中央揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignVerticalCenter}" />
+                                                </Viewbox>
+                                                <TextBlock Text="上下中央" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding AlignBottomCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="選択した領域を下揃え">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.AlignBottom}" />
+                                                </Viewbox>
+                                                <TextBlock Text="下揃え" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- 文字送り -->
+                                    <StackPanel VerticalAlignment="Center" Margin="2,0">
+                                        <Button Command="{Binding EqualizeCharacterAdvancesCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="{Binding EqualizeCharacterAdvancesToolTip}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.EqualizeCharacterAdvances}" />
+                                                </Viewbox>
+                                                <TextBlock Text="文字等分" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding RestoreOriginalCharacterAdvancesCommand}" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="{Binding RestoreOriginalCharacterAdvancesToolTip}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Viewbox Width="12" Height="12">
+                                                    <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.6" Data="{StaticResource IconGeometry.RestoreCharacterAdvances}" />
+                                                </Viewbox>
+                                                <TextBlock Text="OCR復元" FontSize="10" Margin="3,0,0,0" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 高度な校正グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}" Visibility="{Binding IsOcrEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="高度な校正" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Click="BatchCharacterAdjustmentMenuItem_OnClick" IsEnabled="{Binding CanEditGeometry}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="前処理付き一括自動調整">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.EstimateCharacterAdvances}" />
+                                            </Viewbox>
+                                            <TextBlock Text="一括調整" FontSize="11" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="RepeatedRegionPropagationMenuItem_OnClick" IsEnabled="{Binding CanEditGeometry}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択領域の編集を他ページへ反映">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.PageInsert}" />
+                                            </Viewbox>
+                                            <TextBlock Text="他ページへ反映" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="OcrQualityAnalysisMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="OCR品質の異常候補を走査">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.QualityCheck}" />
+                                            </Viewbox>
+                                            <TextBlock Text="品質チェック" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 読み順編集モード -->
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsReadingOrderMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="読み順" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Command="{Binding MoveReadingEarlierCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択したOCR領域を読み順の1つ前へ移動" AutomationProperties.Name="読み順を1つ前へ">
+                                            <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.ReadingEarlier}" /></Viewbox><TextBlock Text="1つ前へ" FontSize="12" /></StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding MoveReadingLaterCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択したOCR領域を読み順の1つ後へ移動" AutomationProperties.Name="読み順を1つ後へ">
+                                            <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.ReadingLater}" /></Viewbox><TextBlock Text="1つ後へ" FontSize="12" /></StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding RecalculateReadingOrderCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="現在ページの読み順を位置から再計算" AutomationProperties.Name="読み順を再計算">
+                                            <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.RecalculateReadingOrder}" /></Viewbox><TextBlock Text="再計算" FontSize="12" /></StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="表示" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                    <ToggleButton IsChecked="{Binding IsOcrOverlayVisible}" IsEnabled="{Binding CanUsePreview}" Style="{StaticResource RibbonBigToggleStyle}" ToolTip="OCR領域と読み順番号を表示／非表示" AutomationProperties.Name="OCR領域と読み順番号を表示">
+                                        <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" Data="{StaticResource IconGeometry.OcrVisibility}" /></Viewbox><TextBlock Text="OCR表示" FontSize="12" /></StackPanel>
+                                    </ToggleButton>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 校正・確認モード -->
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsReviewMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="確認対象" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <StackPanel VerticalAlignment="Center" Margin="2,0,6,0">
+                                            <TextBlock Text="絞り込み" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="2,0,0,2" />
+                                            <ComboBox ItemsSource="{Binding ReviewFilterOptions}" SelectedIndex="{Binding ReviewFilterIndex, Mode=TwoWay}" DisplayMemberPath="DisplayName" Width="132" Height="28" ToolTip="確認対象の絞り込み" AutomationProperties.Name="確認対象の絞り込み" />
+                                        </StackPanel>
+                                        <Button Command="{Binding PreviousReviewCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="前の確認対象へ移動" AutomationProperties.Name="前の確認対象"><StackPanel HorizontalAlignment="Center"><Viewbox Width="26" Height="26"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="2" Data="{StaticResource IconGeometry.PreviousPage}" /></Viewbox><TextBlock Text="前の対象" FontSize="12" /></StackPanel></Button>
+                                        <Button Command="{Binding NextReviewCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="次の確認対象へ移動" AutomationProperties.Name="次の確認対象"><StackPanel HorizontalAlignment="Center"><Viewbox Width="26" Height="26"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="2" Data="{StaticResource IconGeometry.NextPage}" /></Viewbox><TextBlock Text="次の対象" FontSize="12" /></StackPanel></Button>
+                                        <Button Command="{Binding VerifyAndNextCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択領域を確認済みにして次の対象へ移動" AutomationProperties.Name="確認済みにして次へ"><StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.Validate}" /></Viewbox><TextBlock Text="確認して次へ" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" /></StackPanel></Button>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="品質" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                    <Button Click="OcrQualityAnalysisMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="OCR品質の候補を文書全体から確認" AutomationProperties.Name="OCR品質チェック"><StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.QualityCheck}" /></Viewbox><TextBlock Text="品質チェック" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" /></StackPanel></Button>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 墨消しモード -->
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding IsRedactionMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock Text="墨消し範囲" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <StackPanel VerticalAlignment="Center" Margin="2,0,6,0">
+                                            <TextBlock Text="指定方法" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="2,0,0,2" />
+                                            <ComboBox SelectedIndex="{Binding RedactionInputModeIndex, Mode=TwoWay}" Width="130" Height="28" ToolTip="墨消し範囲の指定方法" AutomationProperties.Name="墨消し範囲の指定方法">
+                                                <ComboBoxItem Content="PDF文字を選択" /><ComboBoxItem Content="矩形" /><ComboBoxItem Content="多角形" /><ComboBoxItem Content="フリーハンド" />
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <Button Command="{Binding AddSelectedRedactionsCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="事前に選択した文字・OCR領域を墨消し" AutomationProperties.Name="選択範囲を墨消し"><StackPanel HorizontalAlignment="Center"><Border Width="28" Height="18" Background="#263746" CornerRadius="2" Margin="0,5,0,8" /><TextBlock Text="選択を墨消し" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" /></StackPanel></Button>
+                                        <Button Command="{Binding DeleteSelectedRedactionCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="選択中の墨消し範囲を削除" AutomationProperties.Name="選択中の墨消し範囲を削除"><StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.Delete}" /></Viewbox><TextBlock Text="範囲を削除" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" /></StackPanel></Button>
+                                        <Button Command="{Binding ClearCurrentPageRedactionsCommand}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="このページの墨消し範囲をすべて解除" AutomationProperties.Name="このページの墨消しをすべて解除"><StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.Recovery}" /></Viewbox><TextBlock Text="ページ内を解除" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" /></StackPanel></Button>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </TabItem>
+
+                <!-- 【表示・検証】タブ -->
+                <TabItem Header="表示・検証" Style="{StaticResource RibbonTabItemStyle}" AutomationProperties.Name="表示・検証" kb:KeyboardAccess.Key="V">
+                    <StackPanel Orientation="Horizontal" Height="98" VerticalAlignment="Top">
+                        <!-- サイドバー表示グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="サイドバー表示" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ToggleButton IsChecked="{Binding ShowPageListPanel, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="100">
+                                            <TextBlock Text="ページ一覧" FontSize="11" Margin="4,0,0,0" />
+                                        </ToggleButton>
+                                        <ToggleButton IsChecked="{Binding ShowPropertiesPanel, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="100">
+                                            <TextBlock Text="OCRプロパティ" FontSize="11" Margin="4,0,0,0" />
+                                        </ToggleButton>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <ToggleButton IsChecked="{Binding ShowStatusBar, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="100">
+                                            <TextBlock Text="ステータスバー" FontSize="11" Margin="4,0,0,0" />
+                                        </ToggleButton>
+                                        <ToggleButton IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="100">
+                                            <TextBlock Text="プロパティ説明" FontSize="11" Margin="4,0,0,0" />
+                                        </ToggleButton>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- ページレイアウトグループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="ページレイアウト" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel VerticalAlignment="Center" Margin="2,0">
+                                    <ComboBox ItemsSource="{Binding DocumentViewModeOptions}" SelectedItem="{Binding SelectedDocumentViewModeOption, Mode=TwoWay}"
+                                              DisplayMemberPath="DisplayName" Width="132" Height="28" Margin="0,0,0,4"
+                                              IsEnabled="{Binding HasDocument}" Style="{StaticResource RoundedToolbarComboBoxStyle}" ToolTip="{Binding DocumentViewModeDescription}" />
+                                    <ComboBox ItemsSource="{Binding DocumentPageFlowModeOptions}" SelectedItem="{Binding SelectedDocumentPageFlowModeOption, Mode=TwoWay}"
+                                              DisplayMemberPath="DisplayName" Width="132" Height="28"
+                                              IsEnabled="{Binding HasDocument}" Style="{StaticResource RoundedToolbarComboBoxStyle}" ToolTip="ページ切り替え／連続スクロール" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 見開き詳細グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}" IsEnabled="{Binding IsFacingPagesView}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="見開きの詳細" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <ToggleButton IsChecked="{Binding FacingPagesShowCoverSeparately, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="146" ToolTip="見開き表示で表紙を片側へ単独表示" AutomationProperties.Name="表紙を単独表示">
+                                        <TextBlock Text="表紙を単独表示" FontSize="12" />
+                                    </ToggleButton>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ToggleButton IsChecked="{Binding IsFacingPagesLeftBinding, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="72" ToolTip="左綴じとしてページを配置" AutomationProperties.Name="左綴じ"><TextBlock Text="左綴じ" FontSize="12" /></ToggleButton>
+                                        <ToggleButton IsChecked="{Binding IsFacingPagesRightBinding, Mode=TwoWay}" Style="{StaticResource RibbonSmallToggleStyle}" Width="72" ToolTip="右綴じとしてページを配置" AutomationProperties.Name="右綴じ"><TextBlock Text="右綴じ" FontSize="12" /></ToggleButton>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 品質・文書情報グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="品質・文書情報" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Click="OcrQualityAnalysisMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="OCR品質の候補を文書全体から確認" AutomationProperties.Name="OCR品質チェック">
+                                        <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.QualityCheck}" /></Viewbox><TextBlock Text="OCR品質" FontSize="12" /></StackPanel>
+                                    </Button>
+                                    <Button Click="DocumentPropertiesMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="文書のプロパティを表示・編集" AutomationProperties.Name="文書のプロパティ">
+                                        <StackPanel HorizontalAlignment="Center"><Viewbox Width="28" Height="28" Margin="0,2"><Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" Data="{StaticResource IconGeometry.DocumentProperties}" /></Viewbox><TextBlock Text="文書情報" FontSize="12" /></StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- 検証・保守グループ -->
+                        <Border Style="{StaticResource RibbonGroupBorderStyle}">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="検証・保守" Style="{StaticResource RibbonGroupTitleStyle}" DockPanel.Dock="Bottom" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Click="ValidateProjectMenuItem_OnClick" IsEnabled="{Binding HasDocument}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="現在のプロジェクトを検証" AutomationProperties.Name="プロジェクト検証">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Validate}" />
+                                            </Viewbox>
+                                            <TextBlock Text="プロジェクト検証" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Click="RestoreProjectMenuItem_OnClick" IsEnabled="{Binding CanRestoreProjectBackup}" Style="{StaticResource RibbonBigButtonStyle}" ToolTip="バックアップから復旧" AutomationProperties.Name="バックアップから復旧">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <Viewbox Width="22" Height="22" Margin="0,2,0,2">
+                                                <Path Fill="Transparent" Stroke="#263746" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Data="{StaticResource IconGeometry.Recovery}" />
+                                            </Viewbox>
+                                            <TextBlock Text="バックアップ復旧" FontSize="11" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel VerticalAlignment="Center" Margin="2,0,0,0">
+                                        <Button Click="OpenLogFolderMenuItem_OnClick" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="ログフォルダーを開く">
+                                            <TextBlock Text="ログフォルダー" FontSize="11" />
+                                        </Button>
+                                        <Button Click="AboutMenuItem_OnClick" Style="{StaticResource RibbonSmallButtonStyle}" ToolTip="バージョン情報">
+                                            <TextBlock Text="バージョン情報" FontSize="11" />
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+        </Border>
+
+        <!-- === クラシック メニュー＆ツールバー（UIモード切替で表示） === -->
+        <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsClassicUiMode, Converter={StaticResource BooleanToVisibilityConverter}}">
         <Menu DockPanel.Dock="Top" Background="White" Foreground="{StaticResource PrimaryTextBrush}" KeyboardNavigation.TabIndex="0">
             <MenuItem Header="ファイル(_F)" SubmenuOpened="FileMenu_OnSubmenuOpened">
                 <MenuItem Header="PDFを開く...(_O)" Command="{Binding OpenPdfCommand}" InputGestureText="Ctrl+O"  AutomationProperties.AccessKey="Alt+O"/>
@@ -323,6 +1105,8 @@
                 <MenuItem Header="プロパティの詳しい説明(_H)"
                           IsCheckable="True"
                           IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+H"/>
+                <Separator />
+                <MenuItem Header="リボン表示へ切り替え(_B)" Command="{Binding ToggleRibbonUiModeCommand}" AutomationProperties.AccessKey="Alt+B" />
             </MenuItem>
             <MenuItem x:Name="BookmarkMenu" Header="しおり(_B)" IsEnabled="{Binding HasDocument}">
                 <MenuItem Header="現在のページにしおりを追加(_A)" Command="{Binding AddBookmarkCommand}"  AutomationProperties.AccessKey="Alt+A"/>
@@ -658,9 +1442,16 @@
                         <ComboBoxItem Content="校正・確認" />
                         <ComboBoxItem Content="墨消し" />
                     </ComboBox>
+                    <Separator Margin="4,0" />
+                    <Button Command="{Binding ToggleRibbonUiModeCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="リボンUIへ切り替え">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚡ リボン表示" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </ToolBar>
             </ToolBarTray>
         </Border>
+        </StackPanel>
 
         <StatusBar DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                    Visibility="{Binding ShowStatusBar, Converter={StaticResource BooleanToVisibilityConverter}}" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
@@ -2275,6 +3066,141 @@
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+        </Grid>
+        </DockPanel>
+
+        <!-- === ファイル Backstage: QATを残し、通常のリボン／作業領域を全面的に置き換える === -->
+        <Border x:Name="BackstageView" Panel.ZIndex="900" Visibility="Collapsed"
+                Background="#F8FAFC" KeyboardNavigation.TabNavigation="Cycle"
+                AutomationProperties.Name="ファイル">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="0,0,0,1">
+                    <DockPanel LastChildFill="True">
+                        <Button x:Name="BackstageBackButton" DockPanel.Dock="Left" Click="BackstageBackButton_OnClick"
+                                Style="{StaticResource ModernButtonStyle}" Height="32" Margin="8,6" Padding="12,2"
+                                ToolTip="文書画面へ戻る (Esc)" AutomationProperties.Name="文書画面へ戻る">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="←" FontSize="18" Margin="0,-2,7,0" VerticalAlignment="Center" />
+                                <TextBlock Text="戻る" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="ファイル" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}"
+                                   VerticalAlignment="Center" Margin="10,0" />
+                        <TextBlock DockPanel.Dock="Right" Text="Escで文書画面へ戻ります" FontSize="11"
+                                   Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="0,0,18,0" />
+                    </DockPanel>
+                </Border>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="286" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="White" BorderBrush="#D7DEE6" BorderThickness="0,0,1,0">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="BackstagePrimaryCommands" Margin="18,18,18,24">
+                                <TextBlock Text="開く" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}" Margin="14,0,0,5" />
+                                <Button Command="{Binding OpenPdfCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="PDFを開く (Ctrl+O)" AutomationProperties.Name="PDFを開く">
+                                    <TextBlock Text="PDFを開く" />
+                                </Button>
+                                <Button Command="{Binding OpenProjectCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="PDF Correctoriumのプロジェクトを開く" AutomationProperties.Name="プロジェクトを開く">
+                                    <TextBlock Text="プロジェクトを開く" />
+                                </Button>
+                                <Button Command="{Binding ImportOcrDataCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="NDLOCR-Liteデータを読み込む" AutomationProperties.Name="OCRデータを読み込む">
+                                    <TextBlock Text="OCRデータを読み込む" />
+                                </Button>
+
+                                <Separator Margin="6,10" />
+                                <TextBlock Text="保存と出力" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}" Margin="14,0,0,5" />
+                                <Button Command="{Binding SaveProjectCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="プロジェクトを上書き保存 (Ctrl+S)" AutomationProperties.Name="プロジェクトを上書き保存">
+                                    <TextBlock Text="上書き保存" />
+                                </Button>
+                                <Button Command="{Binding SaveProjectAsCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="プロジェクトを別名で保存 (Ctrl+Shift+S)" AutomationProperties.Name="プロジェクトを別名で保存">
+                                    <TextBlock Text="名前を付けて保存" />
+                                </Button>
+                                <Button Command="{Binding ExportPdfCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="編集済みPDFを別名で出力" AutomationProperties.Name="編集済みPDFを別名で出力">
+                                    <TextBlock Text="PDF出力" />
+                                </Button>
+
+                                <Separator Margin="6,10" />
+                                <TextBlock Text="管理" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}" Margin="14,0,0,5" />
+                                <Button IsEnabled="{Binding HasDocument}" Click="BackstageDocumentProperties_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="文書のプロパティを表示・編集" AutomationProperties.Name="文書のプロパティ">
+                                    <TextBlock Text="文書のプロパティ" />
+                                </Button>
+                                <Button Click="BackstageApplicationSettings_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="アプリケーション設定を開く" AutomationProperties.Name="設定">
+                                    <TextBlock Text="設定" />
+                                </Button>
+                                <Button Click="BackstageAbout_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="バージョン情報を表示" AutomationProperties.Name="バージョン情報">
+                                    <TextBlock Text="バージョン情報" />
+                                </Button>
+                                <Button Command="{Binding ExitCommand}" Click="BackstageCommand_OnClick" Style="{StaticResource BackstageNavButtonStyle}"
+                                        ToolTip="PDF Correctoriumを終了" AutomationProperties.Name="終了">
+                                    <TextBlock Text="終了" />
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Grid Grid.Column="1" Margin="34,26,34,30" MaxWidth="980" HorizontalAlignment="Left">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="最近開いたファイル" FontSize="23" FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}" />
+                        <TextBlock Grid.Row="1" Text="PDFまたはプロジェクトを選ぶと、現在の編集状態を確認してから開きます。"
+                                   FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,6,0,18" />
+                        <Grid Grid.Row="2">
+                            <TextBlock Text="最近開いたファイルはありません。" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="2,8">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RecentFiles.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="BackstageRecentFilesList" ItemsSource="{Binding RecentFiles}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding OpenCommand}" Click="BackstageCommand_OnClick"
+                                                    Style="{StaticResource BackstageRecentButtonStyle}"
+                                                    ToolTip="{Binding FullPath}" AutomationProperties.Name="{Binding FullPath}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding FullPath}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"
+                                                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
         </Grid>
     </DockPanel>
         <Border Panel.ZIndex="1000"

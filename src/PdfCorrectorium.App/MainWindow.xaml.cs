@@ -102,6 +102,8 @@ public partial class MainWindow : Window
     private OcrQualityAnalysisWindow? _ocrQualityAnalysisWindow;
     /// <summary>ページ番号入力欄の確定処理がフォーカス移動で再入することを防ぎます。</summary>
     private bool _isCommittingToolbarPageNumber;
+    /// <summary>Backstageを閉じたときに戻す、ファイル以外の最後のリボンタブです。</summary>
+    private int _lastRibbonTabIndex = 1;
     /// <summary>設定、ログ、自動保存の配置先です。</summary>
     private readonly ApplicationPaths _applicationPaths;
     /// <summary>編集を妨げずに復旧データを定期保存するタイマーです。</summary>
@@ -158,6 +160,70 @@ public partial class MainWindow : Window
 
     /// <summary>画面の編集状態とコマンドを提供するDataContextです。</summary>
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext;
+
+    /// <summary>ファイルBackstageが通常の作業領域を置き換えているかを示します。</summary>
+    internal bool IsBackstageOpen => BackstageView.Visibility == Visibility.Visible;
+
+    /// <summary>ファイルタブの選択を、通常のリボン内容ではなくBackstage表示へ変換します。</summary>
+    private void MainRibbonTabControl_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, MainRibbonTabControl)) return;
+        if (BackstageView is null) return;
+        if (RibbonFileTab.IsSelected)
+        {
+            OpenBackstage();
+            return;
+        }
+
+        if (MainRibbonTabControl.SelectedIndex > 0)
+            _lastRibbonTabIndex = MainRibbonTabControl.SelectedIndex;
+        if (IsBackstageOpen) CloseBackstage(restoreFocus: false);
+    }
+
+    /// <summary>最近使ったファイルを更新し、QATを残した全画面ファイルビューを開きます。</summary>
+    internal void OpenBackstage()
+    {
+        if (!IsLoaded || !ViewModel.IsRibbonUiMode || ViewModel.IsPdfExporting) return;
+        if (MainRibbonTabControl.SelectedIndex > 0)
+            _lastRibbonTabIndex = MainRibbonTabControl.SelectedIndex;
+        ViewModel.ReloadRecentFiles();
+        BackstageView.Visibility = Visibility.Visible;
+        Dispatcher.BeginInvoke(() => BackstageBackButton.Focus(), DispatcherPriority.Input);
+    }
+
+    /// <summary>Backstageを閉じ、開く前に選択していたリボンタブへ戻します。</summary>
+    internal void CloseBackstage(bool restoreFocus = true)
+    {
+        if (!IsBackstageOpen) return;
+        BackstageView.Visibility = Visibility.Collapsed;
+        if (MainRibbonTabControl.SelectedIndex == 0)
+            MainRibbonTabControl.SelectedIndex = Math.Clamp(_lastRibbonTabIndex, 1, MainRibbonTabControl.Items.Count - 1);
+        if (restoreFocus)
+            Dispatcher.BeginInvoke(() => ((TabItem)MainRibbonTabControl.SelectedItem).Focus(), DispatcherPriority.Input);
+    }
+
+    private void BackstageBackButton_OnClick(object sender, RoutedEventArgs e) => CloseBackstage();
+
+    /// <summary>ファイル操作は通常画面へ戻してから実行し、ダイアログの背後にBackstageを残しません。</summary>
+    private void BackstageCommand_OnClick(object sender, RoutedEventArgs e) => CloseBackstage(restoreFocus: false);
+
+    private void BackstageDocumentProperties_OnClick(object sender, RoutedEventArgs e)
+    {
+        CloseBackstage(restoreFocus: false);
+        DocumentPropertiesMenuItem_OnClick(sender, e);
+    }
+
+    private void BackstageApplicationSettings_OnClick(object sender, RoutedEventArgs e)
+    {
+        CloseBackstage(restoreFocus: false);
+        ApplicationSettingsMenuItem_OnClick(sender, e);
+    }
+
+    private void BackstageAbout_OnClick(object sender, RoutedEventArgs e)
+    {
+        CloseBackstage(restoreFocus: false);
+        AboutMenuItem_OnClick(sender, e);
+    }
 
     /// <summary>検索結果のOCR領域を、プレビュー上でも単一選択として強調します。</summary>
     private void ViewModel_OnOcrSearchSelectionRequested(object? sender, OverlayRegionViewModel region)
@@ -590,6 +656,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Escape && IsBackstageOpen)
+        {
+            CloseBackstage();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.F6 && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Shift)
         {
             MoveKeyboardPane(Keyboard.Modifiers == ModifierKeys.Shift);
@@ -723,7 +796,22 @@ public partial class MainWindow : Window
     /// <summary>F6/Shift+F6で主要な作業領域を順方向／逆方向へ移動します。</summary>
     internal void MoveKeyboardPane(bool reverse)
     {
-        FrameworkElement[] panes = [MainToolbarPanel, KeyboardNavigationTabs, OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
+        if (IsBackstageOpen)
+        {
+            FrameworkElement[] backstagePanes = [BackstageBackButton, BackstagePrimaryCommands, BackstageRecentFilesList];
+            var backstageIndex = Array.FindIndex(backstagePanes, pane => pane.IsKeyboardFocusWithin);
+            if (backstageIndex < 0 && reverse) backstageIndex = 0;
+            for (var step = 1; step <= backstagePanes.Length; step++)
+            {
+                var candidate = backstagePanes[(backstageIndex + (reverse ? -step : step) + backstagePanes.Length * 2) % backstagePanes.Length];
+                if (!candidate.IsVisible || !candidate.IsEnabled) continue;
+                if ((candidate.Focusable && candidate.Focus()) || candidate.MoveFocus(new TraversalRequest(FocusNavigationDirection.First))) return;
+            }
+            return;
+        }
+
+        FrameworkElement topPane = ViewModel.IsRibbonUiMode ? (FrameworkElement)MainRibbonTabControl : MainToolbarPanel;
+        FrameworkElement[] panes = [topPane, KeyboardNavigationTabs, OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
         var index = Array.FindIndex(panes, pane => pane.IsKeyboardFocusWithin);
         if (index < 0 && reverse) index = 0;
         for (var step = 1; step <= panes.Length; step++)
@@ -2362,6 +2450,9 @@ public partial class MainWindow : Window
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainWindowViewModel.IsRibbonUiMode) && !ViewModel.IsRibbonUiMode && IsBackstageOpen)
+            CloseBackstage(restoreFocus: false);
+
         if ((e.PropertyName == nameof(MainWindowViewModel.EditorMode) ||
              e.PropertyName == nameof(MainWindowViewModel.PreviewImage)) &&
             _isPickingRedactionColor && (!ViewModel.IsRedactionMode || !ViewModel.HasPreview))
