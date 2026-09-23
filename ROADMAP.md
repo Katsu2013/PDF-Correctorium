@@ -26,7 +26,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 
 ### 1. 一般的な市販・単機能デスクトップツールとの比較
 
-| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium (v1.0.0-dev.171)** |
+| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium (v1.0.0-dev.175)** |
 | :--- | :---: | :---: | :---: | :---: |
 | **ライセンス・費用** | 高額サブスク（年間数万円） | 有料（買い切り/更新） | 無料 (OSS等) | **完全無料 (Apache 2.0)** |
 | **導入形態・ポータブル性** | 要インストール | 要インストール | 要インストール（一部例外あり） | **完全ポータブル（解凍のみ・USB動作可）** |
@@ -38,7 +38,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 | **本文テキストの直接編集・修正** | ◎ | ◯〜◎ | ✕ | **✕ 未対応（計画中）** |
 | **埋め込み画像の編集・差し替え** | ◎ | ◯〜◎ | ✕ | **✕ 未対応（計画中）** |
 | **標準PDF注釈（ハイライト/印鑑/メモ）** | ◎ | ◎ | ✕〜△ | **✕ 未対応（計画中）** |
-| **ページの分割・抽出** | ◎ | ◎ | ◎ | **△ 専用機能なし（手動結合・削除で代用可 / 計画中）** |
+| **ページの分割・抽出** | ◎ | ◎ | ◎ | **◎（プリセット抽出・3方式の分割）** |
 | **パスワード保護・暗号化設定** | ◎ | ◎ | ◎ | **✕ 未対応（計画中）** |
 | **アプリ単体でのOCR文字認識** | ◎（標準内蔵） | ◯〜◎（標準内蔵またはアドオン） | ✕ | **△ 単体実行不可（外部NDLOCR連携のみ / 計画中）** |
 
@@ -59,21 +59,22 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 日常業務で市販ソフトの代わりに使える総合エディタを目指し、以下の機能拡張を計画・検討しています。  
 *※各機能の実装順序やリリース時期は、利用ニーズやフィードバック等を踏まえて柔軟に決定・対応していく方針です。*
 
-### 現在の実装機能 (v1.0.0-dev.171)
+### 現在の実装機能 (v1.0.0-dev.175)
 * [x] **画質無劣化のページ編集**: ドラッグ＆ドロップでの並べ替え、90度回転、不要ページ削除、別PDFからのページ差し込み
 * [x] **復元できない安全な墨消し**: PDF描画命令からの文字コード消去（ベクター保持）＋任意形状の高精細画像化＋出力後自動検証
 * [x] **しおり（目次）・文書情報編集**: 階層しおりの作成、文書プロパティ、初期表示設定（見開き・連続スクロール）
 * [x] **OCR透明テキスト精密校正**: 文字修正、位置・サイズ・角度・送り幅調整、日本語縦書き・読み順整理、校正モード、NDLOCR-Lite連携
 * [x] **安心のプロジェクト保存**: ZIP互換形式（.pdfocrproj）、通常モード／ポータブルモード、自動保存・世代バックアップ
+* [x] **文書整理**: ページ範囲の抽出、ページ単位／固定数／開始位置による分割、白紙ページ挿入
 
 ---
 
 ### 今後の機能拡張・実装候補
 
 #### 📑 文書整理・分割・セキュリティ機能
-* [ ] **ページの抽出（切り出し）**: 指定したページ範囲（例: 1-5, 8ページ）だけを新しいPDFとしてワンクリック保存
-* [ ] **PDFの分割**: 「1ページずつすべて分割」「指定ページで区切って分割」
-* [ ] **白紙ページの挿入**: 任意の場所に空の白紙ページを追加
+* [x] **ページの抽出（切り出し）**: 全／現在／選択／奇数／偶数／指定範囲を新しいPDFとして保存
+* [x] **PDFの分割**: 1ページずつ、指定ページ数ごと、指定開始ページで分割
+* [x] **白紙ページの挿入**: 現在位置・先頭・末尾へ現在ページ／定型サイズの白紙を追加
 * [ ] **パスワード保護・暗号化（セキュリティ）**:
   * 閲覧パスワード（文書を開く際のパスワード設定）
   * 権限パスワード（印刷の禁止、テキスト・画像のコピー禁止、編集禁止）
@@ -122,7 +123,7 @@ PDF Correctorium is actively under development. To become a viable daily replace
 
 ### 1. vs Commercial & Basic Desktop Software
 
-| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium (v1.0.0-dev.171)** |
+| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium (v1.0.0-dev.175)** |
 | :--- | :---: | :---: | :---: | :---: |
 | **License & Pricing** | Expensive subscription (annual) | Paid (one-time or maintenance) | Free (OSS / freeware) | **100% Free (Apache 2.0)** |
 | **Portability** | Requires installation | Requires installation | Mostly requires installation | **Fully portable (extract & run, USB ready)** |
@@ -134,7 +135,7 @@ PDF Correctorium is actively under development. To become a viable daily replace
 | **Direct In-Place Text Editing** | ◎ | ◯–◎ | ✕ | **✕ Not yet supported (Planned)** |
 | **Embedded Image Editing / Replacement** | ◎ | ◯–◎ | ✕ | **✕ Not yet supported (Planned)** |
 | **Standard Annotations (Highlights/Stamps)** | ◎ | ◎ | ✕–△ | **✕ Not yet supported (Planned)** |
-| **Page Splitting / Burst Extraction** | ◎ | ◎ | ◎ | **△ No dedicated tool yet (Planned)** |
+| **Page Splitting / Burst Extraction** | ◎ | ◎ | ◎ | **◎ (Preset extraction and three split modes)** |
 | **Password Protection & Encryption** | ◎ | ◎ | ◎ | **✕ Not yet supported (Planned)** |
 | **Standalone OCR Engine** | ◎ (Built-in) | ◯–◎ (Built-in / add-on) | ✕ | **△ Requires external NDLOCR (Planned)** |
 
@@ -155,21 +156,22 @@ PDF Correctorium is actively under development. To become a viable daily replace
 The project plans to explore and implement the following feature areas to evolve into a practical everyday PDF editor.  
 *Note: Implementation sequence and release schedules will be adapted flexibly based on technical feasibility and user needs.*
 
-### Current Features (v1.0.0-dev.171)
+### Current Features (v1.0.0-dev.175)
 * [x] **Lossless Page Editing**: Reorder, 90-degree rotate, delete, and merge pages without image degradation.
 * [x] **Irreversible Redaction**: Text stream operator removal + high-DPI rasterization fallback + post-export verification.
 * [x] **Bookmark & Document Properties**: Hierarchical bookmarks, document metadata, and initial view preferences.
 * [x] **Invisible OCR Text Proofreading**: Precise bounding boxes, character advances, vertical flow, and NDLOCR-Lite import.
 * [x] **Project Package Management**: ZIP-compatible (.pdfocrproj) format, normal/portable modes, and autosave.
+* [x] **Document Organization**: Page-range extraction, per-page/fixed-size/boundary splitting, and blank-page insertion.
 
 ---
 
 ### Planned Feature Candidates
 
 #### 📑 Document Organization, Splitting & Security
-* [ ] **Page Extraction**: Extract selected page ranges directly into new PDFs.
-* [ ] **PDF Splitting**: Split by page count or custom boundary ranges.
-* [ ] **Blank Page Insertion**: Insert blank pages anywhere in the document.
+* [x] **Page Extraction**: Extract all/current/selected/odd/even/custom page ranges.
+* [x] **PDF Splitting**: Split per page, by a fixed page count, or at custom boundaries.
+* [x] **Blank Page Insertion**: Insert current-size or standard-size blank pages at common positions.
 * [ ] **Password Protection & Encryption**: Open passwords, permission restrictions (printing, copying), and qpdf-based encryption.
 * [ ] **Bates & Page Numbering**: Batch-apply headers, footers, and continuous page numbers.
 

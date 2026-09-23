@@ -28,4 +28,6 @@ public sealed record ProjectPackageLimits
     public int MaximumRedactionPathPoints { get; init; } = 4_096;
     public int MaximumCommentCharacters { get; init; } = 32_768;
     public int MaximumTagNameCharacters { get; init; } = 128;
+    /// <summary>外部リンク1件のURIに許可する最大文字数です。</summary>
+    public int MaximumLinkUriCharacters { get; init; } = 8_192;
 }

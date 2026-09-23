@@ -60,6 +60,10 @@ public partial class App
                 new BatchCharacterAdjustmentProgressWindow(2), new RepeatedRegionSearchProgressWindow(2),
                 new InputPdfIssuesWindow([new PdfInputIssue("fixture", PdfInputIssueSeverity.Warning, "Fixture", "Fixture", "Fixture")]),
                 new InternalLinkWindow(2, null, 2),
+                new PageExtractionWindow(4, 2, [2, 3]),
+                new PdfSplitWindow(4),
+                new BlankPageWindow(595, 842, 2, 4),
+                new RecoveryProjectsWindow([new RecoveryProjectCandidate(Path.Combine(output, "recovery.pdfocrproj"), "復旧テスト", DateTime.Now, 1024)]),
                 new ProjectCommentsWindow(new ProjectTargetReference { Kind = ProjectTargetKind.Document }, [], []),
                 projectSaveOptions,
             ]);

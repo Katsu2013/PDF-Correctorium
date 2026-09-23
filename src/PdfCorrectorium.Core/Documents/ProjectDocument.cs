@@ -62,6 +62,11 @@ public sealed record PdfInternalLink
     public Guid? SourceRegionId { get; init; }
     public PdfRectangle? SourceBounds { get; init; }
     public Guid DestinationPageId { get; init; }
+    /// <summary>
+    /// 外部Webページを開く絶対HTTP(S) URIです。値がある場合は
+    /// <see cref="DestinationPageId"/>より優先し、PDFのURIリンクとして出力します。
+    /// </summary>
+    public string? ExternalUri { get; init; }
     public PdfPoint? DestinationPosition { get; init; }
     public double? DestinationZoomPercent { get; init; }
     public string Description { get; init; } = string.Empty;

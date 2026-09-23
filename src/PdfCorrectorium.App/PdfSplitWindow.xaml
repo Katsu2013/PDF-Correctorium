@@ -1,0 +1,29 @@
+<Window x:Class="PdfCorrectorium.App.PdfSplitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PDFを分割" Width="540" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="16" KeyboardNavigation.TabNavigation="Cycle">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="現在の編集内容を反映したPDFを複数ファイルへ分割します。既存ファイルは上書きしません。"
+                   TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,12"/>
+        <RadioButton x:Name="EveryPageRadio" Grid.Row="1" Content="1ページずつ分割(_E)" IsChecked="True" Checked="Mode_OnChecked"/>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+            <RadioButton x:Name="FixedSizeRadio" Content="指定ページ数ごと(_F)" VerticalAlignment="Center" Checked="Mode_OnChecked"/>
+            <TextBox x:Name="PagesPerFileBox" Text="10" Width="72" Margin="12,0,5,0" IsEnabled="False"/>
+            <TextBlock Text="ページ" VerticalAlignment="Center"/>
+        </StackPanel>
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="155"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <RadioButton x:Name="BoundaryRadio" Content="開始ページを指定(_B)" VerticalAlignment="Center" Checked="Mode_OnChecked"/>
+            <StackPanel Grid.Column="1">
+                <TextBox x:Name="BoundaryBox" IsEnabled="False"/>
+                <TextBlock Text="例: 1, 11, 21（各ファイルの先頭ページ）" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,3,0,0"/>
+            </StackPanel>
+        </Grid>
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="キャンセル" IsCancel="True" MinWidth="104"/>
+            <Button Content="出力先へ進む(_N)" IsDefault="True" MinWidth="120" Margin="8,0,0,0" Click="Apply_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

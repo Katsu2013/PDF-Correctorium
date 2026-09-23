@@ -13,10 +13,10 @@
 - `ProjectPageReference`: 固定`PageId`、不変元PDF内の`SourcePageNumber`、0／90／180／270度の`RotationDegrees`を持つ。`PdfCorrectoriumProject.PageSequence`の順序が表示・出力順である。
 - `ProjectComment`: 対象参照、本文、重要度、解決状態、タグID、作成／更新UTC、任意の作者を持つ。現行UIの対象は文書、ページ、OCR領域。
 - `ProjectTag`: 固定ID、名前、色を持つ。現行UIは名前の作成／割当を提供し、色編集は未実装。
-- `PdfInternalLink`: 元ページID、元OCR領域ID、移動先ページID、任意倍率、説明、有効状態を持つ。ページ番号ではなくIDで関係を保持する。
+- `PdfInternalLink`: 元ページID、任意の元OCR領域ID、任意の移動先ページIDまたはHTTP(S) `ExternalUri`、任意倍率、説明、有効状態を持つ。文書内リンクはページ番号ではなくIDで関係を保持し、OCR領域に依存しない矩形は`Bounds`を正本とする。
 - `PdfRedaction`: 固定ID、対象ページID、ページ左下原点のPDFポイント外接矩形、任意の輪郭と入力種別、`#RRGGBB`色、任意の元OCR領域IDと文字範囲、作成UTCを持つ。プレビュー座標や一時画像を保存しない。
 
-コメント／タグ／内部リンク／墨消し指定の編集は実行中のUndo/Redoへ入る。永続的な監査履歴、共同編集者管理、リンク用の任意矩形・文字列自動認識は含まない。
+コメント／タグ／リンク／墨消し指定の編集は実行中のUndo/Redoへ入る。永続的な監査履歴、共同編集者管理、既存PDFリンクの取り込み、ページ番号の文字列自動認識は含まない。
 
 ## 現行実装上の制約（2026-08-30 / dev.123）
 

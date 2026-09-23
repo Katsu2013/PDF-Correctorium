@@ -1,6 +1,18 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.171
+## Current repository snapshot: v1.0.0-dev.175
+
+### Small document-organization, link and recovery features (2026-09-24)
+
+- Added page extraction with presets for all, current, selected, odd, even and custom page ranges. Added PDF splitting per page, by a fixed page count, or at specified starting pages. Both operations export the current edited state first, complete output in staging files and only then publish the result.
+- Added blank-page insertion before/after the current page or at the beginning/end, with current-page, A4, A3 and Letter sizes. It reuses the existing page-composition and Undo/Redo path.
+- Added arbitrary rectangular link areas independent of OCR regions, plus HTTP/HTTPS Web links. Internal links remain fixed-page-ID based and external links are emitted as standard PDF `/URI` actions.
+- Added startup discovery for valid unsaved recovery packages. Users can open or delete a selected candidate; ignored candidates remain available. Successfully saved recovered work removes its recovery package.
+- Project format 1.7 stores optional external link URIs and requires application dev.172. Formats 1.0 through 1.7 remain readable.
+
+Product version is `1.0.0-dev.175` and numeric version is `1.0.0.175`. Project format is 1.7 and its minimum reader remains dev.172. The warning-free Release build, 29 contract tests, 17 source-versioning checks, keyboard and document-UI diagnostics, source and packaged document-organization diagnostics, published metadata verification and packaged smoke test passed. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.175-win-x64-20260924-013245`; focused evidence is under `outputs/.verification/dev175-*`.
+
+## Previous repository snapshot: v1.0.0-dev.171
 
 ### Exact editor-to-PDF text-redaction geometry (2026-09-18)
 

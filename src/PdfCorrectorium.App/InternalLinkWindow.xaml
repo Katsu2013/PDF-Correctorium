@@ -5,16 +5,20 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <Grid Margin="16" KeyboardNavigation.TabNavigation="Cycle">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="選択中の文字領域をクリックしたときの移動先を設定します。出力PDFにも内部リンクとして保存されます。"
+        <TextBlock Grid.Row="0" Text="選択中の文字領域または指定範囲へリンクを設定します。出力PDFにも標準リンク注釈として保存されます。"
                    TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,12" />
-        <Grid Grid.Row="1">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,7">
+            <RadioButton x:Name="InternalTargetRadio" Content="文書内ページ(_I)" IsChecked="True" Checked="TargetKind_OnChecked"/>
+            <RadioButton x:Name="ExternalTargetRadio" Content="Webページ(_W)" Margin="20,0,0,0" Checked="TargetKind_OnChecked"/>
+        </StackPanel>
+        <Grid Grid.Row="2" x:Name="InternalPagePanel">
             <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Label Content="移動先ページ(_P)" Target="{Binding ElementName=PageNumberBox}" />
             <TextBox x:Name="PageNumberBox" Grid.Column="1" Text="{Binding DestinationPageNumber, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AccessKey="Alt+P" />
         </Grid>
-        <Grid Grid.Row="2" Margin="0,7,0,0">
+        <Grid Grid.Row="3" x:Name="ZoomPanel" Margin="0,7,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <StackPanel>
                 <Label Content="表示倍率(_Z)" Target="{Binding ElementName=ZoomBox}" />
@@ -22,12 +26,17 @@
             </StackPanel>
             <TextBox x:Name="ZoomBox" Grid.Column="1" Text="{Binding ZoomText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AccessKey="Alt+Z" />
         </Grid>
-        <Grid Grid.Row="3" Margin="0,7,0,0">
+        <Grid Grid.Row="4" x:Name="ExternalUriPanel" Margin="0,7,0,0" IsEnabled="False">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Label Content="Webアドレス(_U)" Target="{Binding ElementName=ExternalUriBox}" />
+            <TextBox x:Name="ExternalUriBox" Grid.Column="1" Text="{Binding ExternalUriText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AccessKey="Alt+U" />
+        </Grid>
+        <Grid Grid.Row="5" Margin="0,7,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Label Content="説明(_D)" Target="{Binding ElementName=DescriptionBox}" />
             <TextBox x:Name="DescriptionBox" Grid.Column="1" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AccessKey="Alt+D" />
         </Grid>
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="キャンセル" IsCancel="True" MinWidth="104" />
             <Button Content="適用(_A)" IsDefault="True" MinWidth="104" Margin="8,0,0,0" Click="Apply_OnClick" />
         </StackPanel>

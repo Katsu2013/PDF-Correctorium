@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Windows;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.Core.Geometry;
 using PdfCorrectorium.Infrastructure;
 
 namespace PdfCorrectorium.App.ViewModels;
@@ -9,6 +12,7 @@ public sealed partial class MainWindowViewModel
 {
     private readonly Stack<Guid> _internalLinkBackStack = [];
     private readonly Stack<Guid> _internalLinkForwardStack = [];
+    private DocumentLinkOverlayViewModel? _selectedLinkArea;
 
     public ObservableCollection<PdfInputIssue> InputPdfIssues { get; } = [];
     public int InputPdfIssueCount => InputPdfIssues.Count;
@@ -19,6 +23,20 @@ public sealed partial class MainWindowViewModel
     public bool HasComments => _project?.Comments.Count > 0;
     public int CommentCount => _project?.Comments.Count ?? 0;
     public bool HasInternalLinkForSelection => FindSelectedInternalLink() is not null;
+    public ObservableCollection<DocumentLinkOverlayViewModel> LinkAreaItems { get; } = [];
+    public DocumentLinkOverlayViewModel? SelectedLinkArea
+    {
+        get => _selectedLinkArea;
+        set
+        {
+            if (!Set(ref _selectedLinkArea, value)) return;
+            OnPropertyChanged(nameof(HasSelectedLinkArea));
+            OnPropertyChanged(nameof(CanEditLinkSelection));
+            OnPropertyChanged(nameof(HasInternalLinkForSelection));
+        }
+    }
+    public bool HasSelectedLinkArea => SelectedLinkArea is not null;
+    public bool CanEditLinkSelection => HasSelectedOverlay || HasSelectedLinkArea;
     public bool CanNavigateInternalLinkBack => _internalLinkBackStack.Count > 0;
     public bool CanNavigateInternalLinkForward => _internalLinkForwardStack.Count > 0;
 
@@ -60,6 +78,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(HasInternalLinkForSelection));
         OnPropertyChanged(nameof(CanNavigateInternalLinkBack));
         OnPropertyChanged(nameof(CanNavigateInternalLinkForward));
+        RefreshLinkAreaItems();
     }
 
     public ProjectTargetReference GetCurrentCommentTarget()
@@ -102,18 +121,26 @@ public sealed partial class MainWindowViewModel
     }
 
     public int GetInternalLinkDestinationPage(PdfInternalLink? link) =>
-        link is null ? Math.Min((SelectedPage?.PageNumber ?? 1) + 1, Math.Max(1, PageItems.Count)) :
+        link is null || !string.IsNullOrWhiteSpace(link.ExternalUri)
+            ? Math.Min((SelectedPage?.PageNumber ?? 1) + 1, Math.Max(1, PageItems.Count)) :
         _project?.Pages.FirstOrDefault(page => page.Id == link.DestinationPageId)?.PageNumber ?? 1;
 
-    public async Task<PdfInternalLink?> CreateInternalLinkAsync(int destinationPageNumber, double? zoomPercent, string description)
+    public async Task<PdfInternalLink?> CreateInternalLinkAsync(
+        int destinationPageNumber,
+        double? zoomPercent,
+        string description,
+        string? externalUri = null)
     {
         if (_project is null || SelectedPage is null || SelectedOverlay is not { IsDeleted: false } region ||
-            destinationPageNumber < 1 || destinationPageNumber > PageItems.Count) return null;
-        await EnsurePageOverlaysLoadedForSearchAsync(destinationPageNumber);
+            (string.IsNullOrWhiteSpace(externalUri) && (destinationPageNumber < 1 || destinationPageNumber > PageItems.Count))) return null;
+        if (string.IsNullOrWhiteSpace(externalUri))
+            await EnsurePageOverlaysLoadedForSearchAsync(destinationPageNumber);
         SynchronizeProjectPages();
         var sourcePage = _project.Pages.FirstOrDefault(page => page.PageNumber == SelectedPage.PageNumber);
-        var destinationPage = _project.Pages.FirstOrDefault(page => page.PageNumber == destinationPageNumber);
-        if (sourcePage is null || destinationPage is null) return null;
+        var destinationPage = string.IsNullOrWhiteSpace(externalUri)
+            ? _project.Pages.FirstOrDefault(page => page.PageNumber == destinationPageNumber)
+            : null;
+        if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
         var before = CaptureProjectAnnotationSnapshot();
         var existing = FindSelectedInternalLink();
         var link = new PdfInternalLink
@@ -121,7 +148,8 @@ public sealed partial class MainWindowViewModel
             Id = existing?.Id ?? Guid.NewGuid(),
             SourcePageId = sourcePage.Id,
             SourceRegionId = region.Id,
-            DestinationPageId = destinationPage.Id,
+            DestinationPageId = destinationPage?.Id ?? Guid.Empty,
+            ExternalUri = NormalizeExternalUri(externalUri),
             DestinationZoomPercent = zoomPercent,
             Description = description.Trim(),
             IsEnabled = true,
@@ -134,16 +162,63 @@ public sealed partial class MainWindowViewModel
         return link;
     }
 
+    /// <summary>プレビュー座標の任意矩形をリンク元として文書内またはWebリンクを作成します。</summary>
+    public async Task<PdfInternalLink?> CreateLinkAreaAsync(
+        Rect previewBounds,
+        int destinationPageNumber,
+        double? zoomPercent,
+        string description,
+        string? externalUri)
+    {
+        if (_project is null || SelectedPage is null ||
+            !_pageMetrics.TryGetValue(SelectedPage.PageNumber, out var metrics) ||
+            previewBounds.Width < 4 || previewBounds.Height < 4 ||
+            (string.IsNullOrWhiteSpace(externalUri) && (destinationPageNumber < 1 || destinationPageNumber > PageItems.Count))) return null;
+        if (string.IsNullOrWhiteSpace(externalUri))
+            await EnsurePageOverlaysLoadedForSearchAsync(destinationPageNumber);
+        SynchronizeProjectPages();
+        var sourcePage = _project.Pages.FirstOrDefault(page => page.PageNumber == SelectedPage.PageNumber);
+        var destinationPage = string.IsNullOrWhiteSpace(externalUri)
+            ? _project.Pages.FirstOrDefault(page => page.PageNumber == destinationPageNumber)
+            : null;
+        if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
+        var before = CaptureProjectAnnotationSnapshot();
+        var existing = SelectedLinkArea?.Link;
+        var link = new PdfInternalLink
+        {
+            Id = existing?.Id ?? Guid.NewGuid(),
+            SourcePageId = sourcePage.Id,
+            SourceBounds = ToPdfRectangle(NormalizePreviewBounds(previewBounds), metrics),
+            DestinationPageId = destinationPage?.Id ?? Guid.Empty,
+            ExternalUri = NormalizeExternalUri(externalUri),
+            DestinationZoomPercent = zoomPercent,
+            Description = description.Trim(),
+            IsEnabled = true,
+        };
+        _project = _project with
+        {
+            InternalLinks = _project.InternalLinks.Where(item => item.Id != link.Id).Append(link).ToArray(),
+        };
+        RecordProjectAnnotationChange(before, existing is null ? "リンク範囲を追加" : "リンク範囲を変更");
+        RefreshLinkAreaItems(link.Id);
+        return link;
+    }
+
     public void DeleteSelectedInternalLink()
     {
         if (_project is null || FindSelectedInternalLink() is not { } link) return;
         var before = CaptureProjectAnnotationSnapshot();
         _project = _project with { InternalLinks = _project.InternalLinks.Where(item => item.Id != link.Id).ToArray() };
         RecordProjectAnnotationChange(before, "ページリンクを削除");
+        SelectedLinkArea = null;
+        RefreshLinkAreaItems();
     }
 
-    public async Task<bool> NavigateSelectedInternalLinkAsync() =>
-        await NavigateInternalLinkAsync(SelectedOverlay?.Id, true);
+    public async Task<bool> NavigateSelectedInternalLinkAsync()
+    {
+        var link = FindSelectedInternalLink();
+        return link is not null && await FollowLinkAsync(link, true);
+    }
 
     public async Task<bool> NavigateInternalLinkAsync(Guid? sourceRegionId, bool recordHistory = true)
     {
@@ -151,7 +226,20 @@ public sealed partial class MainWindowViewModel
         SynchronizeProjectPages();
         var sourcePage = _project.Pages.FirstOrDefault(page => page.PageNumber == SelectedPage.PageNumber);
         var link = _project.InternalLinks.FirstOrDefault(item => item.IsEnabled && item.SourcePageId == sourcePage?.Id && item.SourceRegionId == sourceRegionId);
-        if (link is null) return false;
+        return link is not null && await FollowLinkAsync(link, recordHistory);
+    }
+
+    private async Task<bool> FollowLinkAsync(PdfInternalLink link, bool recordHistory)
+    {
+        if (_project is null) return false;
+        if (!string.IsNullOrWhiteSpace(link.ExternalUri))
+        {
+            if (!Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return false;
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            StatusMessage = "Webリンクを既定のブラウザーで開きました。";
+            return true;
+        }
+        var sourcePage = _project.Pages.FirstOrDefault(page => page.Id == link.SourcePageId);
         if (recordHistory && sourcePage is not null)
         {
             _internalLinkBackStack.Push(sourcePage.Id);
@@ -194,9 +282,35 @@ public sealed partial class MainWindowViewModel
 
     private PdfInternalLink? FindSelectedInternalLink()
     {
-        if (_project is null || SelectedPage is null || SelectedOverlay is null) return null;
+        if (_project is null || SelectedPage is null) return null;
+        if (SelectedLinkArea is { } area) return _project.InternalLinks.FirstOrDefault(item => item.Id == area.Id);
+        if (SelectedOverlay is null) return null;
         var page = _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber);
         return _project.InternalLinks.FirstOrDefault(item => item.SourcePageId == page?.Id && item.SourceRegionId == SelectedOverlay.Id);
+    }
+
+    private void RefreshLinkAreaItems(Guid? selectId = null)
+    {
+        var previousId = selectId ?? SelectedLinkArea?.Id;
+        LinkAreaItems.Clear();
+        if (_project is null || SelectedPage is null || !_pageMetrics.TryGetValue(SelectedPage.PageNumber, out var metrics))
+        {
+            SelectedLinkArea = null;
+            return;
+        }
+        var page = _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber);
+        if (page is null) return;
+        foreach (var link in _project.InternalLinks.Where(item => item.SourcePageId == page.Id && item.SourceBounds is { IsValid: true }))
+            LinkAreaItems.Add(new DocumentLinkOverlayViewModel(link, ToPreviewRectangle(link.SourceBounds!.Value, metrics)));
+        SelectedLinkArea = LinkAreaItems.FirstOrDefault(item => item.Id == previousId);
+    }
+
+    private static string? NormalizeExternalUri(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            throw new ArgumentException("WebリンクはHTTPまたはHTTPSの完全なアドレスで指定してください。", nameof(value));
+        return uri.AbsoluteUri;
     }
 
     private static (int Start, int Length)? GetContiguousCharacterSelection(OverlayRegionViewModel region)

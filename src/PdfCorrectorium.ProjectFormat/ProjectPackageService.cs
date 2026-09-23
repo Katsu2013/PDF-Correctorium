@@ -649,7 +649,7 @@ public sealed class ProjectPackageService
             Limits.MaximumCommentCount <= 0 || Limits.MaximumTagCount <= 0 ||
             Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumRedactionCount <= 0 ||
             Limits.MaximumRedactionPathPoints <= 0 || Limits.MaximumCommentCharacters <= 0 ||
-            Limits.MaximumTagNameCharacters <= 0)
+            Limits.MaximumTagNameCharacters <= 0 || Limits.MaximumLinkUriCharacters <= 0)
             throw new InvalidOperationException("Project package resource limits must be positive finite values.");
     }
 
@@ -708,8 +708,14 @@ public sealed class ProjectPackageService
         foreach (var link in project.InternalLinks)
         {
             if (!linkIds.Add(link.Id)) issues.Add(new("links.duplicateId", "Duplicate internal-link IDs were found.", true));
-            if (!pages.ContainsKey(link.SourcePageId) || !pages.ContainsKey(link.DestinationPageId))
-                issues.Add(new("links.page", "An internal link refers to a missing page.", false));
+            var hasExternalUri = !string.IsNullOrWhiteSpace(link.ExternalUri);
+            if (!pages.ContainsKey(link.SourcePageId) || (!hasExternalUri && !pages.ContainsKey(link.DestinationPageId)))
+                issues.Add(new("links.page", "A document link refers to a missing page.", false));
+            if (hasExternalUri &&
+                (link.ExternalUri!.Length > Limits.MaximumLinkUriCharacters ||
+                 !Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) ||
+                 uri.Scheme is not ("http" or "https")))
+                issues.Add(new("links.uri", "An external link must contain a valid HTTP or HTTPS URI.", true));
             if (link.SourceRegionId is { } regionId &&
                 (!regions.TryGetValue(regionId, out var region) || region.Id != link.SourcePageId))
                 issues.Add(new("links.region", "An internal link refers to a missing OCR region.", false));

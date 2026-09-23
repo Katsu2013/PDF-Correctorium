@@ -26,7 +26,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
   - **完全オフライン動作**: ネット接続のない環境でも即座に動作。写真や図面の画質も再圧縮せずそのまま維持。
 
 > [!NOTE]
-> **💡 現バージョン (v1.0.0-dev.171) で未対応の機能（今後の実装候補）**  
+> **💡 現バージョン (v1.0.0-dev.175) で未対応の機能（今後の実装候補）**
 > 本アプリは日常業務で使えるPDF総合エディタを目指して開発途上です。一般的な市販ソフトに備わっている以下の機能は、現バージョンではまだ対応していません：  
 > - 既存本文テキストの直接打ち直し・誤字修正  
 > - 埋め込み画像の直接差し替え・リサイズ  
@@ -46,6 +46,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 #### 📑 ページの編集・結合・整理
 - **直感的なサムネイル操作**：マウスのドラッグ＆ドロップでの並べ替え、90度単位の回転、不要ページの削除。写真やイラストを再圧縮しないため画質が劣化しません。
 - **他のPDFからページを差し込み**：別のPDFから必要なページを取り込んで、今の文書へ結合・挿入できます。
+- **抽出・分割・白紙追加**：全／選択／奇数／偶数／指定範囲の抽出、1ページ単位・一定ページ数・開始ページ指定の分割、任意位置への白紙ページ挿入ができます。
 - **安心の取り消し・やり直し**：ページの追加・削除・並べ替え・回転を含むすべての操作を何度でもやり直せます。
 
 #### 🛡️ 二度と復元できない確実な墨消し（マスキング）
@@ -57,7 +58,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 #### 🔖 しおり（目次）・文書情報・コメント
 - **しおり（目次）の作成・編集**：新規追加、修正、削除、ジャンプ先の指定、マウス操作による階層（親子関係）の整理。
 - **文書プロパティの設定**：タイトル、作成者、文書の言語、PDFを開いたときの初期表示（見開きやスクロール方法）の指定。
-- **コメント・タグ・リンク**：文書、ページ、文字枠へのコメントや重要度タグの付与、特定ページへジャンプする内部リンクの作成。
+- **コメント・タグ・リンク**：文書、ページ、文字枠へのコメントや重要度タグの付与、OCR領域または任意矩形から文書内ページやWebページへ移動するリンクの作成。
 
 #### ✏️ OCRテキスト（透明文字）の精密校正・修正
 - **文字・位置・間隔の修正**：誤認識された文字の打ち直し、枠の位置・大きさ・角度・文字ごとの間隔をマウスや数値で細かく調整。
@@ -68,7 +69,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 
 #### 💾 プロジェクト管理 & 快適な作業環境
 - **2つの保存スタイル**：ファイルサイズを節約する「通常モード」と、元PDFも一緒にまとめて持ち運べる「ポータブルモード」。
-- **自動保存 & バックアップ**：作業が止まったときの自動保存や、過去のバックアップからの復元。
+- **自動保存 & バックアップ**：作業が止まったときの自動保存、起動時の未保存作業候補表示、過去のバックアップからの復元。
 - **開いたPDFの特性確認**：フォーム、署名、埋め込みファイルなど、編集・保存時に注意したいポイントを表示。
 - **多言語・設定管理**：日本語／英語の即時切替、パネル配置の保存、ショートカットのカスタマイズ。
 
@@ -76,7 +77,7 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 
 ## 現在の開発状況
 
-現在のリポジトリは、開発版`v1.0.0-dev.171`に対応しています。以下を実装しています。
+現在のリポジトリは、開発版`v1.0.0-dev.175`に対応しています。以下を実装しています。
 
 - C# / .NET 8 / WPFによるソリューション構成
 - 縦書き・横書きと、文字方向とは独立した回転に対応するOCR領域モデル
@@ -104,11 +105,12 @@ PDF Correctorium は、**「日常業務で高価な市販ソフトの代わり�
 - PDFのしおり、文書情報（タイトル・作者・件名・キーワード・作成アプリ・PDF変換ツール）、文書言語、出力PDFバージョン、PDFを開いたときの表示設定の編集
 - 入力PDFのフォーム、署名、JavaScript、添付、レイヤー、増分更新、非埋め込みフォント等の注意事項表示
 - 文書・ページ・OCR領域に対するコメント、重要度、解決状態、タグの編集とプロジェクト保存
-- 選択OCR領域から別ページへ移動するリンクの設定、戻る／進む、Ctrl+クリックによる移動、出力PDFへのGoToリンク保存
+- 選択OCR領域または任意矩形から文書内ページ／HTTP(S) Webページへ移動するリンクの設定、戻る／進む、Ctrl+クリックによる移動、出力PDFへのGoTo／URIリンク保存
+- 全／現在／選択／奇数／偶数／指定範囲のページ抽出、1ページ単位／一定ページ数／開始ページ指定のPDF分割、現在ページと定型サイズによる白紙ページ挿入
 - PDF内の可視／不可視文字を行単位の連続したマーカー状の帯へまとめる文字選択、選択OCR領域、任意矩形、多角形、フリーハンドの墨消し指定、作成後の色変更・Deleteキーによる削除、ページ画像からのスポイト採色、編集表示の半透明／不透明切替、Undo/Redo、プロジェクト保存。通常のPDF文字選択では対象文字を除去して矩形へ置き換え、元の画像・図形・範囲外テキストを保持し、任意範囲や直接編集できない構造ではページ画像化へ安全側フォールバックするPDF出力
 - OCR編集／読み順編集／校正・確認／墨消しを排他的に切り替える編集モード。墨消し中はOCR領域の移動・変形・削除を停止し、連続して範囲を指定可能。作成済みの墨消し範囲は直接移動し、8方向のハンドルでサイズ変更可能
 - 元PDFとは別のPDFへの安全な出力、出力後の検証、検証後の保存確定
-- プロジェクトの自動保存、容量上限付き世代バックアップ、バックアップからの復元、現在ページ周辺だけを保持するページサムネイルキャッシュ
+- プロジェクトの自動保存、起動時の未保存作業候補表示、容量上限付き世代バックアップ、バックアップからの復元、現在ページ周辺だけを保持するページサムネイルキャッシュ
 - 「設定 → 表示 → 表示言語」で切り替えられる日本語・英語の画面表示
 - ポータブル版・インストール版の両方で、表示言語の選択を次回起動時まで保持
 - パネル、サムネイルサイズ、OCRの重ね合わせ表示、編集ハンドル、ショートカット、自動保存、バックアップ保持数を設定できるコンパクトな作業画面
@@ -208,7 +210,7 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 自動保存は設定した間隔、または約30秒間入力がない場合に実行します（5秒ごとに判定）。一度も保存していないプロジェクトは、元PDFを埋め込んだ復旧用ファイルを`workspaces/recovery/<project-id>.autosave.pdfocrproj`に保存します。復旧するには、このファイルを明示的に開いてください。起動時に復旧データを自動検出する機能は未実装です。復旧用ファイルへの保存だけでは、プロジェクトを保存済み扱いにはしません。
 
-**プロジェクトの互換性：** 新しく保存する形式は1.6です。現行dev.171は形式1.0～1.6を読み込めます。形式1.6は墨消し輪郭と入力方式を追加するため、dev.162以前では開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
+**プロジェクトの互換性：** 新しく保存する形式は1.7です。現行dev.175は形式1.0～1.7を読み込めます。形式1.7はWebリンク先を追加するため、dev.171以前では開けません。旧版との互換性が必要な場合は、元のバックアップを保持してください。プロジェクト内の管理情報には、保存に使用したアプリのビルドバージョンも記録します。
 
 外部サービス連携／アプリ内でのOCR実行、ルビ、差分、階層別の進捗、修復・救出画面、パネルのドッキングなど、Version 1.0の要件には未実装のものがあります。[残る実装項目](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps)を参照してください。この改訂で残りの全機能が完成したわけではありません。
 
@@ -250,9 +252,9 @@ dev.122の監査で再現した5件を修正しました。文書を切り替え
 
 ### バージョン管理方針
 
-アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン171では、ソリューション全体の製品バージョンが`1.0.0-dev.171`、アセンブリ／ファイルバージョンが`1.0.0.171`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
+アプリの版番号は`Directory.Build.props`だけで定義します。開発リビジョン175では、ソリューション全体の製品バージョンが`1.0.0-dev.175`、アセンブリ／ファイルバージョンが`1.0.0.175`になります。タイトルバー、バージョン情報、起動ログ、保存プロジェクト内の管理情報もこのビルドバージョンを使用します。必須の改訂・検証手順は[VERSIONING.md](VERSIONING.md)、今後の作業に適用するルールは[AGENTS.md](AGENTS.md)を参照してください。
 
-変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.5、読み込みに必要な最小版はdev.152です。ローカルのビルド記録はGit履歴の代わりにはならないため、配布前にGitのコミットと送信結果も個別に確認します。
+変更したアプリのソースやビルドツールを配布する前に、`DevelopmentRevision`を増やします。ポータブル版の発行処理は、版番号の不一致、ローカルでのリビジョン巻き戻し、検証済みリビジョンを変更済みの入力で再利用する操作を拒否し、実際のEXE／DLLの版情報を検査して`build-info.json`を記録します。同一ソースの再検証ビルドではリビジョンを維持できますが、出力先は毎回新しい日時付きフォルダーにします。プロジェクトの保存形式は1.7、読み込みに必要な最小版はdev.172です。ローカルのビルド記録はGit履歴の代わりにはならないため、配布前にGitのコミットと送信結果も個別に確認します。
 
 ### 前提条件と実行手順
 
@@ -361,7 +363,7 @@ While currently missing many standard capabilities of mature commercial software
   - **Offline & Instant**: Works in air-gapped environments without network latency, and preserves native image sharpness without lossy recompression.
 
 > [!NOTE]
-> **💡 Current Limitations & Upcoming Feature Areas (v1.0.0-dev.171)**  
+> **💡 Current Limitations & Upcoming Feature Areas (v1.0.0-dev.175)**
 > PDF Correctorium is actively under development. Several features commonly found in commercial software are **not yet supported in the current release (planned for future updates)**:  
 > - Direct in-place editing of body text  
 > - Replacing or resizing embedded images  
@@ -392,7 +394,7 @@ While currently missing many standard capabilities of mature commercial software
 #### 🔖 Bookmarks, Document Properties & Annotations
 - **Bookmark hierarchy editing**: Add, edit, remove, set destinations, and organize parent-child bookmark hierarchies via drag-and-drop.
 - **Document property management**: Edit title, author, subject, keywords, document language, PDF version, and initial display mode (single page, facing spreads, reading direction).
-- **Comments, tags & internal links**: Add comments (with severity and resolution status) and tags to documents, pages, or OCR regions. Create clickable in-document GoTo links.
+- **Comments, tags & links**: Add comments (with severity and resolution status) and tags to documents, pages, or OCR regions. Create links from OCR regions or arbitrary rectangles to document pages or HTTP(S) Web pages.
 
 #### ✏️ Precision OCR Text Proofreading & Correction
 - **Text, position & advance editing**: Correct mistyped characters, and fine-tune box bounds, rotation, and per-character advances using 8-directional handles or numerical sliders.
@@ -411,7 +413,7 @@ This is a development version. Some features, including running new OCR on image
 
 ## Current milestone
 
-The current repository snapshot corresponds to the `v1.0.0-dev.171` development line. It includes:
+The current repository snapshot corresponds to the `v1.0.0-dev.175` development line. It includes:
 
 - C# / .NET 8 / WPF solution structure
 - Core OCR region model with vertical/horizontal writing and independent rotation
@@ -427,6 +429,7 @@ The current repository snapshot corresponds to the `v1.0.0-dev.171` development 
 - Reusable out-of-process PDFium worker for page rendering, text extraction and document-property inspection, with a scrollable preview
 - Independent page layout (single page / facing pages) and flow (page by page / continuous scrolling) controls. A PDF's viewer preferences provide the initial state, while an intentional override is saved in the project. Page-by-page facing navigation prepares both destination pages before replacing the visible spread, avoiding a temporary single-page frame. Facing pages support an optional separate cover and left- or right-bound placement; continuous flow lazily renders only the viewport neighborhood and promotes a clicked page without losing the scroll position
 - Page count, asynchronous thumbnail navigation, previous/next controls, page insertion/deletion/reordering, and 90-degree page rotation; deletion, reordering, and rotation update logical page references without copying the source PDF, while insertion and final export materialize once at the operation boundary
+- Page extraction using all/current/selected/odd/even/custom presets, PDF splitting per page/by fixed count/at boundaries, and blank-page insertion using current or standard page sizes
 - External and embedded project source-PDF preview support
 - Semi-transparent OCR text overlays extracted from PDF text objects, including invisible render mode and zero-alpha text
 - Automatic NDLOCR-Lite companion discovery for JSON, XML, TXT, and TEI files
@@ -438,11 +441,11 @@ The current repository snapshot corresponds to the `v1.0.0-dev.171` development 
 - Editable PDF bookmarks, document metadata (title, author, subject, keywords, creator, and producer), document language, output PDF version, and viewer preferences
 - Input-PDF notices for forms, signatures, JavaScript, attachments, layers, incremental updates, and non-embedded fonts
 - Targeted comments with importance, resolved state, and tags on documents, pages, and OCR regions
-- App-authored OCR-region links with back/forward navigation, Ctrl+click following, and exported PDF GoTo annotations
+- App-authored OCR-region and arbitrary-rectangle links with back/forward navigation, Ctrl+click following, and exported PDF GoTo/URI annotations
 - Redaction of selected characters, OCR regions, or arbitrary rectangles with post-creation color changes, Delete-key removal, page-image eyedropper sampling, translucent/opaque editor previews, Undo/Redo, project persistence, high-resolution flattened visible content, and retained transparent OCR outside redacted ranges
 - Mutually exclusive OCR editing, reading-order, review, and redaction modes; redaction mode blocks OCR geometry changes, stays active for consecutive marking, and lets existing marks be moved or resized with eight handles
 - Safe isolated export to a separately saved PDF, followed by validation and output commit
-- Project autosave, byte-bounded versioned backups, backup restoration, and a current-page-neighborhood thumbnail cache
+- Project autosave, startup discovery of unsaved recovery work, byte-bounded versioned backups, backup restoration, and a current-page-neighborhood thumbnail cache
 - Japanese and English UI, switchable from `Settings > Display > Display language`
 - Persistent UI-language selection for both portable and installed operation
 - Compact preview workspace with configurable panels, thumbnail size, overlay appearance, edit handles, shortcuts, autosave, and backup retention
@@ -542,7 +545,7 @@ The five issues reproduced in the dev.122 audit are now addressed: document swit
 
 Autosave runs at the configured interval or after about 30 seconds without input (checked every 5 seconds). Never-saved projects receive a source-embedded recovery package under `workspaces/recovery/<project-id>.autosave.pdfocrproj`. Open that file explicitly to recover; automatic recovery discovery at startup is not implemented. Recovery writes do not mark the project saved.
 
-**Project compatibility:** new saves use format 1.6. Current dev.171 reads formats 1.0 through 1.6. Format 1.6 adds persisted redaction outlines and input kinds, so dev.162 and earlier cannot open newly saved projects. Keep a backup when older-build compatibility is needed. The manifest records the saving build version.
+**Project compatibility:** new saves use format 1.7. Current dev.175 reads formats 1.0 through 1.7. Format 1.7 adds external Web-link targets, so dev.171 and earlier cannot open newly saved projects. Keep a backup when older-build compatibility is needed. The manifest records the saving build version.
 
 External/in-app OCR, ruby, diffs, hierarchical progress, repair/rescue UI, docking and other full Version 1.0 requirements remain unfinished. See [implementation status](IMPLEMENTATION_STATUS.md#remaining-version-10-gaps). This increment is not completion of every remaining feature.
 
@@ -584,9 +587,9 @@ Selecting a review-list entry or using target navigation scrolls the preview to 
 
 ### Version policy
 
-`Directory.Build.props` is the sole source of application version inputs. Development revision 171 produces product version `1.0.0-dev.171` and assembly/file version `1.0.0.171` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
+`Directory.Build.props` is the sole source of application version inputs. Development revision 175 produces product version `1.0.0-dev.175` and assembly/file version `1.0.0.175` across the solution. The title bar, About dialog, startup log and saved project manifest use the build version. [VERSIONING.md](VERSIONING.md) defines the mandatory revision-increment and verification rules; [AGENTS.md](AGENTS.md) applies them to future repository work.
 
-Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.6 and its minimum reader is dev.163. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
+Before delivering changed source/build tools, advance `DevelopmentRevision`. Portable publication rejects version mismatches, local revision rollback and changed inputs reusing a certified revision, checks the actual EXE/DLL metadata, and writes `build-info.json`. Same-source verification rebuilds may retain a revision but always use a new timestamped folder. The project data format is 1.7 and its minimum reader is dev.172. Local build records are not a substitute for Git history, so commit and push results are verified separately before distribution.
 
 ### Commands and prerequisites
 

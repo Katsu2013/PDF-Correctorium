@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Xml;
 using System.Xml.Linq;
 using PdfCorrectorium.Core.Documents;
@@ -54,6 +55,7 @@ public sealed class PdfBookmarkService
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
     /// <summary>
@@ -692,7 +694,7 @@ public sealed class PdfBookmarkService
         }
     }
 
-    /// <summary>アプリで設定した内部リンクをLink注釈とGoTo宛先としてページ辞書へ追加します。</summary>
+    /// <summary>アプリで設定した文書内リンクまたは外部URIリンクをLink注釈としてページ辞書へ追加します。</summary>
     private async Task<int> WriteInternalLinkObjectsAsync(
         string pdfPath,
         IReadOnlyList<PdfInternalLink> links,
@@ -734,26 +736,38 @@ public sealed class PdfBookmarkService
 
             foreach (var link in sourceGroup)
             {
-                if (!pagesById.TryGetValue(link.DestinationPageId, out var destinationPage) ||
-                    !pageReferences.TryGetValue(destinationPage.PageNumber, out var destinationPageReference)) continue;
                 var bounds = link.SourceBounds ?? sourcePage.TextRegions.FirstOrDefault(region => region.Id == link.SourceRegionId)?.EditedGeometry.LocalBounds;
                 if (bounds is not { IsValid: true } rectangle) continue;
                 var annotationReference = $"{nextObjectId++} 0 R";
-                var destination = link.DestinationZoomPercent is > 0
-                    ? new JsonArray(destinationPageReference, "/XYZ",
-                        link.DestinationPosition?.X is { } x ? JsonValue.Create(x) : null,
-                        link.DestinationPosition?.Y is { } y ? JsonValue.Create(y) : null,
-                        link.DestinationZoomPercent.Value / 100d)
-                    : new JsonArray(destinationPageReference, "/Fit");
                 var annotation = new JsonObject
                 {
                     ["/Type"] = "/Annot",
                     ["/Subtype"] = "/Link",
                     ["/Rect"] = new JsonArray(rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Top),
                     ["/Border"] = new JsonArray(0, 0, 0),
-                    ["/Dest"] = destination,
                     ["/NM"] = "u:pdfcorrectorium-link-" + link.Id.ToString("N"),
                 };
+                if (!string.IsNullOrWhiteSpace(link.ExternalUri) &&
+                    Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) &&
+                    uri.Scheme is "http" or "https")
+                {
+                    annotation["/A"] = new JsonObject
+                    {
+                        ["/S"] = "/URI",
+                        ["/URI"] = "u:" + uri.AbsoluteUri,
+                    };
+                }
+                else
+                {
+                    if (!pagesById.TryGetValue(link.DestinationPageId, out var destinationPage) ||
+                        !pageReferences.TryGetValue(destinationPage.PageNumber, out var destinationPageReference)) continue;
+                    annotation["/Dest"] = link.DestinationZoomPercent is > 0
+                        ? new JsonArray(destinationPageReference, "/XYZ",
+                            link.DestinationPosition?.X is { } x ? JsonValue.Create(x) : null,
+                            link.DestinationPosition?.Y is { } y ? JsonValue.Create(y) : null,
+                            link.DestinationZoomPercent.Value / 100d)
+                        : new JsonArray(destinationPageReference, "/Fit");
+                }
                 if (!string.IsNullOrWhiteSpace(link.Description)) annotation["/Contents"] = "u:" + link.Description;
                 updateObjects[$"obj:{annotationReference}"] = new JsonObject { ["value"] = annotation };
                 annotations.Add(annotationReference);

@@ -87,7 +87,8 @@ public partial class App
             ICommand[] documentCommands =
             [
                 viewModel.SaveProjectCommand, viewModel.SaveProjectAsCommand, viewModel.ExportPdfCommand,
-                viewModel.ImportOcrDataCommand, viewModel.InsertPagesCommand, viewModel.DeletePagesCommand,
+                viewModel.ImportOcrDataCommand, viewModel.InsertPagesCommand, viewModel.InsertBlankPagesCommand,
+                viewModel.ExtractPagesCommand, viewModel.SplitPdfCommand, viewModel.DeletePagesCommand,
                 viewModel.RotatePagesLeftCommand, viewModel.RotatePagesRightCommand,
                 viewModel.OptimizeCurrentPageImageCommand, viewModel.OptimizeDocumentImagesCommand,
                 viewModel.PreviousPageCommand, viewModel.NextPageCommand,

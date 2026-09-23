@@ -1,0 +1,31 @@
+<Window x:Class="PdfCorrectorium.App.BlankPageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="空白ページを挿入" Width="500" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="16" KeyboardNavigation.TabNavigation="Cycle">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="空白ページの枚数、サイズ、挿入位置を指定します。" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,12"/>
+        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Label Content="ページ数(_N)" Target="{Binding ElementName=CountBox}"/><TextBox x:Name="CountBox" Grid.Column="1" Text="1"/>
+        </Grid>
+        <Grid Grid.Row="2" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Label Content="ページサイズ(_S)" Target="{Binding ElementName=SizeBox}"/>
+            <ComboBox x:Name="SizeBox" Grid.Column="1" SelectedIndex="0">
+                <ComboBoxItem Content="現在のページと同じ" Tag="Current"/><ComboBoxItem Content="A4" Tag="A4"/>
+                <ComboBoxItem Content="A3" Tag="A3"/><ComboBoxItem Content="Letter" Tag="Letter"/>
+            </ComboBox>
+        </Grid>
+        <Grid Grid.Row="3" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Label Content="挿入位置(_P)" Target="{Binding ElementName=PositionBox}"/>
+            <ComboBox x:Name="PositionBox" Grid.Column="1" SelectedIndex="1">
+                <ComboBoxItem Content="現在のページの前" Tag="Before"/><ComboBoxItem Content="現在のページの後" Tag="After"/>
+                <ComboBoxItem Content="文書の先頭" Tag="Start"/><ComboBoxItem Content="文書の末尾" Tag="End"/>
+            </ComboBox>
+        </Grid>
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="キャンセル" IsCancel="True" MinWidth="104"/>
+            <Button Content="挿入(_I)" IsDefault="True" MinWidth="104" Margin="8,0,0,0" Click="Apply_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

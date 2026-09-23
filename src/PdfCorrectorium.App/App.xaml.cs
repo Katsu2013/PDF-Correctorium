@@ -50,6 +50,7 @@ public partial class App : Application
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--redaction-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--document-organization-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--ocr-rendering-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--settings-test", StringComparer.OrdinalIgnoreCase);
@@ -180,6 +181,13 @@ public partial class App : Application
                 return;
             }
 
+            var organizationTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--document-organization-test", StringComparison.OrdinalIgnoreCase));
+            if (organizationTestIndex >= 0)
+            {
+                await RunDocumentOrganizationTestAsync(e.Args, organizationTestIndex);
+                return;
+            }
+
             var window = new MainWindow();
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
@@ -258,12 +266,30 @@ public partial class App : Application
             window.Show();
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             _diagnostics.Write("startup.window-shown");
-            await OpenStartupFileAsync(window, e.Args);
+            var startupOpened = await OpenStartupFileAsync(window, e.Args);
+            if (startupOpened && e.Args.Length == 0)
+                await OfferRecoveryProjectAsync(window);
         }
         catch (Exception exception)
         {
             ReportFatal("The application failed during startup.", exception);
         }
+    }
+
+    /// <summary>通常起動時に未保存文書の復旧パッケージを検出し、利用者が選んだ1件を開きます。</summary>
+    private async Task OfferRecoveryProjectAsync(MainWindow window)
+    {
+        var paths = ApplicationPathResolver.Resolve(AppContext.BaseDirectory);
+        ApplicationPathResolver.EnsureDirectories(paths);
+        var packages = new ProjectPackageService();
+        var candidates = await RecoveryProjectDiscoveryService.FindValidAsync(paths.WorkspaceDirectory, packages);
+        if (candidates.Count == 0) return;
+        _diagnostics?.Write("startup.recovery.found", $"Count: {candidates.Count}");
+        var dialog = new RecoveryProjectsWindow(candidates) { Owner = window };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedPath)) return;
+        var viewModel = (MainWindowViewModel)window.DataContext;
+        if (await viewModel.OpenDocumentPathAsync(dialog.SelectedPath))
+            _diagnostics?.Write("startup.recovery.opened", dialog.SelectedPath);
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("FR-1000 package version gates reject unsupported formats", PackageVersionGateAsync),
     ("Build revision matches every application assembly and manifest", BuildVersionAsync),
     ("Project package round-trips and validates", ProjectRoundTripAsync),
+    ("Project format 1.7 preserves safe external URI links", ExternalUriLinkRoundTripAsync),
     ("Project format 1.4 supports external relative PDF paths", ExternalRelativeSourceAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
     ("Project format 1.4 omits regenerable duplicate caches", ProjectThumbnailCacheAsync),
@@ -38,8 +39,45 @@ var tests = new (string Name, Func<Task> Run)[]
     ("OCR quality analyzer finds keyword-width outliers", KeywordWidthAnomalyAsync),
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
-    ("Project format 1.6 preserves and validates shaped redactions", RedactionRoundTripAsync),
+    ("Project format 1.7 preserves and validates shaped redactions", RedactionRoundTripAsync),
 };
+
+static async Task ExternalUriLinkRoundTripAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "external-link.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var packages = new ProjectPackageService();
+        var pageId = Guid.NewGuid();
+        var path = Path.Combine(directory, "external-link.pdfocrproj");
+        await packages.SaveAsync(path, new PdfCorrectoriumProject
+        {
+            Name = "external-link",
+            SourcePdf = await packages.CreateSourceReferenceAsync(pdf, directory),
+            Pages = [new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
+            InternalLinks =
+            [
+                new PdfInternalLink
+                {
+                    SourcePageId = pageId,
+                    SourceBounds = new PdfRectangle(new PdfPoint(10, 20), new PdfSize(120, 24)),
+                    DestinationPageId = Guid.Empty,
+                    ExternalUri = "https://example.com/reference?q=pdf",
+                    Description = "参考資料",
+                },
+            ],
+        });
+        var validation = await packages.ValidateAsync(path);
+        True(validation.IsValid, "A safe HTTP(S) link must validate in project format 1.7.");
+        var reopened = await packages.OpenAsync(path);
+        Equal("https://example.com/reference?q=pdf", reopened.InternalLinks.Single().ExternalUri,
+            "External URI links must round-trip without requiring a destination page.");
+        Equal("1.7", ProjectManifest.CurrentVersion, "The external-link schema requires project format 1.7.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
 
 static async Task ExternalRelativeSourceAsync()
 {
@@ -281,8 +319,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.6", ProjectManifest.CurrentVersion, "Shaped-redaction projects require format 1.6.");
-    Equal("1.0.0-dev.163", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.6 must name the first compatible reader.");
+    Equal("1.7", ProjectManifest.CurrentVersion, "External URI links require project format 1.7.");
+    Equal("1.0.0-dev.172", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.7 must name the first compatible reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -336,7 +374,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.6", manifest["formatVersion"]!.GetValue<string>(), "New containers require shaped-redaction support.");
+            Equal("1.7", manifest["formatVersion"]!.GetValue<string>(), "New containers require external URI-link support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();

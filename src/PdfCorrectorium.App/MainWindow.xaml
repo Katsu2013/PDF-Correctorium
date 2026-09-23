@@ -352,7 +352,14 @@
                           Click="OcrQualityAnalysisMenuItem_OnClick" />
             </MenuItem>
             <MenuItem x:Name="PageMenu" Header="ページ(_P)" IsEnabled="{Binding HasDocument}">
+                <MenuItem Header="ページを抽出...(_X)" Command="{Binding ExtractPagesCommand}"
+                          ToolTip="指定ページだけを、現在の編集内容を反映した別PDFへ保存" AutomationProperties.AccessKey="Alt+X"/>
+                <MenuItem Header="PDFを分割...(_S)" Command="{Binding SplitPdfCommand}"
+                          ToolTip="1ページずつ、一定ページ数、または指定開始ページでPDFを分割" AutomationProperties.AccessKey="Alt+S"/>
+                <Separator />
                 <MenuItem Header="ページを挿入...(_I)" Command="{Binding InsertPagesCommand}"  AutomationProperties.AccessKey="Alt+I"/>
+                <MenuItem Header="空白ページを挿入...(_N)" Command="{Binding InsertBlankPagesCommand}"
+                          ToolTip="ページ数、サイズ、位置を指定して空白ページを追加" AutomationProperties.AccessKey="Alt+N"/>
                 <MenuItem Header="選択ページを削除(_D)" Command="{Binding DeletePagesCommand}" InputGestureText="Delete"  AutomationProperties.AccessKey="Alt+D"/>
                 <Separator />
                 <MenuItem Header="選択ページを左へ90°回転(_L)" Command="{Binding RotatePagesLeftCommand}"  AutomationProperties.AccessKey="Alt+L"/>
@@ -367,8 +374,10 @@
                           Command="{Binding OptimizeDocumentImagesCommand}"
                           ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します"  AutomationProperties.AccessKey="Alt+O"/>
                 <Separator />
+                <MenuItem Header="リンク範囲を追加...(_A)" Click="LinkAreaAdd_OnClick"
+                          ToolTip="OCR領域に依存しない任意矩形へ文書内またはWebリンクを設定" AutomationProperties.AccessKey="Alt+A" />
                 <MenuItem Header="ページリンクを設定...(_K)" Click="InternalLinkEdit_OnClick"
-                          IsEnabled="{Binding HasSelectedOverlay}" ToolTip="選択領域から別ページへの内部リンクを設定" AutomationProperties.AccessKey="Alt+K" />
+                          IsEnabled="{Binding CanEditLinkSelection}" ToolTip="選択中のOCR領域またはリンク範囲を編集" AutomationProperties.AccessKey="Alt+K" />
                 <MenuItem Header="リンク先へ移動(_G)" Click="InternalLinkNavigate_OnClick"
                           IsEnabled="{Binding HasInternalLinkForSelection}" ToolTip="選択領域に設定されたリンク先へ移動" AutomationProperties.AccessKey="Alt+G" />
                 <MenuItem Header="リンク移動前へ戻る(_B)" Click="InternalLinkBack_OnClick"
@@ -856,6 +865,8 @@
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="ページを挿入...(_I)" Command="{Binding PlacementTarget.DataContext.InsertPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+I"/>
+                                        <MenuItem Header="空白ページを挿入...(_N)" Command="{Binding PlacementTarget.DataContext.InsertBlankPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" AutomationProperties.AccessKey="Alt+N"/>
+                                        <MenuItem Header="選択ページを抽出...(_X)" Command="{Binding PlacementTarget.DataContext.ExtractPagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" AutomationProperties.AccessKey="Alt+X"/>
                                         <MenuItem Header="選択ページを削除(_D)" Command="{Binding PlacementTarget.DataContext.DeletePagesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" InputGestureText="Delete"  AutomationProperties.AccessKey="Alt+D"/>
                                         <Separator />
                                         <MenuItem Header="左へ90°回転(_L)" Command="{Binding PlacementTarget.DataContext.RotatePagesLeftCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"  AutomationProperties.AccessKey="Alt+L"/>
@@ -1521,6 +1532,39 @@
                                                 </DataTemplate>
                                             </ListBox.ItemTemplate>
                                         </ListBox>
+                                        <!-- OCR領域に依存しない文書内／Webリンクのクリック範囲です。 -->
+                                        <ItemsControl x:Name="LinkAreaOverlayLayer" ItemsSource="{Binding LinkAreaItems}" Panel.ZIndex="70">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Width="{Binding Width}" Height="{Binding Height}"
+                                                            ToolTip="{Binding Description}" MouseLeftButtonDown="LinkAreaOverlay_OnClick">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#182563EB" />
+                                                                <Setter Property="BorderBrush" Value="#FF2563EB" />
+                                                                <Setter Property="BorderThickness" Value="2" />
+                                                                <Setter Property="Cursor" Value="Hand" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsExternal}" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="#FF7C3AED" />
+                                                                        <Setter Property="Background" Value="#187C3AED" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                         <Canvas IsHitTestVisible="False">
                                             <Border x:Name="MarqueeSelectionRectangle"
                                                     Visibility="Collapsed"
@@ -1784,7 +1828,8 @@
                                    TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,7" />
                         <UniformGrid Columns="2">
                             <Button Content="コメント・タグ" Click="CommentsAndTags_OnClick" ToolTip="編集 メニュー → コメントとタグ (Alt+E, C)" Margin="0,0,3,0" />
-                            <Button Content="リンク設定" Click="InternalLinkEdit_OnClick" IsEnabled="{Binding HasSelectedOverlay}" ToolTip="ページ メニュー → ページリンクを設定 (Alt+P, K)" Margin="3,0,0,0" />
+                            <Button Content="範囲追加" Click="LinkAreaAdd_OnClick" ToolTip="ページ メニュー → リンク範囲を追加 (Alt+P, A)" Margin="3,0,0,0" />
+                            <Button Content="リンク設定" Click="InternalLinkEdit_OnClick" IsEnabled="{Binding CanEditLinkSelection}" ToolTip="ページ メニュー → ページリンクを設定 (Alt+P, K)" Margin="3,0,0,0" />
                         </UniformGrid>
                         <UniformGrid Columns="4" Margin="0,6,0,0">
                             <Button Content="戻る" Click="InternalLinkBack_OnClick" IsEnabled="{Binding CanNavigateInternalLinkBack}" ToolTip="ページ メニュー → リンク移動前へ戻る (Alt+P, B)" Margin="0,0,2,0" />

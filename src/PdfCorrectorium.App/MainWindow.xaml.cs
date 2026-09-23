@@ -49,6 +49,8 @@ public partial class MainWindow : Window
     private bool _isAddingOcrRegion;
     /// <summary>囲み矩形を墨消し範囲として確定する操作中であることを示します。</summary>
     private bool _isAddingRedaction;
+    /// <summary>任意矩形をPDFリンクのクリック範囲として指定していることを示します。</summary>
+    private bool _isAddingLinkArea;
     /// <summary>多角形またはフリーハンド墨消しの未確定プレビュー座標です。</summary>
     private readonly List<Point> _redactionPathPoints = [];
     private bool _isDrawingFreehandRedaction;
@@ -989,12 +991,37 @@ public partial class MainWindow : Window
 
     private async void InternalLinkEdit_OnClick(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasDocument || !ViewModel.HasSelectedOverlay) return;
+        if (!ViewModel.HasDocument || (!ViewModel.HasSelectedOverlay && !ViewModel.HasSelectedLinkArea)) return;
         CommitPendingEditorBindings();
         var existing = ViewModel.GetSelectedInternalLink();
         var dialog = new InternalLinkWindow(ViewModel.PageItems.Count, existing, ViewModel.GetInternalLinkDestinationPage(existing)) { Owner = this };
         if (dialog.ShowDialog() == true)
-            await ViewModel.CreateInternalLinkAsync(dialog.ResultDestinationPage, dialog.ResultZoomPercent, dialog.Description);
+        {
+            if (ViewModel.SelectedLinkArea is { } area)
+                await ViewModel.CreateLinkAreaAsync(new Rect(area.Left, area.Top, area.Width, area.Height),
+                    dialog.ResultDestinationPage, dialog.ResultZoomPercent, dialog.Description, dialog.ResultExternalUri);
+            else
+                await ViewModel.CreateInternalLinkAsync(dialog.ResultDestinationPage, dialog.ResultZoomPercent,
+                    dialog.Description, dialog.ResultExternalUri);
+        }
+    }
+
+    private void LinkAreaAdd_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasDocument || !ViewModel.HasPreview) return;
+        CancelPointerRectangle();
+        ViewModel.SelectedLinkArea = null;
+        _isAddingLinkArea = true;
+        LinkAreaOverlayLayer.IsHitTestVisible = false;
+        ViewModel.StatusMessageForInteraction("リンク範囲追加: ページ上のクリック範囲をドラッグしてください。Escで中止できます。");
+    }
+
+    private void LinkAreaOverlay_OnClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: DocumentLinkOverlayViewModel item }) return;
+        ViewModel.SelectedLinkArea = item;
+        ViewModel.SelectedOverlay = null;
+        e.Handled = true;
     }
 
     private async void InternalLinkNavigate_OnClick(object sender, RoutedEventArgs e) => await ViewModel.NavigateSelectedInternalLinkAsync();
@@ -1161,6 +1188,20 @@ public partial class MainWindow : Window
         // Preview events run before ListBox selection changes. Commit the
         // property editor while its binding still points at the old region.
         CommitPendingEditorBindings();
+        if (_isAddingLinkArea)
+        {
+            _marqueeStart = e.GetPosition(OverlayCanvas);
+            Canvas.SetLeft(MarqueeSelectionRectangle, _marqueeStart.X);
+            Canvas.SetTop(MarqueeSelectionRectangle, _marqueeStart.Y);
+            MarqueeSelectionRectangle.Width = 0;
+            MarqueeSelectionRectangle.Height = 0;
+            MarqueeSelectionRectangle.Background = new SolidColorBrush(Color.FromArgb(45, 37, 99, 235));
+            MarqueeSelectionRectangle.BorderBrush = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            MarqueeSelectionRectangle.Visibility = Visibility.Visible;
+            OverlayCanvas.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
         if (ViewModel.IsRedactionMode)
         {
             // 文字マーカーは文字との対応を壊さないよう移動・サイズ変更させません。
@@ -1258,7 +1299,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
-        if ((!_isMarqueeSelecting && !_isAddingOcrRegion && !_isAddingRedaction) || e.LeftButton != MouseButtonState.Pressed) return;
+        if ((!_isMarqueeSelecting && !_isAddingOcrRegion && !_isAddingRedaction && !_isAddingLinkArea) || e.LeftButton != MouseButtonState.Pressed) return;
         var current = e.GetPosition(OverlayCanvas);
         var left = Math.Min(_marqueeStart.X, current.X);
         var top = Math.Min(_marqueeStart.Y, current.Y);
@@ -1278,8 +1319,32 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void OverlayCanvas_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private async void OverlayCanvas_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isAddingLinkArea)
+        {
+            _isAddingLinkArea = false;
+            LinkAreaOverlayLayer.IsHitTestVisible = true;
+            if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
+            var end = e.GetPosition(OverlayCanvas);
+            var bounds = new Rect(
+                Math.Min(_marqueeStart.X, end.X),
+                Math.Min(_marqueeStart.Y, end.Y),
+                Math.Abs(end.X - _marqueeStart.X),
+                Math.Abs(end.Y - _marqueeStart.Y));
+            ResetPointerRectangle();
+            if (bounds.Width >= 8 && bounds.Height >= 8)
+            {
+                var dialog = new InternalLinkWindow(ViewModel.PageItems.Count, null,
+                    Math.Min((ViewModel.SelectedPage?.PageNumber ?? 1) + 1, ViewModel.PageItems.Count)) { Owner = this };
+                if (dialog.ShowDialog() == true)
+                    await ViewModel.CreateLinkAreaAsync(bounds, dialog.ResultDestinationPage, dialog.ResultZoomPercent,
+                        dialog.Description, dialog.ResultExternalUri);
+            }
+            else ViewModel.StatusMessageForInteraction("リンク範囲が小さすぎるため作成しませんでした。");
+            e.Handled = true;
+            return;
+        }
         if (_isDrawingFreehandRedaction)
         {
             _isDrawingFreehandRedaction = false;
@@ -1333,7 +1398,7 @@ public partial class MainWindow : Window
                 if (OverlayCanvas.ItemContainerGenerator.ContainerFromItem(added) is ListBoxItem item)
                     item.IsSelected = true;
                 SynchronizeOverlaySelection(added);
-                Dispatcher.BeginInvoke(() =>
+                _ = Dispatcher.BeginInvoke(() =>
                 {
                     SelectedLineTextBox.Focus();
                     SelectedLineTextBox.SelectAll();
@@ -1380,11 +1445,13 @@ public partial class MainWindow : Window
     {
         _isAddingOcrRegion = false;
         _isAddingRedaction = false;
+        _isAddingLinkArea = false;
         _isMarqueeSelecting = false;
         _isDrawingFreehandRedaction = false;
         if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
         ResetPointerRectangle();
         CancelRedactionPath();
+        if (LinkAreaOverlayLayer is not null) LinkAreaOverlayLayer.IsHitTestVisible = true;
     }
 
     private void UpdateRedactionPathPreview()

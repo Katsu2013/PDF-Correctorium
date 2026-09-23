@@ -263,6 +263,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private readonly PdfBookmarkService _bookmarkService = new();
     /// <summary>元PDFを保護したままページ構成を変更するサービスです。</summary>
     private readonly PdfPageManagementService _pageManagementService = new();
+    /// <summary>現在の編集内容を保ったページ抽出とPDF分割を担当します。</summary>
+    private readonly PdfDocumentOrganizationService _documentOrganizationService;
     /// <summary>ページ編集用PDFをセッション内で所有し、履歴寿命に合わせて回収します。</summary>
     private readonly PageWorkingFileStore _pageWorkingFiles;
     /// <summary>ページ編集用PDFが履歴件数に比例して増え続けないよう、保存量を制限します。</summary>
@@ -294,6 +296,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private string? _resolvedPdfPath;
     /// <summary>上書き保存に使用する現在の.pdfocrprojファイルパスです。</summary>
     private string? _projectFilePath;
+    /// <summary>起動時に開いた未保存復旧パッケージ。通常保存の成功後にだけ削除します。</summary>
+    private string? _openedRecoveryPath;
     // 以下の文字列フィールドは、文書プロパティとステータスバーに表示するための
     // バッキング値です。元PDFパス、プロジェクトパス、SHA-256、ページ情報、
     // OCRデータの由来、現在ページの領域数を、画面更新通知と一緒に管理します。
@@ -420,6 +424,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _log = log;
         _paths = paths;
         _pageWorkingFiles = new PageWorkingFileStore(paths.WorkspaceDirectory);
+        _documentOrganizationService = new PdfDocumentOrganizationService(_pageManagementService);
         _pageHistoryRetention = new PageHistoryRetentionPolicy(_pageWorkingFiles);
         _isolatedExportService = new IsolatedPdfExportService(packages, paths);
         _settingsService = new ApplicationSettingsService(paths);
@@ -442,6 +447,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OptimizeDocumentImagesAsync,
             () => HasDocument);
         InsertPagesCommand = new AsyncCommand(InsertPagesAsync, () => HasDocument);
+        InsertBlankPagesCommand = new AsyncCommand(InsertBlankPagesAsync, () => HasDocument);
+        ExtractPagesCommand = new AsyncCommand(ExtractPagesAsync, () => HasDocument);
+        SplitPdfCommand = new AsyncCommand(SplitPdfAsync, () => HasDocument);
         DeletePagesCommand = new AsyncCommand(DeleteSelectedPagesAsync, CanDeleteSelectedPages);
         RotatePagesLeftCommand = new AsyncCommand(() => RotateSelectedPagesAsync(-90), CanModifySelectedPages);
         RotatePagesRightCommand = new AsyncCommand(() => RotateSelectedPagesAsync(90), CanModifySelectedPages);
@@ -585,6 +593,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>PDF全体を走査し、画像最適化候補の一覧と容量見込みを表示するコマンドです。</summary>
     public AsyncCommand OptimizeDocumentImagesCommand { get; }
     public AsyncCommand InsertPagesCommand { get; }
+    public AsyncCommand InsertBlankPagesCommand { get; }
+    public AsyncCommand ExtractPagesCommand { get; }
+    public AsyncCommand SplitPdfCommand { get; }
     public AsyncCommand DeletePagesCommand { get; }
     public AsyncCommand RotatePagesLeftCommand { get; }
     public AsyncCommand RotatePagesRightCommand { get; }
@@ -1359,6 +1370,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             if (!Set(ref _selectedOverlay, value)) return;
             NotifyReviewState();
             OnPropertyChanged(nameof(HasSelectedOverlay));
+            OnPropertyChanged(nameof(CanEditLinkSelection));
             OnPropertyChanged(nameof(ShowSelectedOverlayProperties));
             OnPropertyChanged(nameof(ShowOcrSelectionHint));
             NotifyCharacterSelectionState();
@@ -1822,7 +1834,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = isProject ? "プロジェクトを検証して開きました。" : "PDFを開きました。編集内容はプロジェクトへ保存してください。";
             await _log.WriteAsync(LogLevel.Information, isProject ? "project.open" : "document.open",
                 $"Opened {Path.GetFileName(fullPath)} with {PageItems.Count} pages");
-            await RecordRecentFileAsync(fullPath);
+            if (!IsRecoveryProjectPath(fullPath)) await RecordRecentFileAsync(fullPath);
             return true;
         }
         catch (Exception ex)
@@ -1848,6 +1860,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private async Task LoadPdfAsync(string pdfPath)
     {
+        _openedRecoveryPath = null;
         StatusMessage = "元PDFを確認しています...";
         var source = await _packages.CreateSourceReferenceAsync(pdfPath);
         var viewerSettings = PdfViewerSettingsMapping.FromCatalogNames(null, null);
@@ -1886,8 +1899,18 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var sourcePath = project.SourcePdf.IsEmbedded
             ? await _packages.MaterializeEmbeddedSourceAsync(fullPath, project.SourcePdf, _paths.CacheDirectory)
             : _packages.ResolveSourcePath(project.SourcePdf, projectDirectory);
-        await ApplyProjectAsync(sourcePath, project, fullPath, thumbnails);
+        var isRecovery = IsRecoveryProjectPath(fullPath);
+        await ApplyProjectAsync(sourcePath, project, isRecovery ? null : fullPath, thumbnails);
+        _openedRecoveryPath = isRecovery ? fullPath : null;
+        if (isRecovery)
+        {
+            ProjectPath = "復旧データ（未保存）";
+            StatusMessage = "復旧データを開きました。プロジェクトを別名で保存してください。";
+        }
     }
+
+    private static bool IsRecoveryProjectPath(string path) =>
+        Path.GetFileName(path).EndsWith($".autosave{ProjectPackageService.ProjectExtension}", StringComparison.OrdinalIgnoreCase);
 
     internal Task RenderPageForDiagnosticsAsync(int pageNumber) =>
         RenderPageAsync(pageNumber, populatePageList: false);
@@ -2367,6 +2390,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 await _packages.CleanupUnreferencedAssetsAsync(_projectFilePath);
             MarkSavedState();
             ProjectPackageService.DeleteAutoSave(_projectFilePath);
+            if (!string.IsNullOrWhiteSpace(_openedRecoveryPath))
+            {
+                try { if (File.Exists(_openedRecoveryPath)) File.Delete(_openedRecoveryPath); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    await _log.WriteAsync(LogLevel.Warning, "project.recovery.cleanup.failed", ex.Message, ex);
+                }
+                _openedRecoveryPath = null;
+            }
             _lastAutoSaveAtUtc = DateTimeOffset.UtcNow;
             StatusMessage = "プロジェクトを上書き保存し、検証が完了しました。";
             await _log.WriteAsync(LogLevel.Information, "project.save", $"Saved project {_project.ProjectId} to {_projectFilePath}");
@@ -3604,6 +3636,139 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         await InsertPagesFromFileAsync(dialog.FileName, SelectedPage?.PageNumber ?? PageItems.Count);
     }
 
+    private async Task InsertBlankPagesAsync()
+    {
+        if (_resolvedPdfPath is null || SelectedPage is null) return;
+        var metrics = _pageMetrics.TryGetValue(SelectedPage.PageNumber, out var currentMetrics)
+            ? currentMetrics
+            : new PageMetrics(1, 1, 595.276, 841.89);
+        var dialog = new BlankPageWindow(
+            metrics.WidthPoints,
+            metrics.HeightPoints,
+            SelectedPage.PageNumber,
+            PageItems.Count);
+        if (Application.Current?.MainWindow is Window owner) dialog.Owner = owner;
+        if (dialog.ShowDialog() != true) return;
+
+        var directory = Path.Combine(_paths.WorkspaceDirectory, "blank-pages", Guid.NewGuid().ToString("N"));
+        var blankPdfPath = Path.Combine(directory, "blank.pdf");
+        try
+        {
+            await BlankPdfService.CreateAsync(
+                blankPdfPath,
+                dialog.ResultCount,
+                dialog.ResultWidthPoints,
+                dialog.ResultHeightPoints);
+            await InsertPagesFromFileAsync(blankPdfPath, dialog.ResultInsertAfter);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("空白ページを挿入できませんでした。元PDFは変更していません。", ex);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(directory);
+        }
+    }
+
+    private async Task ExtractPagesAsync()
+    {
+        if (_project is null || _resolvedPdfPath is null || SelectedPage is null) return;
+        var dialog = new PageExtractionWindow(
+            PageItems.Count,
+            SelectedPage.PageNumber,
+            _selectedPageNumbers.ToArray());
+        if (Application.Current?.MainWindow is Window owner) dialog.Owner = owner;
+        if (dialog.ShowDialog() != true) return;
+
+        var saveDialog = new SaveFileDialog
+        {
+            Filter = "PDFファイル (*.pdf)|*.pdf",
+            DefaultExt = ".pdf",
+            AddExtension = true,
+            FileName = $"{_project.Name}-pages-{PageRangeParser.Format(dialog.ResultPages).Replace(", ", "_").Replace('-', '_')}.pdf",
+            Title = "抽出したPDFの保存先",
+        };
+        if (saveDialog.ShowDialog() != true) return;
+
+        var temporaryDirectory = Path.Combine(_paths.WorkspaceDirectory, "document-organization", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        BeginBackgroundOperation("編集内容を反映してページを抽出しています...");
+        try
+        {
+            var source = await ExportOrganizationSourceAsync(temporaryDirectory);
+            await _documentOrganizationService.ExtractAsync(source, dialog.ResultPages, saveDialog.FileName);
+            StatusMessage = $"{dialog.ResultPages.Count}ページを抽出しました。";
+            await _log.WriteAsync(LogLevel.Information, "pdf.pages.extracted", saveDialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("ページを抽出できませんでした。保存先の既存ファイルは変更していません。", ex);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(temporaryDirectory);
+            EndBackgroundOperation();
+        }
+    }
+
+    private async Task SplitPdfAsync()
+    {
+        if (_project is null || _resolvedPdfPath is null) return;
+        var dialog = new PdfSplitWindow(PageItems.Count);
+        if (Application.Current?.MainWindow is Window owner) dialog.Owner = owner;
+        if (dialog.ShowDialog() != true) return;
+        var folderDialog = new OpenFolderDialog
+        {
+            Title = "分割したPDFの出力先フォルダー",
+            Multiselect = false,
+        };
+        if (folderDialog.ShowDialog() != true) return;
+
+        var temporaryDirectory = Path.Combine(_paths.WorkspaceDirectory, "document-organization", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        BeginBackgroundOperation("編集内容を反映してPDFを分割しています...");
+        try
+        {
+            var source = await ExportOrganizationSourceAsync(temporaryDirectory);
+            var outputs = await _documentOrganizationService.SplitAsync(
+                source,
+                dialog.ResultGroups,
+                folderDialog.FolderName,
+                _project.Name);
+            StatusMessage = $"PDFを{outputs.Count}ファイルへ分割しました。";
+            await _log.WriteAsync(LogLevel.Information, "pdf.pages.split", folderDialog.FolderName);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("PDFを分割できませんでした。途中の出力ファイルは破棄しました。", ex);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(temporaryDirectory);
+            EndBackgroundOperation();
+        }
+    }
+
+    /// <summary>抽出・分割の入力として、現在の編集、しおり、リンク、墨消しを反映した一時PDFを作成します。</summary>
+    private async Task<string> ExportOrganizationSourceAsync(string temporaryDirectory)
+    {
+        if (_project is null || _resolvedPdfPath is null)
+            throw new InvalidOperationException("PDFが開かれていません。");
+        SynchronizeProjectPages();
+        var prepared = await PrepareMaterializedProjectSourceAsync();
+        try
+        {
+            var outputPath = Path.Combine(temporaryDirectory, "current-document.pdf");
+            await _exportService.ExportAsync(prepared.PdfPath, outputPath, prepared.Project);
+            return outputPath;
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(prepared.TemporaryDirectory);
+        }
+    }
+
     private async Task InsertPagesFromFileAsync(string inputPdfPath, int insertAfter)
     {
         if (_resolvedPdfPath is null) return;
@@ -4026,6 +4191,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private void RaisePageManagementCommands()
     {
         InsertPagesCommand.RaiseCanExecuteChanged();
+        InsertBlankPagesCommand.RaiseCanExecuteChanged();
+        ExtractPagesCommand.RaiseCanExecuteChanged();
+        SplitPdfCommand.RaiseCanExecuteChanged();
         DeletePagesCommand.RaiseCanExecuteChanged();
         RotatePagesLeftCommand.RaiseCanExecuteChanged();
         RotatePagesRightCommand.RaiseCanExecuteChanged();
