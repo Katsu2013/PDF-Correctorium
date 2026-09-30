@@ -35,6 +35,15 @@ public enum FacingPageBindingDirection
     RightBinding,
 }
 
+/// <summary>作業領域のパネルを置く場所です。</summary>
+public enum WorkspaceDockPosition { Left, Right, Floating }
+
+/// <summary>ツールバーの固定辺です。縦配置は左右の辺で表します。</summary>
+public enum ToolbarDockSide { Top, Bottom, Left, Right }
+
+/// <summary>同じ側に固定した２つのパネルの配置です。</summary>
+public enum WorkspacePaneGroupMode { Tabbed, Stacked }
+
 /// <summary>
 /// 画面表示、編集補助、履歴、およびショートカットに関する利用者設定です。
 /// </summary>
@@ -44,7 +53,7 @@ public enum FacingPageBindingDirection
 /// </remarks>
 public sealed record ApplicationSettings
 {
-    public const int CurrentFormatVersion = 16;
+    public const int CurrentFormatVersion = 18;
     /// <summary>最近開いたファイルの表示件数。0は表示と新規記録を停止します。</summary>
     public int RecentFileLimit { get; init; } = 10;
     /// <summary>設定ファイルの移行判定に使用する形式バージョンです。</summary>
@@ -61,8 +70,20 @@ public sealed record ApplicationSettings
     public bool ShowPropertyHelpText { get; init; }
     /// <summary>左側のページ一覧を表示するかを指定します。</summary>
     public bool ShowPageListPanel { get; init; } = true;
+    /// <summary>しおりパネルを表示するかを指定します。</summary>
+    public bool ShowBookmarksPanel { get; init; } = true;
     /// <summary>右側のOCRプロパティ欄を表示するかを指定します。</summary>
     public bool ShowPropertiesPanel { get; init; } = true;
+    public WorkspaceDockPosition NavigationDockPosition { get; init; } = WorkspaceDockPosition.Left;
+    public WorkspaceDockPosition BookmarkDockPosition { get; init; } = WorkspaceDockPosition.Left;
+    public WorkspaceDockPosition PropertiesDockPosition { get; init; } = WorkspaceDockPosition.Right;
+    public WorkspacePaneGroupMode PaneGroupMode { get; init; } = WorkspacePaneGroupMode.Tabbed;
+    public ToolbarDockSide MainToolbarDockSide { get; init; } = ToolbarDockSide.Top;
+    public ToolbarDockSide PageToolbarDockSide { get; init; } = ToolbarDockSide.Top;
+    public int MainToolbarBand { get; init; }
+    public int MainToolbarBandIndex { get; init; }
+    public int PageToolbarBand { get; init; } = 1;
+    public int PageToolbarBandIndex { get; init; }
     /// <summary>画面下部の状態・倍率表示を表示するかを指定します。</summary>
     public bool ShowStatusBar { get; init; } = true;
     /// <summary>編集画面のページ表示方法です。PDFへ保存する初期表示設定とは独立しています。</summary>
@@ -158,6 +179,19 @@ public sealed record ApplicationSettings
         FacingPagesBindingDirection = Enum.IsDefined(FacingPagesBindingDirection)
             ? FacingPagesBindingDirection
             : FacingPageBindingDirection.LeftBinding,
+        NavigationDockPosition = Enum.IsDefined(NavigationDockPosition)
+            ? NavigationDockPosition : WorkspaceDockPosition.Left,
+        BookmarkDockPosition = Enum.IsDefined(BookmarkDockPosition)
+            ? BookmarkDockPosition : WorkspaceDockPosition.Left,
+        PropertiesDockPosition = Enum.IsDefined(PropertiesDockPosition)
+            ? PropertiesDockPosition : WorkspaceDockPosition.Right,
+        PaneGroupMode = Enum.IsDefined(PaneGroupMode) ? PaneGroupMode : WorkspacePaneGroupMode.Tabbed,
+        MainToolbarDockSide = Enum.IsDefined(MainToolbarDockSide) ? MainToolbarDockSide : ToolbarDockSide.Top,
+        PageToolbarDockSide = Enum.IsDefined(PageToolbarDockSide) ? PageToolbarDockSide : ToolbarDockSide.Top,
+        MainToolbarBand = Math.Clamp(MainToolbarBand, 0, 1),
+        MainToolbarBandIndex = Math.Clamp(MainToolbarBandIndex, 0, 1),
+        PageToolbarBand = Math.Clamp(PageToolbarBand, 0, 1),
+        PageToolbarBandIndex = Math.Clamp(PageToolbarBandIndex, 0, 1),
         WorkspacePresets = WorkspacePreset.NormalizeList(WorkspacePresets),
         UiLanguage = string.Equals(UiLanguage, LocalizationService.EnglishLanguage, StringComparison.OrdinalIgnoreCase)
             ? LocalizationService.EnglishLanguage

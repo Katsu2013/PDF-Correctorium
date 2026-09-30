@@ -71,6 +71,51 @@ public sealed record PdfInternalLink
     public double? DestinationZoomPercent { get; init; }
     public string Description { get; init; } = string.Empty;
     public bool IsEnabled { get; init; } = true;
+    /// <summary>元PDFから取り込んだ注釈のオブジェクト参照です。新規リンクではnullです。</summary>
+    public string? SourceAnnotationReference { get; init; }
+    /// <summary>元注釈を再配置後のPDFから照合するための、変更前の矩形です。</summary>
+    public PdfRectangle? OriginalSourceBounds { get; init; }
+    /// <summary>元PDFリンクの内容を変更したときだけ、出力時に注釈を置き換えます。</summary>
+    public bool IsModified { get; init; }
+}
+
+public enum PdfTextDecorationKind { PageNumber, Header, Footer, Watermark }
+public enum PdfTextDecorationPosition
+{
+    TopLeft, TopCenter, TopRight,
+    BottomLeft, BottomCenter, BottomRight,
+    Center,
+}
+
+/// <summary>PDFページへ出力する文字装飾です。ページ番号には {page}、総ページ数には {total} を使います。</summary>
+public sealed record PdfTextDecoration
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public PdfTextDecorationKind Kind { get; init; }
+    public string TextTemplate { get; init; } = "{page}";
+    public PdfTextDecorationPosition Position { get; init; } = PdfTextDecorationPosition.BottomCenter;
+    /// <summary>偶数ページだけに使用する位置です。nullなら全ページでPositionを使います。</summary>
+    public PdfTextDecorationPosition? EvenPagePosition { get; init; }
+    public int FirstPage { get; init; } = 1;
+    public int? LastPage { get; init; }
+    public int PageNumberOffset { get; init; }
+    public double FontSizePoints { get; init; } = 10;
+    public string ColorHex { get; init; } = "#333333";
+    public double Opacity { get; init; } = 1;
+    public double MarginPoints { get; init; } = 24;
+    public bool IsEnabled { get; init; } = true;
+
+    public bool AppliesToPage(int pageNumber, int pageCount) =>
+        IsEnabled && pageNumber >= Math.Max(1, FirstPage) &&
+        pageNumber <= Math.Min(pageCount, LastPage ?? pageCount);
+
+    public PdfTextDecorationPosition PositionForPage(int pageNumber) =>
+        pageNumber % 2 == 0 ? EvenPagePosition ?? Position : Position;
+
+    public string TextForPage(int pageNumber, int pageCount) => TextTemplate
+        .Replace("{page}", (pageNumber + PageNumberOffset).ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.OrdinalIgnoreCase)
+        .Replace("{total}", ((LastPage ?? pageCount) + PageNumberOffset).ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.OrdinalIgnoreCase)
+        .Replace('\r', ' ').Replace('\n', ' ');
 }
 
 /// <summary>墨消し範囲を作成した入力方法です。</summary>
@@ -274,6 +319,10 @@ public sealed record PdfCorrectoriumProject
     public IReadOnlyList<ProjectTag> Tags { get; init; } = [];
     /// <summary>アプリ内移動と出力PDFのGoTo注釈に使用する内部リンクです。</summary>
     public IReadOnlyList<PdfInternalLink> InternalLinks { get; init; } = [];
+    /// <summary>元PDFの既存リンクを確認済みかを示し、再オープン時の二重取り込みを防ぎます。</summary>
+    public bool SourceLinksInitialized { get; init; }
+    /// <summary>ページ番号、ヘッダー／フッター、文字透かしの設定です。</summary>
+    public IReadOnlyList<PdfTextDecoration> TextDecorations { get; init; } = [];
     /// <summary>
     /// PDF出力時に内容を復元不能な形で除去するページ内範囲です。PDF文字選択は対応する
     /// 文字オブジェクトを除去して矩形へ置換し、それ以外は安全性を優先してページを画像化します。

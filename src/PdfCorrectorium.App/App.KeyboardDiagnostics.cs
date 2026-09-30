@@ -223,13 +223,9 @@ public partial class App
                         LocalizationService.Apply(main);
                         vm.EditorModeIndex = mode;
                         vm.EditUnitIndex = unit;
-                        foreach (var navigationTab in new[] { 0, 1 })
-                        {
-                            ((TabControl)main.FindName("KeyboardNavigationTabs")).SelectedIndex = navigationTab;
-                            await Layout(main);
-                            CheckActiveMainMnemonics(main, Check);
-                            CheckSemanticMnemonics(main, Check);
-                        }
+                        await Layout(main);
+                        CheckActiveMainMnemonics(main, Check);
+                        CheckSemanticMnemonics(main, Check);
                     }
             vm.EditorModeIndex = 0;
             vm.EditUnitIndex = 0;
@@ -242,7 +238,7 @@ public partial class App
             var toolbar = (ToolBar)main.FindName("MainToolbarPanel");
             toolbar.Items.OfType<Button>().First(b => b.IsEnabled).Focus();
             main.MoveKeyboardPane(false);
-            Check(((TabControl)main.FindName("KeyboardNavigationTabs")).IsKeyboardFocusWithin, "F6 moves from the toolbar to the navigation pane.");
+            Check(((FrameworkElement)main.FindName("NavigationDockPane")).IsKeyboardFocusWithin, "F6 moves from the toolbar to the page pane.");
             main.MoveKeyboardPane(true);
             Check(toolbar.IsKeyboardFocusWithin, "Shift+F6 returns to the toolbar.");
             main.Hide();
@@ -251,6 +247,9 @@ public partial class App
                 Check(EditorShortcutService.IsReserved(gesture), gesture + " is reserved for navigation or standard editing.");
             Check(!EditorShortcutService.IsReserved("Ctrl+Shift+Q") && EditorShortcutService.TryNormalize("Alt+Left", out _), "Non-conflicting custom shortcuts and existing defaults remain available.");
 
+            main.AvalonProperties?.Show();
+            if (main.AvalonProperties is not null) main.AvalonProperties.IsSelected = true;
+            await Layout(main);
             var pairs = new[]
             {
                 ("PreviousCharacterShortcut", "PreviousCharacterToolTip"), ("NextCharacterShortcut", "NextCharacterToolTip"),
@@ -278,9 +277,14 @@ public partial class App
                         var expected = (string)typeof(MainWindowViewModel).GetProperty(pairs[i].Item2)!.GetValue(vm)!;
                         Check(Equals(tooltipButtons[i].ToolTip, expected), pairs[i].Item2 + " binding refreshes immediately.");
                         Check(empty ? !expected.Contains("Ctrl+") : expected.Contains("Ctrl+Shift+F" + (i + 1)), pairs[i].Item2 + " displays the current assignment, not a stale default.");
-                        var command = typeof(MainWindowViewModel).GetProperty(pairs[i].Item2.Replace("ToolTip", "Command"))!.GetValue(vm);
-                        var actualButtons = KeyboardElements(main).OfType<Button>().Where(b => ReferenceEquals(b.Command, command)).ToArray();
-                        Check(actualButtons.Length > 0 && actualButtons.All(b => Equals(b.ToolTip, expected)), pairs[i].Item2 + " is bound on the actual toolbar buttons.");
+                        // An inactive AvalonDock tab is intentionally absent from the main
+                        // visual tree. Inspect the owned pane content directly instead.
+                        var propertiesPane = (DependencyObject)main.FindName("PropertiesDockPane");
+                        var allButtons = KeyboardElements(propertiesPane).OfType<Button>().ToArray();
+                        var actualButtons = allButtons.Where(b =>
+                            BindingOperations.GetBinding(b, FrameworkElement.ToolTipProperty)?.Path?.Path == pairs[i].Item2).ToArray();
+                        Check(actualButtons.Length > 0 && actualButtons.All(b => !b.IsLoaded || Equals(b.ToolTip, expected)),
+                            pairs[i].Item2 + " is bound on the actual toolbar buttons.");
                         if (empty) Check(expected.Contains(language == "en-US" ? "Unassigned" : "割り当てなし"), pairs[i].Item2 + " localizes the unassigned state.");
                     }
                 }

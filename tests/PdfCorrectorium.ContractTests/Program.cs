@@ -17,8 +17,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("FR-1000 package version gates reject unsupported formats", PackageVersionGateAsync),
     ("Build revision matches every application assembly and manifest", BuildVersionAsync),
     ("Project package round-trips and validates", ProjectRoundTripAsync),
-    ("Project format 1.7 preserves safe external URI links", ExternalUriLinkRoundTripAsync),
+    ("Project format 1.8 preserves safe external URI links", ExternalUriLinkRoundTripAsync),
+    ("Project format 1.8 preserves imported links and text decorations", TextDecorationRoundTripAsync),
     ("Project format 1.4 supports external relative PDF paths", ExternalRelativeSourceAsync),
+    ("Project formats 1.5 and 1.6 validate without duplicate source entries", CanonicalLegacyVersionsAsync),
+    ("Moved source PDF can be relinked only to identical content", RelinkMovedSourceAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
     ("Project format 1.4 omits regenerable duplicate caches", ProjectThumbnailCacheAsync),
     ("Project package rejects excessive JSON entries", ProjectJsonLimitAsync),
@@ -70,11 +73,69 @@ static async Task ExternalUriLinkRoundTripAsync()
             ],
         });
         var validation = await packages.ValidateAsync(path);
-        True(validation.IsValid, "A safe HTTP(S) link must validate in project format 1.7.");
+        True(validation.IsValid, "A safe HTTP(S) link must validate in the current project format.");
         var reopened = await packages.OpenAsync(path);
         Equal("https://example.com/reference?q=pdf", reopened.InternalLinks.Single().ExternalUri,
             "External URI links must round-trip without requiring a destination page.");
-        Equal("1.7", ProjectManifest.CurrentVersion, "The external-link schema requires project format 1.7.");
+        Equal("1.9", ProjectManifest.CurrentVersion, "Odd/even decoration positions require project format 1.9.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task TextDecorationRoundTripAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "decorations.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var packages = new ProjectPackageService();
+        var pageId = Guid.NewGuid();
+        var bounds = new PdfRectangle(new PdfPoint(10, 20), new PdfSize(120, 24));
+        var path = Path.Combine(directory, "decorations.pdfocrproj");
+        await packages.SaveAsync(path, new PdfCorrectoriumProject
+        {
+            SourcePdf = await packages.CreateSourceReferenceAsync(pdf, directory),
+            Pages = [new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
+            SourceLinksInitialized = true,
+            InternalLinks =
+            [
+                new PdfInternalLink
+                {
+                    SourcePageId = pageId,
+                    SourceBounds = bounds,
+                    OriginalSourceBounds = bounds,
+                    ExternalUri = "https://example.com",
+                    SourceAnnotationReference = "12 0 R",
+                    IsModified = true,
+                },
+            ],
+            TextDecorations =
+            [
+                new PdfTextDecoration
+                {
+                    Kind = PdfTextDecorationKind.Header,
+                    TextTemplate = "日本語 {page}/{total}",
+                    Position = PdfTextDecorationPosition.TopCenter,
+                    EvenPagePosition = PdfTextDecorationPosition.TopLeft,
+                    FirstPage = 2,
+                    PageNumberOffset = -1,
+                },
+            ],
+        });
+        True((await packages.ValidateAsync(path)).IsValid, "Safe imported links and page decorations validate.");
+        var reopened = await packages.OpenAsync(path);
+        True(reopened.SourceLinksInitialized && reopened.InternalLinks.Single().IsModified,
+            "Imported-link editing state round-trips.");
+        Equal("12 0 R", reopened.InternalLinks.Single().SourceAnnotationReference,
+            "Original annotation identity survives save and reopen.");
+        Equal("日本語 {page}/{total}", reopened.TextDecorations.Single().TextTemplate,
+            "Japanese decoration text survives save and reopen.");
+        Equal(PdfTextDecorationPosition.TopLeft, reopened.TextDecorations.Single().PositionForPage(2),
+            "Even page decoration position survives save and reopen.");
+        True(!reopened.TextDecorations.Single().AppliesToPage(1, 5) &&
+             reopened.TextDecorations.Single().TextForPage(2, 5) == "日本語 1/4",
+            "The cover can be skipped while visible numbering begins at one.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }
@@ -118,6 +179,78 @@ static async Task ExternalRelativeSourceAsync()
         }
         True(!(await packages.ValidateAsync(projectPath)).IsValid,
             "Format 1.2 must retain its same-tree relative-path contract.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task CanonicalLegacyVersionsAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\nlegacy source\n%%EOF");
+        var packages = new ProjectPackageService();
+        var pageId = Guid.NewGuid();
+        var path = Path.Combine(directory, "legacy-canonical.pdfocrproj");
+        await packages.SaveAsync(path, new PdfCorrectoriumProject
+        {
+            SourcePdf = await packages.CreateSourceReferenceAsync(pdf, directory),
+            Pages = [new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
+        });
+        foreach (var format in new[] { "1.5", "1.6" })
+        {
+            using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+            {
+                True(archive.GetEntry("source/source-reference.json") is null,
+                    "Canonical projects do not write a duplicate source reference.");
+                var entry = archive.GetEntry("manifest.json")!;
+                JsonObject manifest;
+                using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
+                manifest["formatVersion"] = format;
+                entry.Delete();
+                await using var output = archive.CreateEntry("manifest.json").Open();
+                await JsonSerializer.SerializeAsync(output, manifest);
+            }
+            var validation = await packages.ValidateAsync(path);
+            True(validation.IsValid,
+                $"Format {format} must validate without redundant source entries: {string.Join(", ", validation.Issues.Select(issue => issue.Code))}");
+            Equal(pageId, (await packages.OpenAsync(path)).Pages.Single().Id,
+                $"Format {format} must preserve its page model.");
+        }
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task RelinkMovedSourceAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var oldDirectory = Path.Combine(directory, "old");
+        var newDirectory = Path.Combine(directory, "new");
+        Directory.CreateDirectory(oldDirectory);
+        Directory.CreateDirectory(newDirectory);
+        var oldPdf = Path.Combine(oldDirectory, "source.pdf");
+        var newPdf = Path.Combine(newDirectory, "renamed.pdf");
+        await File.WriteAllTextAsync(oldPdf, "%PDF-1.4\noriginal content\n%%EOF");
+        var packages = new ProjectPackageService();
+        var source = await packages.CreateSourceReferenceAsync(oldPdf, directory);
+        File.Move(oldPdf, newPdf);
+        True(!await packages.VerifySourceAsync(source, directory), "The old reference must be unresolved after moving its PDF.");
+        var relinked = await packages.RelinkSourceAsync(source, newPdf, directory);
+        True(await packages.VerifySourceAsync(relinked, directory), "The new reference must resolve to the identical PDF.");
+        Equal(source.Sha256, relinked.Sha256, "Relinking must preserve the original content identity.");
+        True(relinked.AbsolutePathHint is null, "A new project reference must not persist an absolute path.");
+
+        var alteredPdf = Path.Combine(newDirectory, "altered.pdf");
+        await File.WriteAllTextAsync(alteredPdf, "%PDF-1.4\naltered content!\n%%EOF");
+        try
+        {
+            await packages.RelinkSourceAsync(source, alteredPdf, directory);
+            throw new Exception("A different PDF was incorrectly accepted as the original.");
+        }
+        catch (InvalidDataException) { }
     }
     finally { Directory.Delete(directory, recursive: true); }
 }
@@ -319,8 +452,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.7", ProjectManifest.CurrentVersion, "External URI links require project format 1.7.");
-    Equal("1.0.0-dev.172", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.7 must name the first compatible reader.");
+    Equal("1.9", ProjectManifest.CurrentVersion, "Odd/even decoration positions require project format 1.9.");
+    Equal("1.0.0-dev.199", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.9 must name the first compatible reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -374,7 +507,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.7", manifest["formatVersion"]!.GetValue<string>(), "New containers require external URI-link support.");
+            Equal("1.9", manifest["formatVersion"]!.GetValue<string>(), "New containers require odd/even decoration support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();

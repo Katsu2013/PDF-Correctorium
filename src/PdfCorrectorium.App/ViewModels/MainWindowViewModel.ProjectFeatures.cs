@@ -13,6 +13,7 @@ public sealed partial class MainWindowViewModel
     private readonly Stack<Guid> _internalLinkBackStack = [];
     private readonly Stack<Guid> _internalLinkForwardStack = [];
     private DocumentLinkOverlayViewModel? _selectedLinkArea;
+    private int _unsupportedSourceLinkActions;
 
     public ObservableCollection<PdfInputIssue> InputPdfIssues { get; } = [];
     public int InputPdfIssueCount => InputPdfIssues.Count;
@@ -57,6 +58,12 @@ public sealed partial class MainWindowViewModel
         {
             foreach (var issue in await InputPdfInspectionService.InspectAsync(pdfPath, CancellationToken.None))
                 InputPdfIssues.Add(issue);
+            if (_unsupportedSourceLinkActions > 0)
+                InputPdfIssues.Add(new PdfInputIssue(
+                    "links.unsupported_actions", PdfInputIssueSeverity.Critical,
+                    "編集対象外のPDFリンクがあります",
+                    $"{_unsupportedSourceLinkActions}件のリンクは内部ページ移動またはHTTP(S)ではありません。アプリ内では実行せず、出力後に安全性と動作を確認してください。",
+                    "アクション"));
         }
         catch (Exception ex)
         {
@@ -153,6 +160,9 @@ public sealed partial class MainWindowViewModel
             DestinationZoomPercent = zoomPercent,
             Description = description.Trim(),
             IsEnabled = true,
+            SourceAnnotationReference = existing?.SourceAnnotationReference,
+            OriginalSourceBounds = existing?.OriginalSourceBounds,
+            IsModified = existing?.SourceAnnotationReference is not null,
         };
         _project = _project with
         {
@@ -194,6 +204,9 @@ public sealed partial class MainWindowViewModel
             DestinationZoomPercent = zoomPercent,
             Description = description.Trim(),
             IsEnabled = true,
+            SourceAnnotationReference = existing?.SourceAnnotationReference,
+            OriginalSourceBounds = existing?.OriginalSourceBounds,
+            IsModified = existing?.SourceAnnotationReference is not null,
         };
         _project = _project with
         {
@@ -208,7 +221,14 @@ public sealed partial class MainWindowViewModel
     {
         if (_project is null || FindSelectedInternalLink() is not { } link) return;
         var before = CaptureProjectAnnotationSnapshot();
-        _project = _project with { InternalLinks = _project.InternalLinks.Where(item => item.Id != link.Id).ToArray() };
+        _project = _project with
+        {
+            InternalLinks = link.SourceAnnotationReference is null
+                ? _project.InternalLinks.Where(item => item.Id != link.Id).ToArray()
+                : _project.InternalLinks.Select(item => item.Id == link.Id
+                    ? item with { IsEnabled = false, IsModified = true }
+                    : item).ToArray(),
+        };
         RecordProjectAnnotationChange(before, "ページリンクを削除");
         SelectedLinkArea = null;
         RefreshLinkAreaItems();
@@ -283,10 +303,10 @@ public sealed partial class MainWindowViewModel
     private PdfInternalLink? FindSelectedInternalLink()
     {
         if (_project is null || SelectedPage is null) return null;
-        if (SelectedLinkArea is { } area) return _project.InternalLinks.FirstOrDefault(item => item.Id == area.Id);
+        if (SelectedLinkArea is { } area) return _project.InternalLinks.FirstOrDefault(item => item.Id == area.Id && item.IsEnabled);
         if (SelectedOverlay is null) return null;
         var page = _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber);
-        return _project.InternalLinks.FirstOrDefault(item => item.SourcePageId == page?.Id && item.SourceRegionId == SelectedOverlay.Id);
+        return _project.InternalLinks.FirstOrDefault(item => item.IsEnabled && item.SourcePageId == page?.Id && item.SourceRegionId == SelectedOverlay.Id);
     }
 
     private void RefreshLinkAreaItems(Guid? selectId = null)
@@ -300,7 +320,7 @@ public sealed partial class MainWindowViewModel
         }
         var page = _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber);
         if (page is null) return;
-        foreach (var link in _project.InternalLinks.Where(item => item.SourcePageId == page.Id && item.SourceBounds is { IsValid: true }))
+        foreach (var link in _project.InternalLinks.Where(item => item.IsEnabled && item.SourcePageId == page.Id && item.SourceBounds is { IsValid: true }))
             LinkAreaItems.Add(new DocumentLinkOverlayViewModel(link, ToPreviewRectangle(link.SourceBounds!.Value, metrics)));
         SelectedLinkArea = LinkAreaItems.FirstOrDefault(item => item.Id == previousId);
     }

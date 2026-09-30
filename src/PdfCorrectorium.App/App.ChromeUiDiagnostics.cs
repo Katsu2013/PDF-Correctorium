@@ -35,7 +35,7 @@ public partial class App
         viewModel.ZoomPercent = 100;
         await layoutAsync();
         var toolbar = (ToolBar)window.FindName("MainToolbarPanel");
-        check(toolbar.Padding == new Thickness(4, 2, 4, 2) &&
+        check(toolbar.Padding == new Thickness(0, 2, 0, 2) &&
               toolbar.Items.OfType<Separator>().All(separator => separator.Margin == new Thickness(4, 0, 4, 0)),
             "Main toolbar padding and separator spacing are compact.");
         check(toolbar.Items.OfType<ButtonBase>().All(button => button.Padding == new Thickness(2) && button.Margin == new Thickness(1)),

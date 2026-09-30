@@ -73,6 +73,9 @@
                         <CheckBox x:Name="ShowPageListPanelCheckBox"
  Content="ページ一覧を表示する(_P)"
                                   Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+P"/>
+                        <CheckBox x:Name="ShowBookmarksPanelCheckBox"
+ Content="しおりを表示する"
+                                  Margin="0,8,0,0"/>
                         <CheckBox x:Name="ShowPropertiesPanelCheckBox"
  Content="OCRプロパティを表示する(_O)"
                                   Margin="0,8,0,0" AutomationProperties.AccessKey="Alt+O"/>

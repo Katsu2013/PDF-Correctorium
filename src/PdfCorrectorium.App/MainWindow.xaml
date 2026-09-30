@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:PdfCorrectorium.App.ViewModels"
         xmlns:ocr="clr-namespace:PdfCorrectorium.App.Controls"
+        xmlns:avalonControls="clr-namespace:AvalonDock.Controls;assembly=AvalonDock"
         Title="PDF Correctorium" Height="850" Width="1400" MinHeight="650" MinWidth="1050"
         WindowStartupLocation="CenterScreen" PreviewKeyDown="MainWindow_OnPreviewKeyDown" Closing="MainWindow_OnClosing" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <Window.InputBindings>
@@ -22,6 +23,107 @@
             複数のツールバーを個別修正しなくて済むようにする。
         -->
         <Thickness x:Key="ToolbarButtonPadding">2</Thickness>
+
+        <!-- The stock AvalonDock anchorable template fixes its tabs below the content.
+             Keep the stock item styles and commands; only exchange the header/content rows. -->
+        <ControlTemplate x:Key="TopAvalonAnchorablePaneTemplate"
+                         TargetType="{x:Type avalonControls:LayoutAnchorablePaneControl}">
+            <Grid ClipToBounds="True" KeyboardNavigation.TabNavigation="Local"
+                  SnapsToDevicePixels="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Border Grid.RowSpan="2" Background="Transparent" />
+                <avalonControls:AnchorablePaneTabPanel x:Name="HeaderPanel" Grid.Row="0"
+                    Margin="2,2,2,0" Panel.ZIndex="1" IsItemsHost="True"
+                    KeyboardNavigation.TabIndex="1" />
+                <Border x:Name="ContentPanel" Grid.Row="1"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    KeyboardNavigation.DirectionalNavigation="Contained"
+                    KeyboardNavigation.TabIndex="2"
+                    KeyboardNavigation.TabNavigation="Cycle">
+                    <ContentPresenter x:Name="PART_SelectedContentHost"
+                        Margin="{TemplateBinding Padding}"
+                        ContentSource="SelectedContent"
+                        SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                </Border>
+            </Grid>
+        </ControlTemplate>
+
+        <!-- Toolbar-only panes have their drag grip inside the toolbar content.  Do not
+             reserve a second title/tab row, including after floating or re-docking. -->
+        <ControlTemplate x:Key="ToolbarAvalonAnchorablePaneTemplate"
+                         TargetType="{x:Type avalonControls:LayoutAnchorablePaneControl}">
+            <DockPanel Background="{StaticResource ToolbarBrush}" LastChildFill="True">
+                <avalonControls:AnchorablePaneTitle x:Name="ToolbarDragTitle"
+                    DockPanel.Dock="Left" Width="12" MinHeight="28"
+                    Model="{Binding Model.SelectedContent, RelativeSource={RelativeSource TemplatedParent}}"
+                    Cursor="SizeAll" ToolTip="ドラッグしてツールバーを移動">
+                    <avalonControls:AnchorablePaneTitle.Template>
+                        <ControlTemplate TargetType="{x:Type avalonControls:AnchorablePaneTitle}">
+                            <Border Background="Transparent">
+                                <Grid Width="6" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Top" />
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+                                    <Ellipse Width="2" Height="2" Fill="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                                </Grid>
+                            </Border>
+                        </ControlTemplate>
+                    </avalonControls:AnchorablePaneTitle.Template>
+                </avalonControls:AnchorablePaneTitle>
+                <ContentPresenter Content="{Binding Model.SelectedContent.Content, RelativeSource={RelativeSource TemplatedParent}}" />
+            </DockPanel>
+            <ControlTemplate.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Model.SelectedContent.IsFloating, RelativeSource={RelativeSource TemplatedParent}}" Value="True" />
+                        <Condition Binding="{Binding Model.SelectedContent.Parent.IsDirectlyHostedInFloatingWindow, RelativeSource={RelativeSource TemplatedParent}}" Value="True" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="ToolbarDragTitle" Property="Visibility" Value="Collapsed" />
+                </MultiDataTrigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <!-- The pane/tab containers keep AvalonDock's own drag handling.  Only their chrome
+             follows the application's existing underline-tab treatment. -->
+        <Style x:Key="AvalonPaneTabItemStyle" TargetType="TabItem"
+               BasedOn="{StaticResource ModernTabItemStyle}">
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+            <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+            <Setter Property="ToolTip" Value="{Binding ToolTip}" />
+            <Setter Property="Padding" Value="10,5" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ContentId}" Value="main-toolbar">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ContentId}" Value="page-toolbar">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A toolbar remains a ToolBar, not a panel-shaped strip.  AvalonDock's native
+             AnchorablePaneTitle is retained as the small drag surface beside its buttons. -->
+        <ControlTemplate x:Key="AvalonToolbarContentTemplate"
+                         TargetType="{x:Type avalonControls:LayoutAnchorableControl}">
+            <DockPanel LastChildFill="True" Background="{StaticResource ToolbarBrush}">
+                    <ContentPresenter Content="{Binding LayoutItem.View, RelativeSource={RelativeSource TemplatedParent}}"
+                                      FlowDirection="{TemplateBinding FlowDirection}" />
+            </DockPanel>
+        </ControlTemplate>
+        <ControlTemplate x:Key="AvalonVerticalToolbarContentTemplate"
+                         TargetType="{x:Type avalonControls:LayoutAnchorableControl}">
+            <DockPanel LastChildFill="True" Background="{StaticResource ToolbarBrush}">
+                    <ContentPresenter Content="{Binding LayoutItem.View, RelativeSource={RelativeSource TemplatedParent}}"
+                                      FlowDirection="{TemplateBinding FlowDirection}" />
+            </DockPanel>
+        </ControlTemplate>
 
         <Style TargetType="ToolBarTray">
             <Setter Property="Background" Value="{StaticResource ToolbarBrush}" />
@@ -289,6 +391,9 @@
                 <MenuItem Header="ページ一覧(_P)"
                           IsCheckable="True"
                           IsChecked="{Binding ShowPageListPanel, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+P"/>
+                <MenuItem Header="しおり(_K)"
+                          IsCheckable="True"
+                          IsChecked="{Binding ShowBookmarksPanel, Mode=TwoWay}" AutomationProperties.AccessKey="Alt+K"/>
                 <MenuItem Header="OCRプロパティ(_O)"
                           IsCheckable="True"
                           IsChecked="{Binding ShowPropertiesPanel, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+O"/>
@@ -374,6 +479,10 @@
                           Command="{Binding OptimizeDocumentImagesCommand}"
                           ToolTip="全ページを走査して容量削減候補、概算サイズ、空白全面画像を一覧表示します"  AutomationProperties.AccessKey="Alt+O"/>
                 <Separator />
+                <MenuItem Header="ページ番号・ヘッダー／フッター・文字透かし...(_H)"
+                          Click="PageTextDecorations_OnClick"
+                          ToolTip="文字装飾をプレビューし、出力PDFへ埋め込みます" AutomationProperties.AccessKey="Alt+H" />
+                <Separator />
                 <MenuItem Header="リンク範囲を追加...(_A)" Click="LinkAreaAdd_OnClick"
                           ToolTip="OCR領域に依存しない任意矩形へ文書内またはWebリンクを設定" AutomationProperties.AccessKey="Alt+A" />
                 <MenuItem Header="ページリンクを設定...(_K)" Click="InternalLinkEdit_OnClick"
@@ -398,9 +507,9 @@
             </MenuItem>
         </Menu>
 
-        <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" KeyboardNavigation.TabIndex="1">
-            <ToolBarTray IsLocked="False" Background="{StaticResource ToolbarBrush}">
-                <ToolBar x:Name="MainToolbarPanel" Band="0" BandIndex="0" Padding="4,2" Background="Transparent">
+        <Border x:Name="TopToolbarHost" DockPanel.Dock="Top" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" KeyboardNavigation.TabIndex="1">
+            <ToolBarTray x:Name="MainToolBarTray" IsLocked="False" Background="{StaticResource ToolbarBrush}">
+                <ToolBar x:Name="MainToolbarPanel" Band="0" BandIndex="0" Padding="0,2" Background="Transparent">
                     <Button Command="{Binding OpenPdfCommand}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="PDFを開く">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}" MaxWidth="64">
@@ -548,7 +657,20 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="墨消し" />
                         </StackPanel>
                     </ToggleButton>
-                    <Separator Margin="4,0" />
+                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUseOcrEditControls}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCR編集モードの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
+                        <ComboBoxItem Content="行編集" />
+                        <ComboBoxItem Content="段落編集" />
+                        <ComboBoxItem Content="文字編集" />
+                    </ComboBox>
+                    <ComboBox x:Name="EditorModeSelector" IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" ToolTip="プレビュー上の操作モードを切り替えます" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
+                        <ComboBoxItem Content="OCR編集" />
+                        <ComboBoxItem Content="読み順編集" />
+                        <ComboBoxItem Content="校正・確認" />
+                        <ComboBoxItem Content="墨消し" />
+                    </ComboBox>
+                </ToolBar>
+                <ToolBar x:Name="PageLayoutToolBar" Band="1" BandIndex="0" Padding="0,2" Background="Transparent">
+                    <TextBlock x:Name="PageToolbarTitle" Text="ページ表示" VerticalAlignment="Center" Margin="3,0,8,0" Foreground="{StaticResource PrimaryTextBrush}" />
                     <Button Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoPrevious}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="前のページ">
                         <StackPanel Orientation="Horizontal">
                             <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
@@ -559,7 +681,7 @@
                     </Button>
                     <!-- Smoke tests and accessibility automation continue to read the full summary from this element. -->
                     <TextBlock x:Name="ToolbarPageSummary" Text="{Binding PageSummary}" Visibility="Collapsed" />
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="3,0">
+                    <StackPanel x:Name="ToolbarPageNumberPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="3,0">
                         <TextBox x:Name="ToolbarPageNumberBox"
                                  IsEnabled="{Binding HasDocument}"
                                  Width="48"
@@ -573,8 +695,8 @@
                                  GotKeyboardFocus="ToolbarPageNumberBox_OnGotKeyboardFocus"
                                  PreviewKeyDown="ToolbarPageNumberBox_OnPreviewKeyDown"
                                  LostKeyboardFocus="ToolbarPageNumberBox_OnLostKeyboardFocus" kb:KeyboardAccess.Key="J" AutomationProperties.AccessKey="Alt+J"/>
-                        <TextBlock Text=" / " VerticalAlignment="Center" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding PageItems.Count}" MinWidth="24" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ToolbarPageNumberSeparator" Text=" / " VerticalAlignment="Center" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ToolbarPageCount" Text="{Binding PageItems.Count}" MinWidth="24" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
                     <Button Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoNext}" Style="{StaticResource ToolbarIconButtonStyle}" ToolTip="次のページ">
                         <StackPanel Orientation="Horizontal">
@@ -633,40 +755,39 @@
                             <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="ページ全体" />
                         </StackPanel>
                     </Button>
-                    <ComboBox x:Name="DocumentViewModeSelector"
-                              IsEnabled="{Binding HasDocument}"
-                              Width="112" Margin="3,1"
-                              ItemsSource="{Binding DocumentViewModeOptions}"
-                              SelectedItem="{Binding SelectedDocumentViewModeOption, Mode=TwoWay}"
-                              DisplayMemberPath="DisplayName"
-                              Style="{StaticResource RoundedToolbarComboBoxStyle}"
-                              ToolTip="{Binding DocumentViewModeDescription}"
-                              kb:KeyboardAccess.Key="N"
-                              AutomationProperties.Name="ページ表示モード"
-                              AutomationProperties.AccessKey="Alt+N" />
-                    <ComboBox x:Name="DocumentPageFlowModeSelector"
-                              IsEnabled="{Binding HasDocument}"
-                              Width="124" Margin="3,1"
-                              ItemsSource="{Binding DocumentPageFlowModeOptions}"
-                              SelectedItem="{Binding SelectedDocumentPageFlowModeOption, Mode=TwoWay}"
-                              DisplayMemberPath="DisplayName"
-                              Style="{StaticResource RoundedToolbarComboBoxStyle}"
-                              ToolTip="ページ切り替え／連続スクロール"
-                              kb:KeyboardAccess.Key="2"
-                              AutomationProperties.Name="スクロール方式"
-                              AutomationProperties.AccessKey="Alt+2" />
                     <Separator Margin="4,0" />
-                    <ComboBox x:Name="EditUnitSelector" IsEnabled="{Binding CanUseOcrEditControls}" Width="110" Margin="3,1" SelectedIndex="{Binding EditUnitIndex, Mode=TwoWay}" ToolTip="OCR編集モードの編集単位" Style="{StaticResource RoundedToolbarComboBoxStyle}" kb:KeyboardAccess.Key="U" AutomationProperties.Name="OCRの編集単位" AutomationProperties.AccessKey="Alt+U">
-                        <ComboBoxItem Content="行編集" />
-                        <ComboBoxItem Content="段落編集" />
-                        <ComboBoxItem Content="文字編集" />
-                    </ComboBox>
-                    <ComboBox x:Name="EditorModeSelector" IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" ToolTip="プレビュー上の操作モードを切り替えます" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
-                        <ComboBoxItem Content="OCR編集" />
-                        <ComboBoxItem Content="読み順編集" />
-                        <ComboBoxItem Content="校正・確認" />
-                        <ComboBoxItem Content="墨消し" />
-                    </ComboBox>
+                    <RadioButton x:Name="SinglePageToolbarButton" GroupName="PageLayout" IsEnabled="{Binding HasDocument}"
+                                  IsChecked="{Binding IsSinglePageView, Mode=TwoWay}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="単一ページ表示"
+                                  kb:KeyboardAccess.Key="N" AutomationProperties.Name="単一ページ表示" AutomationProperties.AccessKey="Alt+N">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="15" Height="19" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="2" />
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="単一" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="FacingPagesToolbarButton" GroupName="PageLayout" IsEnabled="{Binding HasDocument}"
+                                  IsChecked="{Binding IsFacingPagesView, Mode=TwoWay}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="見開き表示"
+                                  kb:KeyboardAccess.Key="2" AutomationProperties.Name="見開き表示" AutomationProperties.AccessKey="Alt+2">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="22" Height="19" BorderBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" BorderThickness="1.5" CornerRadius="1" Margin="2">
+                                <Border Width="1" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" HorizontalAlignment="Center" />
+                            </Border>
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="見開き" />
+                        </StackPanel>
+                    </RadioButton>
+                    <Separator Margin="4,0" />
+                    <ToggleButton x:Name="ContinuousScrollToolbarButton" IsEnabled="{Binding HasDocument}"
+                                  IsChecked="{Binding IsContinuousView, Mode=TwoWay}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="連続スクロール。オフではページごとに切り替え"
+                                  kb:KeyboardAccess.Key="3" AutomationProperties.Name="連続スクロール" AutomationProperties.AccessKey="Alt+3">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
+                                <Path Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.7" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="{StaticResource IconGeometry.ContinuousScroll}" />
+                            </Viewbox>
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="連続スクロール" />
+                        </StackPanel>
+                    </ToggleButton>
                 </ToolBar>
             </ToolBarTray>
         </Border>
@@ -762,6 +883,16 @@
             <StatusBarItem Content="{Binding StatusMessage}" />
         </StatusBar>
 
+        <Border x:Name="BottomToolbarHost" DockPanel.Dock="Bottom" Visibility="Collapsed" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <ToolBarTray x:Name="BottomToolBarTray" IsLocked="False" Orientation="Horizontal" />
+        </Border>
+        <Border x:Name="LeftToolbarHost" DockPanel.Dock="Left" Visibility="Collapsed" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <ToolBarTray x:Name="LeftToolBarTray" IsLocked="False" Orientation="Vertical" />
+        </Border>
+        <Border x:Name="RightToolbarHost" DockPanel.Dock="Right" Visibility="Collapsed" Background="{StaticResource ToolbarBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+            <ToolBarTray x:Name="RightToolBarTray" IsLocked="False" Orientation="Vertical" />
+        </Border>
+
         <Grid x:Name="WorkspaceLayoutGrid" KeyboardNavigation.TabIndex="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="{Binding PageListColumnWidth}" />
@@ -771,10 +902,8 @@
                 <ColumnDefinition Width="{Binding PropertiesPanelColumnWidth}" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="8,6">
-                <TabControl x:Name="KeyboardNavigationTabs">
-                    <TabItem Header="ページ(_L)" Padding="10,2,10,2" Margin="0,0,0,0" AutomationProperties.AccessKey="Alt+L">
-                        <DockPanel Margin="4" KeyboardNavigation.TabNavigation="Local">
+            <Border x:Name="NavigationDockPane" Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="4,6">
+                <DockPanel Margin="0" KeyboardNavigation.TabNavigation="Local">
                             <Grid DockPanel.Dock="Top" Margin="0,0,0,10" KeyboardNavigation.TabIndex="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -921,10 +1050,10 @@
                                                TextAlignment="Center" TextWrapping="Wrap" />
                                 </StackPanel>
                             </Grid>
-                        </DockPanel>
-                    </TabItem>
-                    <TabItem Header="しおり(_K)" Margin="0,0,0,0" Padding="10,2,10,2" AutomationProperties.AccessKey="Alt+K">
-                        <DockPanel Margin="4" KeyboardNavigation.TabNavigation="Local">
+                </DockPanel>
+            </Border>
+            <Border x:Name="BookmarkDockPane" Grid.Column="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="8,6">
+                <DockPanel Margin="4" KeyboardNavigation.TabNavigation="Local">
                             <ToolBarTray DockPanel.Dock="Top" IsLocked="True" Margin="0,0,0,8" KeyboardNavigation.TabIndex="0">
                                 <ToolBar x:Name="BookmarkCommandToolBar" Band="0" BandIndex="0">
                                 <Button Command="{Binding AddBookmarkCommand}" Style="{StaticResource LeftPaneIconButtonStyle}" ToolTip="現在のページにしおりを追加" Margin="2" AutomationProperties.Name="しおりを追加">
@@ -1005,17 +1134,15 @@
                                     </Style>
                                 </TreeView.ItemContainerStyle>
                             </TreeView>
-                        </DockPanel>
-                    </TabItem>
-                </TabControl>
+                </DockPanel>
             </Border>
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
+            <GridSplitter x:Name="NavigationDockSplitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
 
-            <Grid Grid.Column="2" Margin="4">
+            <Grid x:Name="DocumentWorkspacePane" Grid.Column="2" Margin="0">
                 <Border Background="{StaticResource CanvasSurroundBrush}" CornerRadius="5">
                     <DockPanel KeyboardNavigation.TabNavigation="Local">
                         <Grid KeyboardNavigation.TabIndex="0">
-                            <ScrollViewer x:Name="PreviewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="4"
+                            <ScrollViewer x:Name="PreviewScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="0"
                                           PreviewMouseWheel="PreviewScrollViewer_OnPreviewMouseWheel"
                                           ScrollChanged="PreviewScrollViewer_OnScrollChanged"
                                           SizeChanged="PreviewScrollViewer_OnSizeChanged">
@@ -1095,6 +1222,24 @@
                                         </Grid.LayoutTransform>
                                         <Image Source="{Binding PreviewImage, NotifyOnTargetUpdated=True}" TargetUpdated="PreviewImage_OnTargetUpdated"
                                                Stretch="Fill" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <ItemsControl ItemsSource="{Binding DecorationOverlayItems}" IsHitTestVisible="False" Panel.ZIndex="5">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle>
+                                                <Style TargetType="ContentPresenter">
+                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                                </Style>
+                                            </ItemsControl.ItemContainerStyle>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Text}" Width="{Binding Width}" FontSize="{Binding FontSize}"
+                                                               FontFamily="{Binding FontFamily}" Foreground="{Binding Foreground}"
+                                                               TextAlignment="{Binding Alignment}" TextWrapping="NoWrap" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                         <ListBox x:Name="OverlayCanvas"
                                                  ItemsSource="{Binding OverlayItems}"
                                                  SelectionMode="Extended"
@@ -1795,9 +1940,10 @@
                     </DockPanel>
                 </Border>
             </Grid>
-            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
+            <GridSplitter x:Name="PropertiesDockSplitter" Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
 
-            <Border Grid.Column="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+            <Border x:Name="PropertiesDockPane" Grid.Column="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
+                <DockPanel>
                 <ScrollViewer x:Name="KeyboardPropertiesPane" VerticalScrollBarVisibility="Auto" Padding="12,8" Focusable="False">
                     <StackPanel>
                         <Grid Margin="0,0,0,8">
@@ -2319,6 +2465,7 @@
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
+                </DockPanel>
             </Border>
         </Grid>
     </DockPanel>

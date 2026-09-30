@@ -115,6 +115,7 @@ public sealed class PdfPageManagementService
     {
         var candidates = new[]
         {
+            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
             Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "qpdf", "bin", "qpdf.exe")),

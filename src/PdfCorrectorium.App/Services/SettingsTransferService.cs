@@ -71,12 +71,25 @@ public static class SettingsTransferService
 
     internal static void Validate(ApplicationSettings settings)
     {
+        if (!Enum.IsDefined(settings.NavigationDockPosition) || !Enum.IsDefined(settings.BookmarkDockPosition) ||
+            !Enum.IsDefined(settings.PropertiesDockPosition) ||
+            !Enum.IsDefined(settings.PaneGroupMode) ||
+            !Enum.IsDefined(settings.MainToolbarDockSide) || !Enum.IsDefined(settings.PageToolbarDockSide) ||
+            settings.MainToolbarBand is < 0 or > 1 || settings.PageToolbarBand is < 0 or > 1 ||
+            settings.MainToolbarBandIndex is < 0 or > 1 || settings.PageToolbarBandIndex is < 0 or > 1)
+            throw new InvalidDataException("Workspace docking or toolbar positions are invalid.");
         if (settings.WorkspacePresets is null || settings.WorkspacePresets.Count > WorkspacePreset.MaximumCount)
             throw new InvalidDataException("At most 20 workspace presets are supported.");
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var preset in settings.WorkspacePresets)
             if (preset is null || !WorkspacePreset.IsValidName(preset.Name) || !names.Add(preset.Name.Trim()) ||
-                !double.IsFinite(preset.PageListWidth) || !double.IsFinite(preset.PropertiesPanelWidth))
+                !double.IsFinite(preset.PageListWidth) || !double.IsFinite(preset.PropertiesPanelWidth) ||
+                !Enum.IsDefined(preset.NavigationDockPosition) || !Enum.IsDefined(preset.BookmarkDockPosition) ||
+                !Enum.IsDefined(preset.PropertiesDockPosition) ||
+                !Enum.IsDefined(preset.PaneGroupMode) ||
+                !Enum.IsDefined(preset.MainToolbarDockSide) || !Enum.IsDefined(preset.PageToolbarDockSide) ||
+                preset.MainToolbarBand is < 0 or > 1 || preset.PageToolbarBand is < 0 or > 1 ||
+                preset.MainToolbarBandIndex is < 0 or > 1 || preset.PageToolbarBandIndex is < 0 or > 1)
                 throw new InvalidDataException("Workspace preset names must be unique and contain 1–64 characters; widths must be finite.");
         foreach (var property in typeof(ApplicationSettings).GetProperties().Where(p => p.PropertyType == typeof(double)))
             if (!double.IsFinite((double)property.GetValue(settings)!))

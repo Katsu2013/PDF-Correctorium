@@ -48,6 +48,7 @@
     <!-- ページ移動／表示倍率 -->
     <StreamGeometry x:Key="IconGeometry.PreviousPage">M15,5 L8,12 L15,19</StreamGeometry>
     <StreamGeometry x:Key="IconGeometry.NextPage">M9,5 L16,12 L9,19</StreamGeometry>
+    <StreamGeometry x:Key="IconGeometry.ContinuousScroll">M3,2 H17 V9 H3 Z M7,15 H21 V22 H7 Z M12,10 V14 M9.5,12 L12,14.5 L14.5,12</StreamGeometry>
     <StreamGeometry x:Key="IconGeometry.ZoomOut">M10.5,4 A6.5,6.5 0 1 0 10.5,17 A6.5,6.5 0 1 0 10.5,4 M15.5,15.5 L21,21 M7,10.5 H14</StreamGeometry>
     <StreamGeometry x:Key="IconGeometry.ZoomIn">M10.5,4 A6.5,6.5 0 1 0 10.5,17 A6.5,6.5 0 1 0 10.5,4 M15.5,15.5 L21,21 M7,10.5 H14 M10.5,7 V14</StreamGeometry>
     <StreamGeometry x:Key="IconGeometry.FitWidth">M3,4 V20 M21,4 V20 M5,12 H19 M5,12 L9,8 M5,12 L9,16 M19,12 L15,8 M19,12 L15,16</StreamGeometry>

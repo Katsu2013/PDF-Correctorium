@@ -29,6 +29,19 @@
       ]
     },
     {
+      "name": "Dirkster.AvalonDock",
+      "version": "4.74.1",
+      "sourceUrl": "https://www.nuget.org/packages/Dirkster.AvalonDock/4.74.1",
+      "sourceCommit": "028a5f328eb86a7abfb2195bbaae37683c818d1e",
+      "sourceSha512": "eQOFjZ3/DHawS18ilsqDYb7ggFDsZQSdp7AycFkGTkqeHLu70J46ONkYi/9pfavo/iTkURhaAATljx77Ek5B7Q==",
+      "repositoryFiles": [
+        { "path": "local-packages/dirkster.avalondock.4.74.1.nupkg", "sha256": "98ed2a6db9c4c2dd7ee2e96cb0af07e6a602b37bf515327a3ea82ae0d92d74a0" }
+      ],
+      "publishFiles": [
+        { "path": "AvalonDock.dll", "sha256": "8b6283fa49ef4b967cf9c15590cbb4deba140f7fc4eeB915acf3fb15565f29c5" }
+      ]
+    },
+    {
       "name": "qpdf",
       "version": "12.4.1",
       "sourceUrl": "https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1-msvc64.zip",
@@ -48,18 +61,18 @@
         { "path": "tools/qpdf/bin/zlib-flate.exe", "sha256": "6898b9fd9e253c410efd28742d4f78919855f4eb0fc2261361f188bf67aa1602" }
       ],
       "publishFiles": [
-        { "path": "concrt140.dll", "sha256": "54716f0738af891f283d213b5c8d11b25896bb8ee3097d301eae718560cf974e" },
-        { "path": "fix-qdf.exe", "sha256": "2872497dad0af0fcfd2e92b650067042519ee0108922b9b36eaa1a1b511b43fc" },
-        { "path": "msvcp140_1.dll", "sha256": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982" },
-        { "path": "msvcp140_2.dll", "sha256": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838" },
-        { "path": "msvcp140_atomic_wait.dll", "sha256": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b" },
-        { "path": "msvcp140_codecvt_ids.dll", "sha256": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78" },
-        { "path": "msvcp140.dll", "sha256": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca" },
-        { "path": "qpdf.exe", "sha256": "57c003e868fb66cd343fd5afb91be8c2277f56434eea8635762499731bf9f60d" },
-        { "path": "qpdf30.dll", "sha256": "36fe5b2023f244e5785d96b8372dba26b75ea51b63adf4d4f1e66ad0aa1c8a61" },
-        { "path": "vcruntime140_1.dll", "sha256": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e" },
-        { "path": "vcruntime140.dll", "sha256": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7" },
-        { "path": "zlib-flate.exe", "sha256": "6898b9fd9e253c410efd28742d4f78919855f4eb0fc2261361f188bf67aa1602" }
+        { "path": "components/qpdf/concrt140.dll", "sha256": "54716f0738af891f283d213b5c8d11b25896bb8ee3097d301eae718560cf974e" },
+        { "path": "components/qpdf/fix-qdf.exe", "sha256": "2872497dad0af0fcfd2e92b650067042519ee0108922b9b36eaa1a1b511b43fc" },
+        { "path": "components/qpdf/msvcp140_1.dll", "sha256": "206c931bf90fdad8816de3b5e2ef80b2bcaa9406c89ecc05fe6fddffe251e982" },
+        { "path": "components/qpdf/msvcp140_2.dll", "sha256": "d50d7883f20d1dc6191768d3746f52dd9cac89c346ffaed5be1f110c2f34a838" },
+        { "path": "components/qpdf/msvcp140_atomic_wait.dll", "sha256": "3d0cbfaa1bf3eecf5a3f4491d2960ee803cb994f30292c6adc4a07c498f60e2b" },
+        { "path": "components/qpdf/msvcp140_codecvt_ids.dll", "sha256": "8a65c7596ef2e6938731f5a1058e7e40145b6d97967cc649231a076b9a608d78" },
+        { "path": "components/qpdf/msvcp140.dll", "sha256": "7c26614e1d733892c2deac7e245ce115504b1d80592dd0a01b08e3e5a55f89ca" },
+        { "path": "components/qpdf/qpdf.exe", "sha256": "57c003e868fb66cd343fd5afb91be8c2277f56434eea8635762499731bf9f60d" },
+        { "path": "components/qpdf/qpdf30.dll", "sha256": "36fe5b2023f244e5785d96b8372dba26b75ea51b63adf4d4f1e66ad0aa1c8a61" },
+        { "path": "components/qpdf/vcruntime140_1.dll", "sha256": "a7146c08f89fe5b04541ab507cdb59ff7b44534d4ba3c668a426c6450a03434e" },
+        { "path": "components/qpdf/vcruntime140.dll", "sha256": "d1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7" },
+        { "path": "components/qpdf/zlib-flate.exe", "sha256": "6898b9fd9e253c410efd28742d4f78919855f4eb0fc2261361f188bf67aa1602" }
       ]
     }
   ]

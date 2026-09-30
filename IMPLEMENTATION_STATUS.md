@@ -1,6 +1,202 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.175
+## Current repository snapshot: v1.0.0-dev.199
+
+- Page numbers can skip the cover with a one-click preset (start page 2, number offset -1). The number and `{total}` then reflect the adjusted numbering. Odd and even output pages may use different positions; the setting is shared by the editor overlay and PDF export. The settings dialog shows two live schematic placement previews.
+- Project format 1.9 adds optional `evenPagePosition`; older projects without it retain their position. Release solution build passed with 0 warnings/errors, 32 contract tests passed, and source/published versioning passed 17/18 checks. Source document-organization, document-UI, and persistence diagnostics passed. The packaged build passed smoke and document-organization diagnostics, including cover skipping, odd/even PDF output placement, and the two setting previews. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.199`, four-part executable version `1.0.0.199`, project manifest application version, and distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.199-win-x64-20260930-155319`; evidence is under `outputs/.verification/dev199-final-20260930`. The dialog was rendered for visual inspection; manual pointer/keyboard interaction has not been verified.
+
+## Previous repository snapshot: v1.0.0-dev.198
+
+- Added import/edit/delete support for safe existing PDF links (internal page destinations and HTTP(S) URLs), retaining source annotation identity so changed links replace rather than duplicate the original. Unsupported actions are not executed and are reported.
+- Added project-backed text page numbers, headers/footers, and watermarks, with an editor overlay and PDF export. Bundled Noto Sans JP under its OFL license to support Japanese text. The new project format is 1.8; older 1.0–1.7 projects remain readable, while dev.197 and earlier cannot read newly saved 1.8 projects.
+- Expanded input-PDF structure warnings. Release solution build passed with 0 warnings/errors, 32 contract tests passed, and source/published versioning passed 17/18 checks. Source document-organization, document-UI, persistence, settings and AvalonDock diagnostics passed. The portable build passed smoke and packaged document-organization diagnostics, including Japanese text extraction, source-link replacement/removal, and input warnings. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.198`, numeric executable version `1.0.0.198`, and distribution label `v1.0.0-dev.198`. The build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.198-win-x64-20260930-041748`; verification evidence is under `outputs/.verification/dev198-final-20260930`. The bundled font is 9,589,900 bytes; the five-page Japanese-decoration diagnostic output is 5,929,830 bytes. Interactive use of the new settings dialog and nonactive companion-page overlays was not verified.
+
+## Previous repository snapshot: v1.0.0-dev.197
+
+### Release stacked toolbar row minimum and resize each floating instance (2026-09-29)
+
+- Reproduced the user's native drag sequence on dev.196: floating the lower of two stacked toolbars left a blank band above the editor. The root Grid row retained a 98-pixel `MinHeight` even after its requested height returned to 43 pixels. Refresh both row height and minimum height from the live toolbar layout so the workspace can move up immediately.
+- Floating-toolbar sizing is now tracked per floating window instance, not just per toolbar item. A later float into a new window is measured again instead of inheriting a prior oversized width.
+- Expanded the AvalonDock regression diagnostic to measure the actual workspace-to-toolbar gap after repeated stack/float cycles. The previous model-height assertions alone did not detect the visible blank row.
+- Verification: Release solution build passed with 0 warnings/errors, 31 contract tests passed, and source/published versioning passed 17/18 checks. Source and packaged AvalonDock diagnostics each passed 18 checks, including actual visual gap measurements after repeated stacking/floating; packaged document-UI diagnostics passed 206 checks. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.197`, numeric executable version `1.0.0.197`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.197-win-x64-20260929-213755` (source fingerprint `057AE0219FB3B424334C44FE1B96013F765AEA91883376B21BC0784EE3F7A55F`); evidence is under `outputs/.verification/dev197-final-20260929`. The dev.196 native drag bug was reproduced before this fix. A native dev.197 drag of the lower toolbar from a user-stacked two-row layout left no blank band, including after the layout settled; the floating strip remained compact. Other native docking targets are not implied by this check.
+
+## Previous repository snapshot: v1.0.0-dev.196
+
+### Recalculate toolbar space after repeated float/dock cycles (2026-09-29)
+
+- Clear the floating-window sizing guard as soon as a toolbar docks, including when the next drag starts before the idle layout callback. Each new float measures its actual button row; its one-time post-layout correction can reduce an inherited oversized width as well as increase a clipped width.
+- After a settled dock change, prune vacant bands and refresh the remaining pane and band dimensions immediately. Synchronize AvalonDock's visual row definitions with the model dimensions to avoid retaining the height of a removed second toolbar row. Stacked vertical toolbar bands use the combined heights of their live rows.
+- The AvalonDock diagnostic now repeats stack/float/dock cycles and checks the remaining dock row and floating strip size. The Release solution build completed with 0 warnings/errors; 31 contract tests passed. Source and packaged AvalonDock diagnostics each passed 17 checks, document-UI diagnostics passed 206 checks, source/published versioning checks passed 17/18 checks, dependency-lock validation passed for 3 dependencies, and packaged smoke exited successfully. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.196`, numeric executable version `1.0.0.196`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.196-win-x64-20260929-173004` (source fingerprint `BD946C4C9607F7569BDC18F0EC3A6D85E7A303F5CB95910E5B6F6EC5323C2254`); evidence is under `outputs/.verification/dev196-final-20260929`. Native mouse-drag behavior still requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.195
+
+### Remove leftover space and dividers after stacking toolbars (2026-09-29)
+
+- Detect AvalonDock's nested toolbar-only layout produced when a toolbar is docked below another. Move the original toolbar band back to the root, restore the second toolbar to that band, and remove empty nested panes and wrappers. The root collection change also schedules normalization when the toolbar item's own parent does not change.
+- After detaching a toolbar from a stacked row, reclaim the empty row and update the remaining toolbar band's height. The AvalonDock diagnostic now reproduces a nested two-row drop and floating from the stacked row, with 16 checks in total.
+- Verification: the Release solution build completed with 0 warnings/errors; 31 contract tests passed. Source and packaged AvalonDock diagnostics each passed 16 checks, including nested stacked rows and floating without a blank band; document-UI diagnostics passed 206 checks. Source/published versioning checks passed 17/18 checks, dependency-lock validation passed for 3 dependencies and 16 published files, and packaged smoke exited successfully. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.195`, numeric executable version `1.0.0.195`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.195-win-x64-20260929-143350` (source fingerprint `6E5D306644A744F7927AD76811D817B037270E6314220DAA002BE64614759BB5`); evidence is under `outputs/.verification/dev195-final-20260929`. Native mouse-drag feel for every docking target still requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.194
+
+### Stabilize AvalonDock pane placement and tighten workspace spacing (2026-09-29)
+
+- Preserve the properties pane's right-side position when changing single/facing page display. Coalesce display-setting writes and finish a pending layout save before closing so a quick restart retains the dock positions. AvalonDock diagnostics now use isolated settings instead of the user's live configuration.
+- Replace the toolbar drag marker with a compact vertical-dot grip, remove duplicated toolbar content chrome, fit side-docked and side-by-side toolbars to their actual content, and remove empty panes left by toolbar moves. Toolbar-only dividers are hidden while the navigation/properties resizing boundary remains available. A toolbar dropped into a regular pane is restored to its own strip and normalized before display.
+- Reduce the page-list pane's outer horizontal padding and remove the editor workspace's white outer margin; page-row padding, PDF zoom, and the gray preview background are unchanged.
+- Verification: the Release solution build completed with 0 warnings/errors; 31 contract tests passed. Source diagnostics passed 14 AvalonDock, 206 document-UI, and 104 settings checks. The packaged AvalonDock diagnostic passed 14 checks, packaged smoke exited successfully, dependency-lock validation passed for 3 dependencies, and source/published versioning checks passed 17/18 checks. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.194`, numeric executable version `1.0.0.194`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.194-win-x64-20260929-003441` (source fingerprint `7A8857564E424136C9787494421C262B985B207E1B6DEB926A4FB4A8898B81EB`); evidence is under `outputs/.verification/dev194-final-20260929` (plus source versioning under `outputs/.verification/dev194-final-20260928/source-versioning`). Native mouse-drag feel for every docking target still requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.193
+
+### Group qpdf distribution files (2026-09-28)
+
+- Portable builds place qpdf and its companion binaries together under `components/qpdf/` instead of scattering them beside the application. The page-operation, bookmark and PDF-export paths resolve this layout while retaining legacy development/build locations. AvalonDock and its `ja` satellite resource remain in the publish root and `ja/`, respectively; PDFium remains in `runtimes/`. NDLOCR-lite is not bundled.
+- Verification: the Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. The portable build passed dependency-lock validation for 3 dependencies and 16 published files, qpdf 12.4.1 launch, smoke, document organization (including qpdf-driven page/bookmark/link operations), page history, AvalonDock (14 checks), document UI (206 checks), and settings (104 checks). No qpdf executable remains in the publish root; `components/qpdf/qpdf.exe`, root `AvalonDock.dll` and `ja/AvalonDock.resources.dll` are present. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.193`, numeric executable version `1.0.0.193`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.193-win-x64-20260928-205131` (source fingerprint `D2A5E43C5498FA17B7D9F9593E7CE6D5F26328BC5E43764C3865FA822D522A0C`); evidence is under `outputs/.verification/dev193-final-20260928`.
+
+## Previous repository snapshot: v1.0.0-dev.192
+
+### Merge separately docked toolbar rows and trim localization satellites (2026-09-28)
+
+- When AvalonDock puts a toolbar into an additional top or bottom root band, determine its side from its position relative to the editor, move it into the shared toolbar row, and remove the vacant band. A layout-update check also catches a whole-pane move, which does not change the toolbar item's parent. The docking diagnostic now simulates this native-drop result and asserts that no second row/divider remains.
+- The application publish filters AvalonDock's satellite resource assemblies to Japanese. These small DLLs translate AvalonDock UI strings; the many other culture folders were not required for this Japanese distribution. Neutral English resources remain the fallback.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 14 checks, including a separate top-band/drop regression; document-UI diagnostics passed 206 checks, settings diagnostics 104 checks, keyboard diagnostics 2,477 checks, packaged smoke passed, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.192`, numeric executable version `1.0.0.192`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.192-win-x64-20260928-193451` (source fingerprint `B90C6C3D5F4B1B15EFF990E129A06945C0F54D4DF8663E6B7E4CF20E54B86655`); evidence is under `outputs/.verification/dev192-final-20260928`. The published language folders contain only `ja`; real mouse-drag feel after every possible native drop target still requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.191
+
+### Tighten floating toolbar size and clear vacant dock bands (2026-09-28)
+
+- The floating window's minimum height now uses the toolbar's measured height, the system caption height and a small clearance instead of a 50-pixel allowance. This keeps all buttons visible while removing the excessive bottom space seen in dev.190.
+- When a native drag has settled, empty anchorable panes and toolbar bands are removed from the dock root. A toolbar rotated from a vertical dock gets one delayed width correction after its horizontal layout settles; later manual window sizing remains untouched. The AvalonDock diagnostic checks that floating leaves no empty band and that both floating toolbars fit their content. A manual dev.191 drag confirmed the compact height and no vacant top band.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 13 checks, including checks that both floating toolbars fit their content and leave no empty dock band. Document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.191`, numeric executable version `1.0.0.191`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.191-win-x64-20260928-151614` (source fingerprint `8989D5D830496C2FD5A535B3F26DDF3B8938BB1C91D61565CC9C24617ED2CD93`); evidence is under `outputs/.verification/dev191-final-20260928-1600`. A real mouse drag also confirmed the compact floating height and no vacant top band.
+
+## Previous repository snapshot: v1.0.0-dev.190
+
+### Keep floating toolbar height and remove toolbar-only dividers (2026-09-28)
+
+- A real mouse drag showed that AvalonDock shrank the floating window again on mouse release, after the dev.189 initial-size calculation. The floating window now retains a content-based minimum height so its buttons remain fully visible; its width stays content-sized.
+- Splitter suppression now recognizes any nested toolbar-only layout instead of only the initially registered top/bottom bands. This removes toolbar dividers after native re-docking while preserving resizers between ordinary panels. A manual dev.190 drag confirmed the floating page toolbar remains fully visible.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 13 checks (including floating minimum-height assertions), document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.190`, numeric executable version `1.0.0.190`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.190-win-x64-20260928-143550` (source fingerprint `A5920F6051AC8CD6E7F2FD170ECAF26D7373BC79DC804C29994BD21139A14353`); evidence is under `outputs/.verification/dev190-final-20260928-1500`. The floating height was also confirmed with a real mouse drag; divider appearance after every possible native drop target still needs user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.189
+
+### Size detached toolbars to their actual button rows (2026-09-28)
+
+- AvalonDock could inherit the full-width dock band's width and the band's shallow height when a toolbar was detached. The floating window now receives a content-measured initial width and enough height for its title/chrome and buttons. It is sized once per floating session, so later user resizing remains possible.
+- The AvalonDock diagnostic now floats both the main and page-view toolbars and checks their window dimensions against their measured contents. The PDF/project format remains 1.7.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source AvalonDock diagnostics and packaged AvalonDock diagnostics each passed 13 checks, including floating-size assertions for both toolbars. Document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.189`, numeric executable version `1.0.0.189`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.189-win-x64-20260928-131041` (source fingerprint `87FA20B0EA63871ADB9EE5873A5415826B542CF182C4FF71ED8BB9762DE2DDEA`); evidence is under `outputs/.verification/dev189-final-20260928-1300`. Native mouse-drag feel still needs user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.188
+
+### Recover toolbars after native docking drops (2026-09-28)
+
+- Native AvalonDock drops can merge a toolbar into an ordinary page/bookmark/properties tab group. The toolbar tab is hidden by the compact chrome, leaving its buttons inaccessible. After a settled dock operation, both toolbars are now separated into their own toolbar-only panes on the detected side.
+- Floating a toolbar temporarily detaches it before AvalonDock marks it floating. Settings capture now ignores that transient state instead of re-docking the toolbar mid-drag. The expanded AvalonDock diagnostic reproduces mixed-pane drops of both toolbars and verifies that each remains visible. The PDF/project format remains 1.7.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 13 checks, document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.188`, numeric executable version `1.0.0.188`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.188-win-x64-20260928-085416` (source fingerprint `6BB8345CC729D80A3B9041022BC0C4C363CAE7ECC193B4B1CD3E7E0E2F510FE4`); evidence is under `outputs/.verification/dev188-final-20260928-0800`. Native mouse-drag feel still needs user confirmation because Windows UI automation could not attach to the running application.
+
+## Previous repository snapshot: v1.0.0-dev.187
+
+### Full-width toolbar row above the three-column editor (2026-09-28)
+
+- The default AvalonDock hierarchy is now a full-width top toolbar row, a left/navigation-center/editor-right/properties workspace, and an optional full-width bottom toolbar row. Both toolbars start side by side in the top row and return to that row when moved back from another edge.
+- Toolbar-only panes render their one real ToolBar directly. This avoids a blank toolbar after floating/re-docking or relocating between sides, while retaining the narrow native drag grip, fixed cross-axis size and AvalonDock's drop guides. The PDF/project format remains 1.7.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 12 checks, document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.187`, numeric executable version `1.0.0.187`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.187-win-x64-20260928-070700` (source fingerprint `58AFBC61C1E1C493C6F23C37C6F391E671AEFFC9768F19150731F7844457799D`); evidence is under `outputs/.verification/dev187-final-20260928-0705`. Native mouse-drag feel and the AvalonDock preview remain for user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.186
+
+### Content-sized, borderless docked toolbars (2026-09-28)
+
+- Main and page-display toolbars keep AvalonDock drag/drop but no longer show the anchorable-pane frame or the resize splitter next to a toolbar-only pane. Horizontal toolbars size to their required height and vertical toolbars size to their required width; page/bookmark/property splitters remain resizable.
+- The cross-axis size is recalculated when orientation or toolbar content changes, rather than allowing arbitrary panel-style resizing. Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 10 checks, document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, keyboard diagnostics passed 2,477 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirmed product version `1.0.0-dev.186`, numeric executable version `1.0.0.186`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.186-win-x64-20260928-004113` (source fingerprint `EF9DF09C150FBD37FAC0ADD8D2C3BF49FFCFA8DE792DC6AA8715A31FAEFFF9C8`); evidence is under `outputs/.verification/dev186-final-20260928`. Native mouse-drag feel requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.185
+
+### Separate page/bookmark docking and compact toolbar chrome (2026-09-28)
+
+- Page and bookmark lists are now independent AvalonDock panes, so either can be dragged, floated, docked or tabbed separately. Their visibility and docking sides are stored independently in application settings and workspace presets; the PDF/project format stays at 1.7.
+- Toolbar-only AvalonDock panes no longer reserve a second title/tab row. The compact drag grip remains inside the original ToolBar strip, and the template is reapplied when a floating pane enters the visual tree.
+- Verification: Release solution build completed with 0 warnings/errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 9 checks, keyboard diagnostics passed 2,477 checks, document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. `GetBuildVersion.ps1` confirms product version `1.0.0-dev.185`, numeric executable version `1.0.0.185` and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.185-win-x64-20260928-002321` (source fingerprint `CD80F06C2BFED0960664168580CD4D19D34E641396C40583FCC7193F7FFF67E5`); evidence is under `outputs/.verification/dev185-final-20260928`. Native mouse-drag feel requires user confirmation.
+
+## Previous repository snapshot: v1.0.0-dev.184
+
+### Native docking in the normal workspace (2026-09-27)
+
+- The normal window now uses AvalonDock for navigation, properties, document and both real toolbars. The hand-written drag target detection, floating-window handling and placement guide drawing have been removed. The four-edge native guides and floating/re-docking behavior remain available.
+- Toolbar buttons retain their compact WPF ToolBar appearance. A narrow native drag title is placed in the same row for horizontal placement and at the top for vertical placement. Tool-pane and document tabs use the application's underline selection style; side-pane tabs remain above their content. The old opt-in launch script is no longer needed.
+- Changes to pane/toolbar docking sides and grouped-pane mode are mirrored into application settings, and settings/presets can reposition the native layout. The document/project format remains 1.7.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Packaged AvalonDock diagnostics passed 7 checks (including four-edge toolbar settings and tab/stack settings), document-UI diagnostics passed 206 checks, settings diagnostics passed 104 checks, and packaged smoke exited successfully. Dependency-lock validation passed for 3 dependencies. The exact published metadata agrees with product version `1.0.0-dev.184`, numeric version `1.0.0.184`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.184-win-x64-20260927-235456` (source fingerprint `6921F15624E4679741982D0D86B58205A49B4DF69111CF4EE97B1DC1A44384FB`); evidence is under `outputs/.verification/dev184-*`. Manual drag feel still requires user acceptance.
+
+## Previous repository snapshot: v1.0.0-dev.183
+
+### AvalonDock toolbar comparison (2026-09-27)
+
+- The opt-in AvalonDock preview now hosts the real main and page-display toolbars as separate anchorables. Each can use AvalonDock's title/tab drag, four-edge docking guides and floating window. Left/right placement reflows the existing controls into a narrow vertical toolbar, while top/bottom placement remains horizontal. The original toolbar grips and docking code remain the default outside preview mode.
+- The preview adds an AvalonDock drag title above each toolbar, so it is not pixel-identical to the legacy compact bars. Preview layout changes are not persisted, and the project format is unchanged.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 6 checks, including real left/top toolbar orientation, float/re-dock and two-page PDF loading. Packaged document-UI diagnostics passed 216 checks, settings diagnostics passed 104 checks, packaged smoke exited successfully, and dependency-lock validation passed for 3 dependencies. Published metadata agrees with product version `1.0.0-dev.183`, numeric version `1.0.0.183`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.183-win-x64-20260927-165818` (source fingerprint `9E07AF58CB9F5B703B591C78197B794959E0C4F3B1BB4549525C903E83C867FF`); evidence is under `outputs/.verification/dev183-*`. Manual drag feel remains for user evaluation.
+
+## Previous repository snapshot: v1.0.0-dev.182
+
+### AvalonDock top tabs for tool panes (2026-09-27)
+
+- The opt-in AvalonDock preview places navigation/properties tabs above their pane content when the panes share one dock. It derives from AvalonDock's default pane style so its tab selection, commands and floating behavior remain available. The PDF editor's document tab and the normal workspace are unchanged.
+- The preview diagnostic starts with both side panes tabbed together and checks the actual rendered control and tab/content row order. Preview drag placement is still not persisted.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged AvalonDock diagnostics each passed 4 checks with two real panes tabbed at the top and a two-page PDF; packaged document-UI diagnostics passed 216 checks; packaged smoke exited successfully; dependency-lock validation passed for 3 dependencies. Published metadata agrees with product version `1.0.0-dev.182`, numeric version `1.0.0.182`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.182-win-x64-20260927-163517` (source fingerprint `4EAA3CC5BC7FB7CA3D5EE6ACACC3A1EF8B5066220FAAE10A70625B757A332869`); evidence is under `outputs/.verification/dev182-*`.
+
+## Previous repository snapshot: v1.0.0-dev.181
+
+### AvalonDock comparison and easier toolbar redocking (2026-09-27)
+
+- AvalonDock 4.74.1 is available from the pinned local NuGet package. A separate opt-in preview launches the existing document editor and both side panes inside AvalonDock, with native tabs, docking guides and floating windows. The current custom layout remains the default while usability is evaluated. Preview-mode pane drag placement is intentionally not saved.
+- The custom toolbar drop target now gives the top and bottom edges priority at corners and uses a wider zone. Four destination guides appear during the drag. This addresses returning a toolbar from the left rail to the top.
+- The package and distributed AvalonDock binary are hash-locked, and the unmodified Ms-PL license is included. Project format 1.7 is unchanged.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged document-UI diagnostics each passed 216 checks; packaged AvalonDock preview passed 3 checks with a two-page PDF; packaged smoke exited successfully; dependency-lock validation passed for 3 dependencies. Published metadata agrees with product version `1.0.0-dev.181`, numeric version `1.0.0.181`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.181-win-x64-20260927-161137` (source fingerprint `F554C4512FAE621CC6314DD0457364EA1F8D3EE008274533CB52D43E43F361CC`); evidence is under `outputs/.verification/dev181-*`. Manual drag feel remains for user evaluation.
+
+## Previous repository snapshot: v1.0.0-dev.180
+
+### Docking feedback and compact vertical page navigation (2026-09-25)
+
+- Pane and toolbar dragging now shows a translucent placement preview before drop. Grouped pane tab headers are draggable, and the redundant inner grips are hidden while tabbed.
+- The vertical page-view toolbar stacks the current page field and total page count in a narrow column instead of retaining the horizontal fraction layout. The project data format remains 1.7.
+- The pane docking system is still application-specific. An IDE-grade docking library was evaluated but not added because its package could not be retrieved in this environment. Full parity with Visual Studio or WinForms docking is not claimed.
+- Verification: Release solution build succeeded with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Packaged document-UI diagnostics passed 215 checks, and packaged smoke completed. Published metadata agrees with product version `1.0.0-dev.180`, numeric version `1.0.0.180`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.180-win-x64-20260925-211105` (source fingerprint `EF39E613D1C74EB239807C8BAAB9914CF30C10EB4B363575CF9100207C68BF14`); evidence is under `outputs/.verification/dev180-*`.
+
+## Previous repository snapshot: v1.0.0-dev.179
+
+### Four-sided toolbars and guided pane docking (2026-09-25)
+
+- Both main and page-view toolbars can be docked to the top, bottom, left or right edge. The vertical rails keep icon controls visible and place wide editing selectors in the overflow menu.
+- Dragging the page/bookmark or properties pane displays explicit docking guides. On an occupied side, the user can choose side swapping, tabs or a resizable vertical stack. Dropping outside the guides detaches the pane at the drop point. A detached window can be moved back using either the pane grip or its native title bar.
+- The continuous-scroll toggle now shows stacked pages with a downward arrow. Toolbar edges, pane grouping and side positions persist in application settings and workspace presets; project format 1.7 remains unchanged.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Packaged document-UI diagnostics passed 212 checks, settings diagnostics 104 checks, keyboard diagnostics 4,159 checks, and packaged smoke passed. Published metadata agrees with product version `1.0.0-dev.179`, numeric version `1.0.0.179`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.179-win-x64-20260925-164530` (source fingerprint `F14613A4C4B6ED7BC7256C48B520A17B3B784FBC0A1F6CCD64B2FD6C1E756930`); evidence is under `outputs/.verification/dev179-*`.
+
+## Previous repository snapshot: v1.0.0-dev.178
+
+### Movable toolbars and dockable panels (2026-09-25)
+
+- Page navigation and zoom/fit controls share the separate page-view toolbar with the single/facing and continuous-scroll toggles. Both toolbar rows can be rearranged and their positions are saved in application settings.
+- The page/bookmark panel and properties panel can be moved between left and right, detached into independent windows, and docked again. Closing a detached window docks it back. Panel contents, widths and placement are included in workspace settings and presets.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged document-UI diagnostics each passed 207 checks, settings diagnostics each passed 55 checks, keyboard diagnostics passed 1,574 checks, and packaged document-organization, persistence, and smoke diagnostics passed. Published metadata agrees with product version `1.0.0-dev.178`, numeric version `1.0.0.178`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.178-win-x64-20260925-014142` (source fingerprint `99C92315D0005D2EE817B8F2B13733BDD1C6FD87F1702B10CE3E1E252A302ABC`); evidence is under `outputs/.verification/dev178-*`.
+- Project format 1.7 and minimum reader dev.172 are unchanged. Product version is `1.0.0-dev.178`; numeric version is `1.0.0.178`.
+
+## Earlier repository snapshot: v1.0.0-dev.177
+
+### Page extraction bookmarks and viewing toolbar (2026-09-24)
+
+- Page extraction and PDF splitting now rebuild bookmarks from the retained page set. Removed-page destinations are discarded, surviving destinations are renumbered, and children of removed parents are promoted. Splitting reads the source outline once per operation.
+- Single/facing-page controls and continuous-scrolling on/off are toggle-style controls in their own page-layout toolbar row. Facing layout and continuous scrolling remain independently combinable.
+- Verification: the Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged document-organization diagnostics passed, and source and packaged document-UI diagnostics each passed 203 checks. Keyboard diagnostics and the packaged smoke test passed. Published metadata agrees with product version `1.0.0-dev.177`, numeric version `1.0.0.177`, and the distribution label. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.177-win-x64-20260924-205647` (source fingerprint `75B9B12891827DA9DD4657C369E583DA605CD44E1C28D66E76FC3757FD0BA1E6`); evidence is under `outputs/.verification/dev177-*`.
+- Project format 1.7 and its minimum reader dev.172 are unchanged. Product version is `1.0.0-dev.177`; numeric version is `1.0.0.177`.
+
+## Earlier repository snapshot: v1.0.0-dev.176
+
+### Legacy project opening and source PDF relinking (2026-09-24)
+
+- Corrected validation for formats 1.5 and 1.6: both use canonical `project.json` and do not contain the obsolete `source/source-reference.json`. Their storage mode, parent-relative source path and logical page sequence are now checked under the same rules as other canonical formats.
+- A missing or changed external PDF now produces a specific explanation and an opportunity to select its new location. The selected PDF must match both the saved byte length and SHA-256. A successful relink updates the in-memory relative path, marks the project unsaved and asks the user to save it; the project file is not modified merely by opening it.
+- Added contract coverage for both older formats and for successful and rejected source relinking. The project format remains 1.7 with minimum reader dev.172.
+- Verification: Release solution build completed with 0 warnings and 0 errors; 31 contract tests and 17 versioning checks passed. Source and packaged persistence diagnostics each passed 61 checks, including opening a moved source, marking the project unsaved, and saving the verified new relative path. Published metadata and packaged smoke test passed. The portable build is `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.176-win-x64-20260924-090148` (source fingerprint `DB2CA4B7AEEE49B838E6517B54DE78317D1902B1A07F007774910624741C0AFD`); diagnostic evidence is under `outputs/.verification/dev176-*`.
+
+Product version is `1.0.0-dev.176` and numeric version is `1.0.0.176`.
+
+## Previous repository snapshot: v1.0.0-dev.175
 
 ### Small document-organization, link and recovery features (2026-09-24)
 

@@ -369,6 +369,38 @@ public sealed class ProjectPackageService
         return await FileMatchesSourceAsync(Path.GetFullPath(pdfPath), source, cancellationToken);
     }
 
+    /// <summary>移動した元PDFを内容で照合し、プロジェクト位置からの新しい相対参照を返します。</summary>
+    public async Task<SourcePdfReference> RelinkSourceAsync(
+        SourcePdfReference source,
+        string candidatePdfPath,
+        string projectDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(candidatePdfPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(projectDirectory);
+        if (source.IsEmbedded)
+            throw new InvalidOperationException("An embedded PDF cannot be replaced by an external reference.");
+
+        var fullPath = Path.GetFullPath(candidatePdfPath);
+        var file = new FileInfo(fullPath);
+        if (!file.Exists) throw new FileNotFoundException("The selected PDF does not exist.", fullPath);
+        if (file.Length != source.FileSize)
+            throw new InvalidDataException($"元PDFのサイズが一致しません（必要: {source.FileSize:N0} バイト、選択: {file.Length:N0} バイト）。元のPDFを選んでください。");
+        if (!await FileMatchesSourceAsync(fullPath, source, cancellationToken).ConfigureAwait(false))
+            throw new InvalidDataException("選択したPDFのSHA-256がプロジェクトに記録された元PDFと一致しません。別のPDFへ編集内容を適用することはできません。");
+
+        var relativePath = Path.GetRelativePath(Path.GetFullPath(projectDirectory), fullPath);
+        if (!IsSafeRelativeSourcePath(relativePath, allowParentSegments: true))
+            throw new InvalidOperationException("この場所から元PDFへの安全な相対パスを作れません。プロジェクトと元PDFを同じドライブに置いてください。");
+        return source with
+        {
+            FileName = file.Name,
+            RelativePath = relativePath,
+            AbsolutePathHint = null,
+        };
+    }
+
     /// <summary>
     /// 対象プロジェクト専用の.assetsから、同じフォルダー内の現行・自動保存・バックアップの
     /// いずれからも参照されない内容ハッシュPDFだけを削除します。
@@ -430,6 +462,12 @@ public sealed class ProjectPackageService
                name.EndsWith(ProjectExtension + ".bak", StringComparison.OrdinalIgnoreCase) ||
                name.Contains(".pre-recovery-", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool UsesCanonicalProjectEntry(string version) =>
+        version is "1.4" or "1.5" or "1.6" or "1.7" or "1.8" or ProjectManifest.CurrentVersion;
+
+    private static bool UsesExplicitStorageMode(string version) =>
+        version is "1.2" or "1.3" || UsesCanonicalProjectEntry(version);
 
     /// <summary>相対パスを優先し、見つからない場合は前回の絶対パスから元PDFを解決します。</summary>
     /// <exception cref="InvalidOperationException">元PDFがプロジェクトへ内包されている場合。</exception>
@@ -517,7 +555,7 @@ public sealed class ProjectPackageService
                 var manifest = await ReadJsonAsync<ProjectManifest>(archive, "manifest.json", cancellationToken);
                 var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
                 var legacySourceEntry = archive.GetEntry("source/source-reference.json");
-                if (manifest.FormatVersion is not ("1.4" or ProjectManifest.CurrentVersion) && legacySourceEntry is null)
+                if (!UsesCanonicalProjectEntry(manifest.FormatVersion) && legacySourceEntry is null)
                     issues.Add(new("sourceReference.missing", "The source reference is missing.", true));
                 var source = legacySourceEntry is null
                     ? project.SourcePdf
@@ -527,7 +565,7 @@ public sealed class ProjectPackageService
                 try { EnsureSourceReferenceIsSafe(source); }
                 catch (InvalidDataException ex) { issues.Add(new("sourceReference.invalid", ex.Message, true)); }
                 var normalizedProject = NormalizeStorageMode(project, manifest.FormatVersion);
-                if (manifest.FormatVersion is "1.2" or "1.3" or "1.4" or ProjectManifest.CurrentVersion)
+                if (UsesExplicitStorageMode(manifest.FormatVersion))
                 {
                     if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Embedded && !source.IsEmbedded)
                         issues.Add(new("sourceStorage.mismatch", "The embedded storage mode does not match the source reference.", true));
@@ -537,7 +575,7 @@ public sealed class ProjectPackageService
                         issues.Add(new("sourcePath.missing", "A relative project must contain a relative PDF path.", true));
                     else if (normalizedProject.PdfStorageMode == ProjectPdfStorageMode.Relative &&
                              !IsSafeRelativeSourcePath(source.RelativePath!,
-                                 allowParentSegments: manifest.FormatVersion is "1.3" or "1.4" or ProjectManifest.CurrentVersion))
+                                 allowParentSegments: manifest.FormatVersion is not "1.2"))
                         issues.Add(new("sourcePath.unsafe", manifest.FormatVersion == "1.2"
                             ? "A version 1.2 relative PDF path must stay below the project directory."
                             : "A relative PDF path must be normalized and must not be rooted or drive-qualified.", true));
@@ -647,7 +685,8 @@ public sealed class ProjectPackageService
             Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
             !double.IsFinite(Limits.MaximumCompressionRatio) || Limits.MaximumCompressionRatio <= 0 ||
             Limits.MaximumCommentCount <= 0 || Limits.MaximumTagCount <= 0 ||
-            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumRedactionCount <= 0 ||
+            Limits.MaximumInternalLinkCount <= 0 || Limits.MaximumTextDecorationCount <= 0 ||
+            Limits.MaximumRedactionCount <= 0 ||
             Limits.MaximumRedactionPathPoints <= 0 || Limits.MaximumCommentCharacters <= 0 ||
             Limits.MaximumTagNameCharacters <= 0 || Limits.MaximumLinkUriCharacters <= 0)
             throw new InvalidOperationException("Project package resource limits must be positive finite values.");
@@ -672,6 +711,8 @@ public sealed class ProjectPackageService
             issues.Add(new("tags.limit", "The project contains too many tags.", true));
         if (project.InternalLinks.Count > Limits.MaximumInternalLinkCount)
             issues.Add(new("links.limit", "The project contains too many internal links.", true));
+        if (project.TextDecorations.Count > Limits.MaximumTextDecorationCount)
+            issues.Add(new("decorations.limit", "The project contains too many page text decorations.", true));
         if (project.Redactions.Count > Limits.MaximumRedactionCount)
             issues.Add(new("redactions.limit", "The project contains too many redaction regions.", true));
 
@@ -725,6 +766,24 @@ public sealed class ProjectPackageService
                 issues.Add(new("links.destination", "An internal-link destination contains invalid coordinates.", true));
             if (link.DestinationZoomPercent is { } zoom && (!double.IsFinite(zoom) || zoom is < 25 or > 400))
                 issues.Add(new("links.zoom", "An internal-link destination zoom is outside 25–400 percent.", true));
+            if (link.SourceAnnotationReference is { Length: > 64 })
+                issues.Add(new("links.sourceReference", "A source annotation reference is too long.", true));
+        }
+
+        var decorationIds = new HashSet<Guid>();
+        foreach (var item in project.TextDecorations)
+        {
+            if (!decorationIds.Add(item.Id))
+                issues.Add(new("decorations.duplicateId", "Duplicate page-decoration IDs were found.", true));
+            if (string.IsNullOrWhiteSpace(item.TextTemplate) || item.TextTemplate.Length > 512 ||
+                item.FirstPage < 1 || item.LastPage is { } last && last < item.FirstPage ||
+                !Enum.IsDefined(item.Position) ||
+                item.EvenPagePosition is { } evenPosition && !Enum.IsDefined(evenPosition) ||
+                item.FontSizePoints is < 4 or > 144 || !double.IsFinite(item.FontSizePoints) ||
+                item.MarginPoints is < 0 or > 300 || !double.IsFinite(item.MarginPoints) ||
+                item.Opacity is < 0 or > 1 || !double.IsFinite(item.Opacity) ||
+                !IsColorHex(item.ColorHex))
+                issues.Add(new("decorations.invalid", "A page text decoration has invalid settings.", true));
         }
 
         var redactionIds = new HashSet<Guid>();
@@ -789,7 +848,7 @@ public sealed class ProjectPackageService
         string formatVersion,
         List<ProjectValidationIssue> issues)
     {
-        if (formatVersion is not ("1.4" or ProjectManifest.CurrentVersion)) return;
+        if (!UsesCanonicalProjectEntry(formatVersion)) return;
         if (project.PageSequence.Count == 0)
         {
             if (source.PageCount is > 0 || project.Pages.Count > 0)

@@ -705,7 +705,7 @@ public sealed class PdfBookmarkService
         CancellationToken cancellationToken)
     {
         var pagesById = projectPages.ToDictionary(page => page.Id);
-        foreach (var sourceGroup in links.Where(link => link.IsEnabled).GroupBy(link => link.SourcePageId))
+        foreach (var sourceGroup in links.Where(link => link.IsEnabled || link.IsModified).GroupBy(link => link.SourcePageId))
         {
             if (!pagesById.TryGetValue(sourceGroup.Key, out var sourcePage) ||
                 !pageReferences.TryGetValue(sourcePage.PageNumber, out var sourcePageReference)) continue;
@@ -734,7 +734,17 @@ public sealed class PdfBookmarkService
                 annotations = [];
             }
 
-            foreach (var link in sourceGroup)
+            foreach (var link in sourceGroup.Where(link => link.IsModified && link.SourceAnnotationReference is not null))
+            {
+                var index = await FindOriginalAnnotationIndexAsync(
+                    pdfPath, annotations, link, cancellationToken);
+                if (index < 0)
+                    throw new InvalidDataException($"元PDFのリンク注釈を特定できませんでした（{sourcePage.PageNumber}ページ）。重複リンクを防ぐため出力を中止しました。");
+                annotations.RemoveAt(index);
+            }
+
+            foreach (var link in sourceGroup.Where(link => link.IsEnabled &&
+                         (link.SourceAnnotationReference is null || link.IsModified)))
             {
                 var bounds = link.SourceBounds ?? sourcePage.TextRegions.FirstOrDefault(region => region.Id == link.SourceRegionId)?.EditedGeometry.LocalBounds;
                 if (bounds is not { IsValid: true } rectangle) continue;
@@ -782,6 +792,49 @@ public sealed class PdfBookmarkService
             }
         }
         return nextObjectId;
+    }
+
+    private async Task<int> FindOriginalAnnotationIndexAsync(
+        string pdfPath, JsonArray annotations, PdfInternalLink link, CancellationToken cancellationToken)
+    {
+        for (var index = 0; index < annotations.Count; index++)
+            if (annotations[index] is JsonValue value && value.TryGetValue<string>(out var reference) &&
+                reference == link.SourceAnnotationReference) return index;
+
+        // Page extraction/reordering may renumber objects. Match the unchanged source geometry
+        // only when exactly one Link annotation has that rectangle; ambiguity must stop export.
+        var matches = new List<int>();
+        for (var index = 0; index < annotations.Count; index++)
+        {
+            JsonNode? annotation = annotations[index];
+            if (annotation is JsonValue value && value.TryGetValue<string>(out var reference) &&
+                reference.EndsWith(" R", StringComparison.Ordinal))
+            {
+                var (objectNumber, generation) = ParseReference(reference);
+                var json = JsonNode.Parse(await RunQpdfForTextAsync(
+                    ["--json-output=2", $"--json-object={objectNumber},{generation}", pdfPath, "-"],
+                    cancellationToken))!;
+                annotation = json["qpdf"]![1]![$"obj:{reference}"]!["value"];
+            }
+            if (annotation is JsonObject candidate &&
+                candidate["/Subtype"]?.GetValue<string>() == "/Link" &&
+                AnnotationRectMatches(candidate["/Rect"], link.OriginalSourceBounds ?? link.SourceBounds))
+                matches.Add(index);
+            if (matches.Count > 1) return -1;
+        }
+        return matches.Count == 1 ? matches[0] : -1;
+    }
+
+    private static bool AnnotationRectMatches(JsonNode? node, PdfCorrectorium.Core.Geometry.PdfRectangle? bounds)
+    {
+        if (node is not JsonArray rectangle || rectangle.Count != 4 || bounds is null) return false;
+        var expected = new[] { bounds.Value.Left, bounds.Value.Bottom, bounds.Value.Right, bounds.Value.Top };
+        for (var i = 0; i < 4; i++)
+        {
+            if (rectangle[i] is not JsonValue value || !value.TryGetValue<double>(out var actual) ||
+                Math.Abs(actual - expected[i]) > 1d) return false;
+        }
+        return true;
     }
 
     /// <summary>アプリの表示設定をPDF CatalogのPageLayoutとViewerPreferencesへ変換します。</summary>
@@ -849,6 +902,7 @@ public sealed class PdfBookmarkService
         var candidates = new[]
         {
             configured,
+            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "qpdf", "bin", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),

@@ -8,8 +8,8 @@ PDF Correctorium のダウンロードから起動、基本的な作業の流れ
 
 本アプリは **インストール不要のポータブル版** として配布されています。レジストリやシステム環境を汚さずにすぐ利用できます。
 
-1. [GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases) から最新の配布ZIP（例: `PdfCorrectorium-v1.0.0-dev.xxx-win-x64-xxxxxx.zip`）をダウンロードします。
-2. 任意のフォルダーにZIPを展開します。
+1. **[最新版をダウンロード (v1.0.0-dev.199 .zip)](https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip)** または [GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases) から最新の配布ZIPをダウンロードします。
+2. ダウンロードした ZIP を任意のフォルダーに解凍（展開）します。
 3. 展開したフォルダー内の **`PdfCorrectorium.exe`** をダブルクリックして起動します。
 
 > **💡 ヒント（ファイルの関連付け）**  

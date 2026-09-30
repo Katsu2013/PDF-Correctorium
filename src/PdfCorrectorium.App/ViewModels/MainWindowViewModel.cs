@@ -273,6 +273,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private readonly Action _close;
     /// <summary>正規化済みの現在のアプリケーション設定です。</summary>
     private ApplicationSettings _applicationSettings;
+    private Task _displaySettingsSaveTask = Task.CompletedTask;
+    private bool _displaySettingsSaveRequested;
     /// <summary>現在開いている編集プロジェクト。閲覧だけの場合はnullです。</summary>
     private PdfCorrectoriumProject? _project;
     /// <summary>プロジェクトモデルだけでなく、元PDFの読込も完了したことを保持します。</summary>
@@ -298,6 +300,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private string? _projectFilePath;
     /// <summary>起動時に開いた未保存復旧パッケージ。通常保存の成功後にだけ削除します。</summary>
     private string? _openedRecoveryPath;
+    /// <summary>今回の読込で元PDFの参照先を再指定したかを示します。</summary>
+    private bool _sourceRelinkedOnOpen;
     // 以下の文字列フィールドは、文書プロパティとステータスバーに表示するための
     // バッキング値です。元PDFパス、プロジェクトパス、SHA-256、ページ情報、
     // OCRデータの由来、現在ページの領域数を、画面更新通知と一緒に管理します。
@@ -722,6 +726,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             nameof(PageListColumnWidth),
             nameof(PageListSplitterWidth));
     }
+    public bool ShowBookmarksPanel
+    {
+        get => _applicationSettings.ShowBookmarksPanel;
+        set => UpdateDisplaySetting(
+            _applicationSettings.ShowBookmarksPanel == value,
+            _applicationSettings with { ShowBookmarksPanel = value },
+            nameof(ShowBookmarksPanel));
+    }
     public bool ShowPropertiesPanel
     {
         get => _applicationSettings.ShowPropertiesPanel;
@@ -732,6 +744,44 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             nameof(PropertiesPanelColumnWidth),
             nameof(PropertiesPanelSplitterWidth));
     }
+    internal void SetWorkspaceDockPositions(WorkspaceDockPosition navigation, WorkspaceDockPosition properties,
+        WorkspacePaneGroupMode groupMode) =>
+        UpdateDisplaySetting(
+            _applicationSettings.NavigationDockPosition == navigation &&
+            _applicationSettings.PropertiesDockPosition == properties &&
+            _applicationSettings.PaneGroupMode == groupMode,
+            _applicationSettings with { NavigationDockPosition = navigation, PropertiesDockPosition = properties,
+                PaneGroupMode = groupMode });
+    internal void SetBookmarkDockPosition(WorkspaceDockPosition position) =>
+        UpdateDisplaySetting(_applicationSettings.BookmarkDockPosition == position,
+            _applicationSettings with { BookmarkDockPosition = position });
+    internal void SetWorkspacePaneWidths(double navigationWidth, double propertiesWidth) =>
+        UpdateDisplaySetting(
+            Math.Abs(_applicationSettings.PageListWidth - navigationWidth) < 0.5 &&
+            Math.Abs(_applicationSettings.PropertiesPanelWidth - propertiesWidth) < 0.5,
+            _applicationSettings with
+            {
+                PageListWidth = navigationWidth,
+                PropertiesPanelWidth = propertiesWidth,
+            });
+    internal void SetToolbarLayout(ToolbarDockSide mainSide, int mainBand, int mainIndex,
+        ToolbarDockSide pageSide, int pageBand, int pageIndex) =>
+        UpdateDisplaySetting(
+            _applicationSettings.MainToolbarDockSide == mainSide &&
+            _applicationSettings.PageToolbarDockSide == pageSide &&
+            _applicationSettings.MainToolbarBand == mainBand &&
+            _applicationSettings.MainToolbarBandIndex == mainIndex &&
+            _applicationSettings.PageToolbarBand == pageBand &&
+            _applicationSettings.PageToolbarBandIndex == pageIndex,
+            _applicationSettings with
+            {
+                MainToolbarDockSide = mainSide,
+                PageToolbarDockSide = pageSide,
+                MainToolbarBand = mainBand,
+                MainToolbarBandIndex = mainIndex,
+                PageToolbarBand = pageBand,
+                PageToolbarBandIndex = pageIndex,
+            });
     public bool ShowStatusBar
     {
         get => _applicationSettings.ShowStatusBar;
@@ -760,7 +810,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = LocalizationService.IsEnglish
                 ? $"Changed the page layout to {modeName}."
                 : $"ページ配置を{modeName}へ切り替えました。";
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
             _ = RefreshAdjacentPreviewsAsync();
         }
     }
@@ -785,12 +835,16 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = value == DocumentPageFlowMode.Continuous
                 ? LocalizationService.Translate("連続スクロールへ切り替えました。")
                 : LocalizationService.Translate("ページ切り替え表示へ切り替えました。");
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
             _ = RefreshAdjacentPreviewsAsync();
         }
     }
     public bool IsPageByPageView { get => DocumentPageFlowMode == DocumentPageFlowMode.PageByPage; set { if (value) DocumentPageFlowMode = DocumentPageFlowMode.PageByPage; } }
-    public bool IsContinuousView { get => DocumentPageFlowMode == DocumentPageFlowMode.Continuous; set { if (value) DocumentPageFlowMode = DocumentPageFlowMode.Continuous; } }
+    public bool IsContinuousView
+    {
+        get => DocumentPageFlowMode == DocumentPageFlowMode.Continuous;
+        set => DocumentPageFlowMode = value ? DocumentPageFlowMode.Continuous : DocumentPageFlowMode.PageByPage;
+    }
     /// <summary>先頭ページを表紙として、見開きの片側へ単独配置します。</summary>
     public bool FacingPagesShowCoverSeparately
     {
@@ -805,7 +859,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(DocumentViewModeDescription));
             OnPropertyChanged(nameof(CurrentApplicationSettings));
             StatusMessage = value ? "見開き表示で表紙を単独表示します。" : "見開き表示で先頭ページから2ページずつ表示します。";
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
             _ = RefreshAdjacentPreviewsAsync();
         }
     }
@@ -827,7 +881,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             StatusMessage = value == FacingPageBindingDirection.LeftBinding
                 ? "見開き表示を左綴じへ変更しました。"
                 : "見開き表示を右綴じへ変更しました。";
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
             _ = RefreshAdjacentPreviewsAsync();
         }
     }
@@ -907,7 +961,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             if (value) StartThumbnailLoading();
             else CancelThumbnailLoading(clearImages: true);
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
         }
     }
     /// <summary>ページ一覧に表示するサムネイルの横幅です。</summary>
@@ -921,7 +975,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             _applicationSettings = _applicationSettings with { PageThumbnailSize = normalized };
             OnPropertyChanged();
             OnPropertyChanged(nameof(PageThumbnailHeight));
-            _ = SaveDisplaySettingsAsync();
+            QueueDisplaySettingsSave();
         }
     }
     /// <summary>縦長ページを見やすく表示するためのサムネイル枠の高さです。</summary>
@@ -1026,6 +1080,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     // Non-interactive diagnostics replace only the modal error display, not the loading path.
     internal Action<string, Exception>? ErrorDialogOverride { get; set; }
+    /// <summary>診断時に元PDF再選択ダイアログを置き換えます。</summary>
+    internal Func<SourcePdfReference, string?>? SourcePdfSelectionOverride { get; set; }
     internal Action? CommitPendingInputs { get; set; }
     internal Func<MessageBoxResult>? DocumentSwitchPromptOverride { get; set; }
     internal Func<Task<bool>>? SaveBeforeSwitchOverride { get; set; }
@@ -1423,6 +1479,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ToolbarIconSize));
             OnPropertyChanged(nameof(ShowPropertyHelpText));
             OnPropertyChanged(nameof(ShowPageListPanel));
+            OnPropertyChanged(nameof(ShowBookmarksPanel));
             OnPropertyChanged(nameof(ShowPropertiesPanel));
             OnPropertyChanged(nameof(ShowStatusBar));
             OnPropertyChanged(nameof(DocumentViewMode));
@@ -1698,16 +1755,34 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _applicationSettings = updatedSettings.Normalize();
         foreach (var propertyName in propertyNames) OnPropertyChanged(propertyName);
         OnPropertyChanged(nameof(CurrentApplicationSettings));
-        _ = SaveDisplaySettingsAsync();
+        QueueDisplaySettingsSave();
     }
+
+    private void QueueDisplaySettingsSave()
+    {
+        _displaySettingsSaveRequested = true;
+        if (_displaySettingsSaveTask.IsCompleted)
+            _displaySettingsSaveTask = SaveDisplaySettingsAsync();
+    }
+
+    internal bool HasPendingDisplaySettingsSave => !_displaySettingsSaveTask.IsCompleted;
+
+    internal Task FlushDisplaySettingsAsync() => _displaySettingsSaveTask;
 
     private async Task SaveDisplaySettingsAsync()
     {
-        try { await _settingsService.SaveAsync(_applicationSettings); }
-        catch (Exception ex)
+        // A drag can raise several layout changes in rapid succession. Save the latest
+        // complete snapshot, in order, instead of letting independent writes race.
+        while (_displaySettingsSaveRequested)
         {
-            StatusMessage = "画面表示設定を保存できませんでした。";
-            await _log.WriteAsync(LogLevel.Warning, "settings.display-save.failed", ex.Message, ex);
+            _displaySettingsSaveRequested = false;
+            var snapshot = _applicationSettings;
+            try { await _settingsService.SaveAsync(snapshot); }
+            catch (Exception ex)
+            {
+                StatusMessage = "画面表示設定を保存できませんでした。";
+                await _log.WriteAsync(LogLevel.Warning, "settings.display-save.failed", ex.Message, ex);
+            }
         }
     }
 
@@ -1831,7 +1906,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             else await LoadPdfAsync(fullPath);
             // RenderPageAsync reports rendering errors itself; never overwrite those with a success message.
             if (!HasDocument) return false;
-            StatusMessage = isProject ? "プロジェクトを検証して開きました。" : "PDFを開きました。編集内容はプロジェクトへ保存してください。";
+            StatusMessage = isProject
+                ? _sourceRelinkedOnOpen
+                    ? "元PDFを再選択して開きました。新しい参照先をプロジェクトへ保存してください。"
+                    : "プロジェクトを検証して開きました。"
+                : "PDFを開きました。編集内容はプロジェクトへ保存してください。";
             await _log.WriteAsync(LogLevel.Information, isProject ? "project.open" : "document.open",
                 $"Opened {Path.GetFileName(fullPath)} with {PageItems.Count} pages");
             if (!IsRecoveryProjectPath(fullPath)) await RecordRecentFileAsync(fullPath);
@@ -1860,6 +1939,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private async Task LoadPdfAsync(string pdfPath)
     {
+        _sourceRelinkedOnOpen = false;
         _openedRecoveryPath = null;
         StatusMessage = "元PDFを確認しています...";
         var source = await _packages.CreateSourceReferenceAsync(pdfPath);
@@ -1887,20 +1967,72 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private async Task LoadProjectAsync(string projectPath)
     {
+        _sourceRelinkedOnOpen = false;
         var fullPath = Path.GetFullPath(projectPath);
         var validation = await _packages.ValidateAsync(fullPath);
         if (!validation.IsValid)
-            throw new InvalidDataException(string.Join(Environment.NewLine, validation.Issues.Select(issue => issue.Message)));
+            throw new InvalidDataException("プロジェクトの構造検証に失敗しました:" + Environment.NewLine +
+                string.Join(Environment.NewLine, validation.Issues.Where(issue => issue.IsError)
+                    .Select(issue => $"[{issue.Code}] {issue.Message}")));
         var project = await _packages.OpenAsync(fullPath);
         var thumbnails = await _packages.ReadThumbnailCacheAsync(fullPath);
         var projectDirectory = Path.GetDirectoryName(fullPath)!;
-        if (!await _packages.VerifySourceAsync(project.SourcePdf, projectDirectory))
-            throw new InvalidDataException("The source PDF is missing or its SHA-256 fingerprint does not match this project.");
+        var relinked = false;
+        if (!project.SourcePdf.IsEmbedded && !await _packages.VerifySourceAsync(project.SourcePdf, projectDirectory))
+        {
+            var source = project.SourcePdf;
+            string reason;
+            try
+            {
+                var previousPath = _packages.ResolveSourcePath(source, projectDirectory);
+                reason = new FileInfo(previousPath).Length != source.FileSize
+                    ? "参照先のPDFは存在しますが、記録されたファイルサイズと異なります。"
+                    : "参照先のPDFは存在しますが、内容のSHA-256が一致しません。";
+            }
+            catch (FileNotFoundException)
+            {
+                reason = "参照先の元PDFが見つかりません。移動または名前の変更が考えられます。";
+            }
+
+            string? replacementPath;
+            if (SourcePdfSelectionOverride is { } selectSource)
+                replacementPath = selectSource(source);
+            else
+            {
+                var choice = MessageBox.Show(
+                    $"{reason}\n\n元PDF: {source.FileName}\n記録された参照先: {source.RelativePath ?? source.AbsolutePathHint ?? "不明"}\n" +
+                    $"必要なサイズ: {source.FileSize:N0} バイト\n\n元PDFを再選択しますか？選択後、サイズとSHA-256で同一性を確認します。",
+                    "PDF Correctorium", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (choice != MessageBoxResult.Yes)
+                    throw new FileNotFoundException($"{reason} 元PDF: {source.FileName}。再選択はキャンセルされました。");
+                var dialog = new OpenFileDialog
+                {
+                    Title = "元PDFを再選択",
+                    Filter = "PDFファイル (*.pdf)|*.pdf",
+                    CheckFileExists = true,
+                    FileName = source.FileName,
+                    InitialDirectory = projectDirectory,
+                };
+                replacementPath = dialog.ShowDialog() == true ? dialog.FileName : null;
+            }
+            if (string.IsNullOrWhiteSpace(replacementPath))
+                throw new FileNotFoundException($"{reason} 元PDF: {source.FileName}。再選択はキャンセルされました。");
+            project = project with
+            {
+                SourcePdf = await _packages.RelinkSourceAsync(source, replacementPath, projectDirectory),
+            };
+            relinked = true;
+        }
         var sourcePath = project.SourcePdf.IsEmbedded
             ? await _packages.MaterializeEmbeddedSourceAsync(fullPath, project.SourcePdf, _paths.CacheDirectory)
             : _packages.ResolveSourcePath(project.SourcePdf, projectDirectory);
         var isRecovery = IsRecoveryProjectPath(fullPath);
         await ApplyProjectAsync(sourcePath, project, isRecovery ? null : fullPath, thumbnails);
+        if (relinked)
+        {
+            MarkNonUndoableChange();
+            _sourceRelinkedOnOpen = true;
+        }
         _openedRecoveryPath = isRecovery ? fullPath : null;
         if (isRecovery)
         {
@@ -2902,6 +3034,25 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             }
         }
 
+        _unsupportedSourceLinkActions = 0;
+        try
+        {
+            var sourceLinks = await PdfSourceLinkService.ReadAsync(resolvedPath, project.PageSequence, CancellationToken.None);
+            if (!project.SourceLinksInitialized)
+            {
+                project = project with
+                {
+                    InternalLinks = project.InternalLinks.Concat(sourceLinks.Links).ToArray(),
+                    SourceLinksInitialized = true,
+                };
+            }
+            _unsupportedSourceLinkActions = sourceLinks.UnsupportedActions;
+        }
+        catch (Exception ex)
+        {
+            await _log.WriteAsync(LogLevel.Warning, "links.read.failed", ex.Message, ex);
+        }
+
         HasDocument = false;
         CancelThumbnailLoading(clearImages: true);
         _renderCancellation?.Cancel();
@@ -3336,6 +3487,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             PreviewPixelHeight = result.Image.PixelHeight;
             SetSelectablePdfCharacters(result.SelectableCharacters);
             _pageMetrics[result.PageNumber] = new PageMetrics(result.Image.PixelWidth, result.Image.PixelHeight, result.PageWidthPoints, result.PageHeightPoints);
+            RefreshLinkAreaItems();
+            RefreshPageDecorationItems();
             var companionRegions = GetCompanionRegions(_ndlOcrDocument, _project, result.PageNumber, result);
             var overlayRegions = companionRegions.Count > 0 ? companionRegions : result.TextRegions;
             if (!_pageOverlays.TryGetValue(result.PageNumber, out var pageOverlayModels))

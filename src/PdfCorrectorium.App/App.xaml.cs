@@ -58,6 +58,7 @@ public partial class App : Application
         _isNonInteractiveTest |= e.Args.Contains("--review-mode-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--persistence-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--page-history-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--avalondock-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--startup-file-test", StringComparer.OrdinalIgnoreCase) ||
             e.Args.Contains("--file-launch-tests", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--diagnostic-delay-worker", StringComparer.OrdinalIgnoreCase);
@@ -188,9 +189,18 @@ public partial class App : Application
                 return;
             }
 
-            var window = new MainWindow();
+            var avalonDockTestIndex = Array.FindIndex(e.Args, value => value.Equals("--avalondock-test", StringComparison.OrdinalIgnoreCase));
+            var window = new MainWindow(useAvalonDockDiagnosticLayout: avalonDockTestIndex >= 0,
+                diagnosticDirectory: avalonDockTestIndex >= 0 && e.Args.Length > avalonDockTestIndex + 1
+                    ? Path.GetFullPath(e.Args[avalonDockTestIndex + 1]) : null);
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
+
+            if (avalonDockTestIndex >= 0)
+            {
+                RunAvalonDockPreviewTest(window, e.Args, avalonDockTestIndex);
+                return;
+            }
 
             var ocrRenderingIndex = Array.FindIndex(e.Args, value => value.Equals("--ocr-rendering-test", StringComparison.OrdinalIgnoreCase));
             if (ocrRenderingIndex >= 0)
@@ -266,8 +276,9 @@ public partial class App : Application
             window.Show();
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             _diagnostics.Write("startup.window-shown");
-            var startupOpened = await OpenStartupFileAsync(window, e.Args);
-            if (startupOpened && e.Args.Length == 0)
+            var startupFiles = e.Args.Where(argument => !argument.Equals("--avalondock-preview", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var startupOpened = await OpenStartupFileAsync(window, startupFiles);
+            if (startupOpened && startupFiles.Length == 0)
                 await OfferRecoveryProjectAsync(window);
         }
         catch (Exception exception)

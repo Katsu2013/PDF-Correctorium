@@ -83,6 +83,7 @@ public partial class App
                 "StatusZoomOutButton", "StatusZoomInButton",
                 "RedactionMenuItem", "OcrEditToolbarButton", "RedactionToolbarButton", "EditorModeSelector",
                 "RedactionInputModeComboBox",
+                "SinglePageToolbarButton", "FacingPagesToolbarButton", "ContinuousScrollToolbarButton",
             };
             ICommand[] documentCommands =
             [
@@ -100,6 +101,13 @@ public partial class App
                 viewModel.AddSelectedRedactionsCommand,
                 viewModel.DeleteSelectedRedactionCommand, viewModel.ClearCurrentPageRedactionsCommand,
             ];
+            // AvalonDock creates document/tab visuals after the host window is loaded.
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -20000;
+            window.Top = -20000;
+            window.ShowActivated = false;
+            window.ShowInTaskbar = false;
+            window.Show();
             await LayoutAsync();
             Check(!viewModel.HasDocument && !viewModel.CanUsePreview, "Startup has no document or usable preview.");
             Check(Control("ProjectStorageModeStatusItem").Visibility == Visibility.Collapsed,
@@ -116,13 +124,14 @@ public partial class App
             viewModel.ActualSizeCommand.Execute(null);
             viewModel.ToggleAddOcrRegionModeCommand.Execute(null);
             Check(viewModel.ZoomPercent == originalZoom && !viewModel.IsAddOcrRegionMode, "Disabled commands cannot be executed directly.");
+            var ownedWindowCount = window.OwnedWindows.Count;
             foreach (var method in new[] { "DocumentPropertiesMenuItem_OnClick", "ValidateProjectMenuItem_OnClick", "RestoreProjectMenuItem_OnClick", "OcrQualityAnalysisMenuItem_OnClick" })
                 typeof(MainWindow).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(window, [window, new RoutedEventArgs()]);
             var search = typeof(MainWindow).GetMethod("ShowOcrSearchReplaceWindow", BindingFlags.Instance | BindingFlags.NonPublic)!;
             search.Invoke(window, [false]);
             search.Invoke(window, [true]);
-            Check(window.OwnedWindows.Count == 0, "Dialog and search-shortcut entry points do not open empty-document windows.");
+            Check(window.OwnedWindows.Count == ownedWindowCount, "Dialog and search-shortcut entry points do not open empty-document windows.");
             Snapshot("no-document");
 
             try { await viewModel.LoadPdfForDiagnosticsAsync(Path.Combine(directory, "missing.pdf")); }
@@ -136,6 +145,43 @@ public partial class App
             await viewModel.LoadPdfForDiagnosticsAsync(pdfPath);
             await LayoutAsync();
             Check(viewModel.HasDocument && viewModel.CanUsePreview && viewModel.PageItems.Count == 2, "PDF load produces a usable two-page document.");
+            var layoutToolbar = (ToolBar)Control("PageLayoutToolBar");
+            var singlePageButton = (ToggleButton)Control("SinglePageToolbarButton");
+            var facingPagesButton = (ToggleButton)Control("FacingPagesToolbarButton");
+            var continuousScrollButton = (ToggleButton)Control("ContinuousScrollToolbarButton");
+            Check(layoutToolbar.Items.Contains(singlePageButton) &&
+                  layoutToolbar.Items.Contains(facingPagesButton) && layoutToolbar.Items.Contains(continuousScrollButton) &&
+                  !((ToolBar)Control("MainToolbarPanel")).Items.Contains(singlePageButton),
+                "Page-layout toggles are grouped on a separate toolbar.");
+            Check(window.AvalonDockPreviewManager is not null &&
+                  layoutToolbar.Items.OfType<Button>().Any(button => ReferenceEquals(button.Command, viewModel.PreviousPageCommand)) &&
+                  layoutToolbar.Items.OfType<Button>().Any(button => ReferenceEquals(button.Command, viewModel.NextPageCommand)) &&
+                  layoutToolbar.Items.OfType<Button>().Any(button => ReferenceEquals(button.Command, viewModel.ZoomInCommand)) &&
+                  layoutToolbar.Items.OfType<Button>().Any(button => ReferenceEquals(button.Command, viewModel.ActualSizeCommand)) &&
+                  !((ToolBar)Control("MainToolbarPanel")).Items.OfType<Button>()
+                      .Any(button => ReferenceEquals(button.Command, viewModel.ZoomInCommand)),
+                "The AvalonDock-hosted page toolbar owns page navigation and zoom controls.");
+            Check(window.AvalonMainToolbar?.Content is ToolBarTray mainTray &&
+                  mainTray.ToolBars.Contains((ToolBar)Control("MainToolbarPanel")) &&
+                  window.AvalonPageToolbar?.Content is ToolBarTray pageTray &&
+                  pageTray.ToolBars.Contains(layoutToolbar),
+                "Both original toolbars are hosted by AvalonDock without replacing their buttons.");
+            Check(window.AvalonNavigation?.CanFloat == true && window.AvalonProperties?.CanFloat == true &&
+                  window.AvalonMainToolbar?.CanFloat == true && window.AvalonPageToolbar?.CanFloat == true,
+                "Navigation, properties and both toolbars support native detach and redock.");
+            Snapshot("native-docking");
+            facingPagesButton.IsChecked = true;
+            continuousScrollButton.IsChecked = true;
+            await LayoutAsync();
+            Check(viewModel.IsFacingPagesView && viewModel.IsContinuousView &&
+                  facingPagesButton.IsChecked == true && continuousScrollButton.IsChecked == true,
+                "Facing-page and continuous-scroll toggles can be combined.");
+            singlePageButton.IsChecked = true;
+            continuousScrollButton.IsChecked = false;
+            await LayoutAsync();
+            Check(viewModel.IsSinglePageView && viewModel.IsPageByPageView &&
+                  singlePageButton.IsChecked == true && facingPagesButton.IsChecked == false,
+                "Page-layout toggles follow the selected view and scroll state.");
             var readingOrderRegion = new OverlayRegionViewModel(new PdfTextOverlayRegion("reading order", 20, 20, 120, 30, true))
             {
                 ReadingOrder = 1,
@@ -406,8 +452,10 @@ public partial class App
                 Name = "Missing source test",
                 SourcePdf = missingSource with { FileName = "absent.pdf", AbsolutePathHint = Path.Combine(directory, "absent.pdf"), RelativePath = "absent.pdf" },
             });
+            viewModel.SourcePdfSelectionOverride = _ => null;
             try { await viewModel.LoadProjectForDiagnosticsAsync(invalidProjectPath); }
-            catch (InvalidDataException) { }
+            catch (FileNotFoundException) { }
+            viewModel.SourcePdfSelectionOverride = null;
             await LayoutAsync();
             Check(viewModel.HasDocument && Control("DocumentPropertiesMenuItem").IsEnabled &&
                   viewModel.SaveProjectCommand.CanExecute(null) && viewModel.ProjectPath == projectPath,
@@ -422,6 +470,8 @@ public partial class App
         catch (Exception exception)
         {
             _diagnostics?.Write("document-ui-test.failed", exception.ToString());
+            if (arguments.Length > optionIndex + 1 && Directory.Exists(arguments[optionIndex + 1]))
+                File.WriteAllText(Path.Combine(arguments[optionIndex + 1], "error.txt"), exception.ToString());
             Shutdown(1);
         }
     }

@@ -26,7 +26,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 
 ### 1. 一般的な市販・単機能デスクトップツールとの比較
 
-| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium (v1.0.0-dev.175)** |
+| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium (v1.0.0-dev.196)** |
 | :--- | :---: | :---: | :---: | :---: |
 | **ライセンス・費用** | 高額サブスク（年間数万円） | 有料（買い切り/更新） | 無料 (OSS等) | **完全無料 (Apache 2.0)** |
 | **導入形態・ポータブル性** | 要インストール | 要インストール | 要インストール（一部例外あり） | **完全ポータブル（解凍のみ・USB動作可）** |
@@ -59,13 +59,15 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 日常業務で市販ソフトの代わりに使える総合エディタを目指し、以下の機能拡張を計画・検討しています。  
 *※各機能の実装順序やリリース時期は、利用ニーズやフィードバック等を踏まえて柔軟に決定・対応していく方針です。*
 
-### 現在の実装機能 (v1.0.0-dev.175)
+### 現在の実装機能 (v1.0.0-dev.199)
 * [x] **画質無劣化のページ編集**: ドラッグ＆ドロップでの並べ替え、90度回転、不要ページ削除、別PDFからのページ差し込み
 * [x] **復元できない安全な墨消し**: PDF描画命令からの文字コード消去（ベクター保持）＋任意形状の高精細画像化＋出力後自動検証
 * [x] **しおり（目次）・文書情報編集**: 階層しおりの作成、文書プロパティ、初期表示設定（見開き・連続スクロール）
 * [x] **OCR透明テキスト精密校正**: 文字修正、位置・サイズ・角度・送り幅調整、日本語縦書き・読み順整理、校正モード、NDLOCR-Lite連携
 * [x] **安心のプロジェクト保存**: ZIP互換形式（.pdfocrproj）、通常モード／ポータブルモード、自動保存・世代バックアップ
 * [x] **文書整理**: ページ範囲の抽出、ページ単位／固定数／開始位置による分割、白紙ページ挿入
+* [x] **安全な既存リンク編集**: 文書内ページ移動とHTTP(S)だけを読み取り、変更・削除してPDFへ反映
+* [x] **文字装飾**: 日本語のページ番号・ヘッダー／フッター・文字透かしをプレビューしてPDFへ反映。表紙を飛ばす番号付けと奇数／偶数の位置変更にも対応
 
 ---
 
@@ -79,7 +81,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
   * 閲覧パスワード（文書を開く際のパスワード設定）
   * 権限パスワード（印刷の禁止、テキスト・画像のコピー禁止、編集禁止）
   * 暗号化基盤（qpdf）を活用した強固なセキュリティ
-* [ ] **ページ番号・ヘッダー・フッター印字**: 文書の天や地に「1 / 10」などの通しページ番号を一括追加
+* [x] **ページ番号・ヘッダー・フッター印字**: 文書の天や地に「1 / 10」などの文字を一括追加
 
 #### ✏️ 標準PDF注釈・レビュー機能
 * [ ] **テキスト注釈（蛍光ペン・下線）**: ハイライト、アンダーライン、取り消し線
@@ -91,7 +93,8 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 #### 🔤 本文テキスト・画像の直接編集
 * [ ] **本文テキストの直接修正**: 既存の文字をクリックし、フォント属性を保ったまま誤字脱字を直接打ち直し
 * [ ] **画像の差し替え・抽出・リサイズ**: PDF内に埋め込まれたロゴや写真を新しい画像に差し替え、あるいは高画質のまま抽出
-* [ ] **透かし（ウォーターマーク）の追加**: 「社外秘」「SAMPLE」などの背景透かしを斜め一括配置
+* [x] **文字透かしの追加**: 「社外秘」「SAMPLE」などの文字をページ中央へ半透明で配置
+* [ ] **画像・回転透かし**: 画像の配置、文字の角度指定
 
 #### 🔍 アプリ内蔵OCRによるワンクリック検索可能PDF化
 * [ ] **軽量・高精度OCRエンジンの内蔵**: Tesseract や NDLOCR-Lite 等のエンジンを同梱
@@ -123,7 +126,7 @@ PDF Correctorium is actively under development. To become a viable daily replace
 
 ### 1. vs Commercial & Basic Desktop Software
 
-| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium (v1.0.0-dev.175)** |
+| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium (v1.0.0-dev.196)** |
 | :--- | :---: | :---: | :---: | :---: |
 | **License & Pricing** | Expensive subscription (annual) | Paid (one-time or maintenance) | Free (OSS / freeware) | **100% Free (Apache 2.0)** |
 | **Portability** | Requires installation | Requires installation | Mostly requires installation | **Fully portable (extract & run, USB ready)** |
@@ -156,7 +159,7 @@ PDF Correctorium is actively under development. To become a viable daily replace
 The project plans to explore and implement the following feature areas to evolve into a practical everyday PDF editor.  
 *Note: Implementation sequence and release schedules will be adapted flexibly based on technical feasibility and user needs.*
 
-### Current Features (v1.0.0-dev.175)
+### Current Features (v1.0.0-dev.196)
 * [x] **Lossless Page Editing**: Reorder, 90-degree rotate, delete, and merge pages without image degradation.
 * [x] **Irreversible Redaction**: Text stream operator removal + high-DPI rasterization fallback + post-export verification.
 * [x] **Bookmark & Document Properties**: Hierarchical bookmarks, document metadata, and initial view preferences.

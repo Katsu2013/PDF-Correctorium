@@ -1,4 +1,5 @@
 using System.IO;
+using PdfCorrectorium.Core.Documents;
 
 namespace PdfCorrectorium.App.Services;
 
@@ -7,6 +8,8 @@ namespace PdfCorrectorium.App.Services;
 /// </summary>
 public sealed class PdfDocumentOrganizationService(PdfPageManagementService pageManagement)
 {
+    private readonly PdfBookmarkService _bookmarks = new();
+
     /// <summary>指定ページだけを元の並び順で抽出します。</summary>
     public async Task ExtractAsync(
         string sourcePdfPath,
@@ -14,8 +17,20 @@ public sealed class PdfDocumentOrganizationService(PdfPageManagementService page
         string outputPath,
         CancellationToken cancellationToken = default)
     {
+        var sourceBookmarks = await _bookmarks.ReadFromPdfAsync(sourcePdfPath, cancellationToken).ConfigureAwait(false);
+        await ExtractCoreAsync(sourcePdfPath, pageNumbers, outputPath, sourceBookmarks, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ExtractCoreAsync(
+        string sourcePdfPath,
+        IReadOnlyList<int> pageNumbers,
+        string outputPath,
+        IReadOnlyList<PdfBookmark> sourceBookmarks,
+        CancellationToken cancellationToken)
+    {
         if (pageNumbers.Count == 0) throw new ArgumentException("抽出するページがありません。", nameof(pageNumbers));
-        var range = string.Join(',', pageNumbers.Distinct().Order());
+        var selectedPages = pageNumbers.Distinct().Order().ToArray();
+        var range = string.Join(',', selectedPages);
         var destination = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         var stagingPath = destination + $".{Guid.NewGuid():N}.tmp.pdf";
@@ -26,12 +41,35 @@ public sealed class PdfDocumentOrganizationService(PdfPageManagementService page
                 [new PdfPageManagementService.PageSource(sourcePdfPath, range)],
                 stagingPath,
                 cancellationToken).ConfigureAwait(false);
+            if (sourceBookmarks.Count > 0)
+            {
+                var pageMapping = selectedPages.Select((page, index) => (page, index))
+                    .ToDictionary(item => item.page, item => item.index + 1);
+                var retainedBookmarks = RemapBookmarks(sourceBookmarks, pageMapping);
+                await _bookmarks.ApplyToPdfAsync(stagingPath, retainedBookmarks, cancellationToken).ConfigureAwait(false);
+            }
             File.Move(stagingPath, destination, overwrite: true);
         }
         finally
         {
             try { if (File.Exists(stagingPath)) File.Delete(stagingPath); } catch (IOException) { }
         }
+    }
+
+    private static IReadOnlyList<PdfBookmark> RemapBookmarks(
+        IReadOnlyList<PdfBookmark> bookmarks,
+        IReadOnlyDictionary<int, int> pageMapping)
+    {
+        var result = new List<PdfBookmark>();
+        foreach (var bookmark in bookmarks)
+        {
+            var children = RemapBookmarks(bookmark.Children, pageMapping);
+            if (pageMapping.TryGetValue(bookmark.PageNumber, out var newPage))
+                result.Add(bookmark with { PageNumber = newPage, Children = children });
+            else
+                result.AddRange(children); // A removed parent must not hide children pointing at retained pages.
+        }
+        return result;
     }
 
     /// <summary>
@@ -54,6 +92,7 @@ public sealed class PdfDocumentOrganizationService(PdfPageManagementService page
         var staged = new List<(string TemporaryPath, string DestinationPath)>();
         try
         {
+            var sourceBookmarks = await _bookmarks.ReadFromPdfAsync(sourcePdfPath, cancellationToken).ConfigureAwait(false);
             for (var index = 0; index < groups.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -61,7 +100,7 @@ public sealed class PdfDocumentOrganizationService(PdfPageManagementService page
                 var suffix = pages.Length == 1 ? $"p{pages[0]:0000}" : $"p{pages[0]:0000}-{pages[^1]:0000}";
                 var fileName = FindAvailableFileName(destinationDirectory, $"{safeBaseName}-{suffix}.pdf");
                 var temporaryPath = Path.Combine(stagingDirectory, fileName);
-                await ExtractAsync(sourcePdfPath, pages, temporaryPath, cancellationToken).ConfigureAwait(false);
+                await ExtractCoreAsync(sourcePdfPath, pages, temporaryPath, sourceBookmarks, cancellationToken).ConfigureAwait(false);
                 staged.Add((temporaryPath, Path.Combine(destinationDirectory, fileName)));
             }
 

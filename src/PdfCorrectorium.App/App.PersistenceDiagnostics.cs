@@ -135,7 +135,9 @@ public partial class App
             Check(ReferenceEquals(priorImage, vm.PreviewImage) && ReferenceEquals(priorRegion, vm.OverlayItems.Single()) && vm.HasDocument && vm.HasUnsavedChanges && vm.UndoCommand.CanExecute(null), "Failed replacement preserves preview, edits, Undo and document availability.");
             var missingProject = Path.Combine(directory, "missing-source.pdfocrproj");
             await packages.SaveAsync(missingProject, project with { SourcePdf = project.SourcePdf with { FileName = "missing.pdf", RelativePath = "missing.pdf", AbsolutePathHint = Path.Combine(directory, "missing.pdf") } });
+            vm.SourcePdfSelectionOverride = _ => null;
             Check(!await vm.OpenDocumentPathAsync(missingProject) && ReferenceEquals(priorRegion, vm.OverlayItems.Single()), "Missing project source preserves the previous document.");
+            vm.SourcePdfSelectionOverride = null;
             Check(await vm.OpenDocumentPathAsync(pdf) && !vm.HasUnsavedChanges, "Explicit Discard allows a successful switch.");
 
             await vm.LoadProjectForDiagnosticsAsync(input);
@@ -282,6 +284,28 @@ public partial class App
                 "Relative Save As does not create an assets directory for an existing external PDF.");
             Check(await packages.VerifySourceAsync(movedLinkedProject.SourcePdf, movedProjectDirectory),
                 "The recalculated relative path still resolves and matches the original PDF fingerprint.");
+            var relinkOriginalDirectory = Path.Combine(installedDirectory, "original-source");
+            var relinkMovedDirectory = Path.Combine(installedDirectory, "moved-source");
+            Directory.CreateDirectory(relinkOriginalDirectory);
+            Directory.CreateDirectory(relinkMovedDirectory);
+            var relinkOriginalPdf = Path.Combine(relinkOriginalDirectory, "relink.pdf");
+            var relinkMovedPdf = Path.Combine(relinkMovedDirectory, "relink.pdf");
+            WriteDocumentUiTestPdf(relinkOriginalPdf);
+            await installedVm.LoadPdfForDiagnosticsAsync(relinkOriginalPdf);
+            var relinkProjectPath = Path.Combine(installedDirectory, "relink.pdfocrproj");
+            await installedVm.SaveProjectForDiagnosticsAsync(relinkProjectPath, ProjectPdfStorageMode.Relative);
+            File.Move(relinkOriginalPdf, relinkMovedPdf);
+            installedVm.SourcePdfSelectionOverride = _ => relinkMovedPdf;
+            Check(await installedVm.OpenDocumentPathAsync(relinkProjectPath) && installedVm.HasUnsavedChanges &&
+                  installedVm.ResolvedPdfPathForDiagnostics == relinkMovedPdf,
+                "Opening a project with a moved source PDF accepts the identical PDF and marks the new link unsaved.");
+            await installedVm.SaveProjectForDiagnosticsAsync(relinkProjectPath, ProjectPdfStorageMode.Relative);
+            var relinkSavedProject = await packages.OpenAsync(relinkProjectPath);
+            Check(!installedVm.HasUnsavedChanges &&
+                  relinkSavedProject.SourcePdf.RelativePath == Path.GetRelativePath(installedDirectory, relinkMovedPdf) &&
+                  await packages.VerifySourceAsync(relinkSavedProject.SourcePdf, installedDirectory),
+                "Saving after relinking persists a verified relative source path.");
+            installedVm.SourcePdfSelectionOverride = null;
             var installedEmbeddedPath = Path.Combine(installedDirectory, "embedded.pdfocrproj");
             await installedVm.SaveProjectForDiagnosticsAsync(installedEmbeddedPath, ProjectPdfStorageMode.Embedded);
             var installedEmbedded = await packages.OpenAsync(installedEmbeddedPath);

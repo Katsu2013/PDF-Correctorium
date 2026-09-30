@@ -51,8 +51,19 @@ public partial class App
                 DocumentPageFlowMode = DocumentPageFlowMode.Continuous,
                 FacingPagesShowCoverSeparately = false,
                 FacingPagesBindingDirection = FacingPageBindingDirection.RightBinding,
+                NavigationDockPosition = WorkspaceDockPosition.Right,
+                BookmarkDockPosition = WorkspaceDockPosition.Left,
+                PropertiesDockPosition = WorkspaceDockPosition.Left,
+                PaneGroupMode = WorkspacePaneGroupMode.Stacked,
+                MainToolbarDockSide = ToolbarDockSide.Left,
+                PageToolbarDockSide = ToolbarDockSide.Right,
+                MainToolbarBand = 1,
+                MainToolbarBandIndex = 0,
+                PageToolbarBand = 0,
+                PageToolbarBandIndex = 1,
             };
-            var preset = WorkspacePreset.Capture(" 校正用_Layout ", original with { ShowPropertiesPanel = false });
+            var preset = WorkspacePreset.Capture(" 校正用_Layout ", original with
+                { ShowPropertiesPanel = false, ShowBookmarksPanel = false });
             original = original with { WorkspacePresets = [preset] };
             var export = Path.Combine(output, "settings-日本語.json");
             await service.SaveAsync(original);
@@ -60,6 +71,18 @@ public partial class App
             await SettingsTransferService.ExportAsync(export, original);
             var imported = await SettingsTransferService.ImportAsync(export);
             Check(JsonSerializer.Serialize(imported) == JsonSerializer.Serialize(original.Normalize()), "All settings and presets round-trip, including hidden thumbnail size and unassigned shortcuts.");
+            Check(imported.NavigationDockPosition == WorkspaceDockPosition.Right &&
+                  imported.BookmarkDockPosition == WorkspaceDockPosition.Left &&
+                  imported.PropertiesDockPosition == WorkspaceDockPosition.Left &&
+                  imported.PaneGroupMode == WorkspacePaneGroupMode.Stacked &&
+                  imported.MainToolbarDockSide == ToolbarDockSide.Left &&
+                  imported.PageToolbarDockSide == ToolbarDockSide.Right &&
+                  imported.MainToolbarBand == 1 && imported.PageToolbarBand == 0 &&
+                  preset.NavigationDockPosition == WorkspaceDockPosition.Right &&
+                  preset.BookmarkDockPosition == WorkspaceDockPosition.Left &&
+                  !preset.ShowBookmarksPanel &&
+                  preset.PropertiesDockPosition == WorkspaceDockPosition.Left,
+                "Separate bookmark/page dock sides and toolbar layout round-trip through settings and presets.");
             Check(imported.DocumentViewMode == DocumentViewMode.FacingPages &&
                 imported.DocumentPageFlowMode == DocumentPageFlowMode.Continuous &&
                 !imported.FacingPagesShowCoverSeparately &&
@@ -101,7 +124,22 @@ public partial class App
             Check(!exported.Contains(paths.ConfigurationDirectory) && !exported.Contains(paths.WorkspaceDirectory), "Export does not include local configuration/workspace paths.");
             Check(preset.Name == "校正用_Layout", "Preset names are trimmed without changing user text.");
             var applied = preset.ApplyTo(original with { UiLanguage = "ja-JP", AutoSaveIntervalMinutes = 19 });
-            Check(!applied.ShowPropertiesPanel && applied.PageListWidth == 300 && applied.PropertiesPanelWidth == 410, "Preset applies only captured panel layout.");
+            Check(!applied.ShowPropertiesPanel && !applied.ShowBookmarksPanel &&
+                  applied.PageListWidth == 300 && applied.PropertiesPanelWidth == 410,
+                "Preset applies separately captured page/bookmark/property visibility and widths.");
+            Check(applied.NavigationDockPosition == WorkspaceDockPosition.Right &&
+                  applied.PropertiesDockPosition == WorkspaceDockPosition.Left &&
+                  applied.PaneGroupMode == WorkspacePaneGroupMode.Stacked &&
+                  applied.MainToolbarDockSide == ToolbarDockSide.Left &&
+                  applied.PageToolbarDockSide == ToolbarDockSide.Right &&
+                  applied.MainToolbarBand == 1 && applied.PageToolbarBand == 0,
+                "Preset restores dock sides and toolbar arrangement.");
+            Check((original with { NavigationDockPosition = WorkspaceDockPosition.Left,
+                    PropertiesDockPosition = WorkspaceDockPosition.Left, PaneGroupMode = WorkspacePaneGroupMode.Tabbed })
+                  .Normalize() is { NavigationDockPosition: WorkspaceDockPosition.Left,
+                      PropertiesDockPosition: WorkspaceDockPosition.Left,
+                      PaneGroupMode: WorkspacePaneGroupMode.Tabbed },
+                "Same-side tabbed docking is preserved by settings normalization.");
             Check(applied.UiLanguage == "ja-JP" && applied.AutoSaveIntervalMinutes == 19 &&
                 applied.PreviousCharacterShortcut == original.PreviousCharacterShortcut && applied.PageThumbnailSize == 183, "Preset does not change language, shortcuts, recovery settings or hidden thumbnail size.");
             Check(new ApplicationSettingsService(paths).Load().WorkspacePresets.Single() == preset, "Named preset survives reopening the settings service.");
@@ -200,9 +238,8 @@ public partial class App
             main.Left = -20000; main.Top = -20000; main.Width = 1400; main.Height = 850;
             main.ShowActivated = false; main.ShowInTaskbar = false; main.Show();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
-            var grid = (Grid)main.FindName("WorkspaceLayoutGrid");
-            grid.ColumnDefinitions[0].Width = new GridLength(310);
-            grid.ColumnDefinitions[4].Width = new GridLength(430);
+            ((AvalonDock.Layout.LayoutAnchorablePane)main.AvalonNavigation!.Parent!).DockWidth = new GridLength(310);
+            ((AvalonDock.Layout.LayoutAnchorablePane)main.AvalonProperties!.Parent!).DockWidth = new GridLength(430);
             main.UpdateLayout();
             var captured = main.CaptureWorkspaceSettings();
             Check(Math.Abs(captured.PageListWidth - 310) < 1 && Math.Abs(captured.PropertiesPanelWidth - 430) < 1, "Settings capture splitter-adjusted widths.");
@@ -402,7 +439,10 @@ public partial class App
             Check(await vm.ApplyApplicationSettingsAsync(preset.ApplyTo(original)), "Preset settings persist with an edited PDF open.");
             main.RestoreWorkspaceWidthBindings();
             main.UpdateLayout();
-            Check(grid.ColumnDefinitions[4].ActualWidth == 0 && Math.Abs(grid.ColumnDefinitions[0].ActualWidth - 300) < 1, "Applying settings restores width bindings and hides the requested panel.");
+            Check(main.AvalonProperties?.IsVisible == false && main.AvalonBookmarks?.IsVisible == false &&
+                  main.AvalonNavigation?.IsVisible == true &&
+                  Math.Abs(((AvalonDock.Layout.LayoutAnchorablePane)main.AvalonNavigation!.Parent!).DockWidth.Value - 300) < 1,
+                "Applying settings restores panel width and hides the requested panel.");
             Check(vm.HasUnsavedChanges == wasDirty && vm.OverlayItems.Last().Text == regionText && vm.UndoCommand.CanExecute(null),
                 "Applying a layout preserves PDF edits, dirty state and Undo.");
             Check(vm.ZoomPercent == zoom, $"Applying a layout preserves manual zoom ({zoom} -> {vm.ZoomPercent}).");

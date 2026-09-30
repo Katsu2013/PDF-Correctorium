@@ -47,6 +47,7 @@ public partial class ApplicationSettingsWindow : Window
         FacingPagesBindingDirectionComboBox.SelectedValue = settings.FacingPagesBindingDirection.ToString();
         ShowPropertyHelpTextCheckBox.IsChecked = settings.ShowPropertyHelpText;
         ShowPageListPanelCheckBox.IsChecked = settings.ShowPageListPanel;
+        ShowBookmarksPanelCheckBox.IsChecked = settings.ShowBookmarksPanel;
         ShowPropertiesPanelCheckBox.IsChecked = settings.ShowPropertiesPanel;
         ShowStatusBarCheckBox.IsChecked = settings.ShowStatusBar;
         PageListWidthSlider.Value = settings.PageListWidth;
@@ -216,6 +217,7 @@ public partial class ApplicationSettingsWindow : Window
             FacingPagesBindingDirection = facingPagesBindingDirection,
             ShowPropertyHelpText = ShowPropertyHelpTextCheckBox.IsChecked == true,
             ShowPageListPanel = ShowPageListPanelCheckBox.IsChecked == true,
+            ShowBookmarksPanel = ShowBookmarksPanelCheckBox.IsChecked == true,
             ShowPropertiesPanel = ShowPropertiesPanelCheckBox.IsChecked == true,
             ShowStatusBar = ShowStatusBarCheckBox.IsChecked == true,
             PageListWidth = PageListWidthSlider.Value,
@@ -321,6 +323,7 @@ public partial class ApplicationSettingsWindow : Window
     private ApplicationSettings ReadWorkspaceLayout() => ResultSettings with
     {
         ShowPageListPanel = ShowPageListPanelCheckBox.IsChecked == true,
+        ShowBookmarksPanel = ShowBookmarksPanelCheckBox.IsChecked == true,
         ShowPropertiesPanel = ShowPropertiesPanelCheckBox.IsChecked == true,
         ShowStatusBar = ShowStatusBarCheckBox.IsChecked == true,
         ShowPageThumbnails = ShowPageThumbnailsCheckBox.IsChecked == true,
@@ -331,7 +334,9 @@ public partial class ApplicationSettingsWindow : Window
     private void ApplyWorkspacePreset_OnClick(object sender, RoutedEventArgs e)
     {
         if (WorkspacePresetComboBox.SelectedItem is not WorkspacePreset preset) return;
+        ResultSettings = preset.ApplyTo(ResultSettings);
         ShowPageListPanelCheckBox.IsChecked = preset.ShowPageListPanel;
+        ShowBookmarksPanelCheckBox.IsChecked = preset.ShowBookmarksPanel;
         ShowPropertiesPanelCheckBox.IsChecked = preset.ShowPropertiesPanel;
         ShowStatusBarCheckBox.IsChecked = preset.ShowStatusBar;
         ShowPageThumbnailsCheckBox.IsChecked = preset.ShowPageThumbnails;

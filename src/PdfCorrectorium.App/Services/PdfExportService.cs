@@ -568,6 +568,7 @@ public sealed class PdfExportService
         EnsureInitialized();
         var utf8Path = Marshal.StringToCoTaskMemUTF8(sourcePath);
         IntPtr document = IntPtr.Zero;
+        IntPtr decorationFont = IntPtr.Zero;
         string? previousCheckpointPath = null;
         try
         {
@@ -592,8 +593,19 @@ public sealed class PdfExportService
             var optimizedImages = 0;
             var appliedRedactions = 0;
             var redactedPages = 0;
+            var enabledDecorations = project.TextDecorations.Where(item => item.IsEnabled).ToArray();
+            byte[]? decorationFontData = null;
+            if (enabledDecorations.Length > 0)
+            {
+                var fontPath = Path.Combine(AppContext.BaseDirectory, "components", "fonts", "NotoSansJP.ttf");
+                if (!File.Exists(fontPath))
+                    throw new FileNotFoundException("ページ装飾用の日本語フォントが見つかりません。", fontPath);
+                decorationFontData = File.ReadAllBytes(fontPath);
+                decorationFont = LoadDecorationFont(document, decorationFontData);
+            }
             var changedPages = project.Pages
-                .Where(page => PageHasChanges(page, project.Redactions))
+                .Where(page => PageHasChanges(page, project.Redactions) ||
+                    enabledDecorations.Any(item => AppliesToPage(item, page.PageNumber, project.Pages.Count)))
                 .OrderBy(page => page.PageNumber)
                 .ToArray();
             var processedPages = 0;
@@ -795,6 +807,16 @@ public sealed class PdfExportService
                         textSpacingRequests.AddRange(pageSpacingRequests);
                     }
 
+                    if (decorationFont != IntPtr.Zero)
+                    {
+                        foreach (var decoration in enabledDecorations.Where(item =>
+                                     AppliesToPage(item, projectPage.PageNumber, pageCount)))
+                            ApplyTextDecoration(document, page, decorationFont, decoration,
+                                projectPage.PageNumber, pageCount);
+                        pageChanged |= enabledDecorations.Any(item =>
+                            AppliesToPage(item, projectPage.PageNumber, pageCount));
+                    }
+
                     if (pageChanged)
                     {
                         if (textPage != IntPtr.Zero)
@@ -832,12 +854,19 @@ public sealed class PdfExportService
                             processedPages,
                             changedPages.Length,
                             $"{processedPages:N0}ページまでの変更を確定し、使用メモリを解放しています..."));
+                        if (decorationFont != IntPtr.Zero)
+                        {
+                            NativeMethods.FPDFFont_Close(decorationFont);
+                            decorationFont = IntPtr.Zero;
+                        }
                         SaveCompactAndReloadDocument(
                             ref document,
                             ref utf8Path,
                             nextCheckpointPath,
                             pageCount,
                             cancellationToken);
+                        if (decorationFontData is not null)
+                            decorationFont = LoadDecorationFont(document, decorationFontData);
                         TryDeleteFile(previousCheckpointPath);
                         previousCheckpointPath = nextCheckpointPath;
                         pagesSinceCheckpoint = 0;
@@ -861,6 +890,11 @@ public sealed class PdfExportService
                     "対象ページと元PDFの対応を確認してください。");
 
             progress?.Report(new PdfExportProgress("saving", 0, 0, "編集済みPDFを一時保存しています..."));
+            if (decorationFont != IntPtr.Zero)
+            {
+                NativeMethods.FPDFFont_Close(decorationFont);
+                decorationFont = IntPtr.Zero;
+            }
             SaveDocument(document, temporaryPath);
             NativeMethods.FPDF_CloseDocument(document);
             document = IntPtr.Zero;
@@ -909,6 +943,7 @@ public sealed class PdfExportService
         }
         finally
         {
+            if (decorationFont != IntPtr.Zero) NativeMethods.FPDFFont_Close(decorationFont);
             if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
             if (utf8Path != IntPtr.Zero) Marshal.FreeCoTaskMem(utf8Path);
             TryDeleteFile(previousCheckpointPath);
@@ -2326,6 +2361,82 @@ public sealed class PdfExportService
         !(region.IsAdded && region.IsDeleted) &&
         (region.IsDeleted || region.Output.IncludeInPdf);
 
+    private static bool AppliesToPage(PdfTextDecoration item, int pageNumber, int pageCount) =>
+        item.AppliesToPage(pageNumber, pageCount);
+
+    private static IntPtr LoadDecorationFont(IntPtr document, byte[] fontData)
+    {
+        var font = NativeMethods.FPDFText_LoadFont(document, fontData, (uint)fontData.Length, 2, 1);
+        if (font == IntPtr.Zero)
+            throw new InvalidDataException("同梱した日本語フォントをPDFに埋め込めませんでした。");
+        return font;
+    }
+
+    private static void ApplyTextDecoration(
+        IntPtr document, IntPtr page, IntPtr font, PdfTextDecoration decoration,
+        int pageNumber, int pageCount)
+    {
+        if (decoration.FontSizePoints is < 4 or > 144 ||
+            decoration.MarginPoints is < 0 or > 300 || decoration.Opacity is < 0 or > 1 ||
+            decoration.TextTemplate.Length > 512)
+            throw new InvalidDataException("ページ装飾の設定値が範囲外です。");
+        var text = decoration.TextForPage(pageNumber, pageCount);
+        if (string.IsNullOrWhiteSpace(text)) return;
+        var color = decoration.ColorHex.TrimStart('#');
+        if (color.Length != 6 || !int.TryParse(color, NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture, out var rgb))
+            throw new InvalidDataException("ページ装飾の色指定が不正です。");
+
+        var objectHandle = NativeMethods.FPDFPageObj_CreateTextObj(document, font, (float)decoration.FontSizePoints);
+        if (objectHandle == IntPtr.Zero)
+            throw new InvalidDataException("ページ装飾の文字オブジェクトを生成できませんでした。");
+        try
+        {
+            var unicode = Marshal.StringToCoTaskMemUni(text);
+            try
+            {
+                if (NativeMethods.FPDFText_SetText(objectHandle, unicode) == 0)
+                    throw new InvalidDataException("ページ装飾の文字を設定できませんでした。");
+            }
+            finally { Marshal.FreeCoTaskMem(unicode); }
+            if (NativeMethods.FPDFPageObj_SetFillColor(objectHandle,
+                    (uint)((rgb >> 16) & 0xff), (uint)((rgb >> 8) & 0xff), (uint)(rgb & 0xff),
+                    (uint)Math.Round(decoration.Opacity * 255)) == 0 ||
+                NativeMethods.FPDFPageObj_GetBounds(objectHandle, out var left, out var bottom,
+                    out var right, out var top) == 0)
+                throw new InvalidDataException("ページ装飾の位置または色を設定できませんでした。");
+
+            var pageWidth = NativeMethods.FPDF_GetPageWidthF(page);
+            var pageHeight = NativeMethods.FPDF_GetPageHeightF(page);
+            var margin = decoration.MarginPoints;
+            var textWidth = right - left;
+            var textHeight = top - bottom;
+            var position = decoration.PositionForPage(pageNumber);
+            var x = position switch
+            {
+                PdfTextDecorationPosition.TopLeft or PdfTextDecorationPosition.BottomLeft => margin,
+                PdfTextDecorationPosition.TopRight or PdfTextDecorationPosition.BottomRight => pageWidth - margin - textWidth,
+                _ => (pageWidth - textWidth) / 2d,
+            };
+            var y = position switch
+            {
+                PdfTextDecorationPosition.TopLeft or PdfTextDecorationPosition.TopCenter or PdfTextDecorationPosition.TopRight =>
+                    pageHeight - margin - textHeight,
+                PdfTextDecorationPosition.BottomLeft or PdfTextDecorationPosition.BottomCenter or PdfTextDecorationPosition.BottomRight => margin,
+                _ => (pageHeight - textHeight) / 2d,
+            };
+            if (x < 0 || y < 0 || x + textWidth > pageWidth || y + textHeight > pageHeight)
+                throw new InvalidDataException($"{pageNumber}ページのページ装飾が用紙からはみ出します。文字数・サイズ・余白を調整してください。");
+            NativeMethods.FPDFPageObj_Transform(objectHandle, 1, 0, 0, 1, x - left, y - bottom);
+            NativeMethods.FPDFPage_InsertObject(page, objectHandle);
+            objectHandle = IntPtr.Zero;
+        }
+        finally
+        {
+            if (objectHandle != IntPtr.Zero) NativeMethods.FPDFPageObj_Destroy(objectHandle);
+        }
+    }
+
     private static bool PageHasChanges(OcrPage page, IReadOnlyList<PdfRedaction>? redactions = null) =>
         page.ImageOptimization is { Enabled: true } ||
         page.TextRegions.Any(ShouldApplyToPdf) ||
@@ -3416,6 +3527,7 @@ public sealed class PdfExportService
         var candidates = new[]
         {
             configured,
+            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "qpdf", "bin", "qpdf.exe"),
             Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),
@@ -3447,7 +3559,7 @@ public sealed class PdfExportService
         if (qpdfPath is null)
             throw new InvalidDataException(
                 "画像最適化または墨消しの安全な仕上げに必要なqpdfが見つかりません。" +
-                "qpdf.exeと付属DLLがPDF Correctoriumの実行ファイルと同じフォルダーにあることを確認してください。");
+                "qpdf.exeと付属DLLが配布フォルダー内のcomponents\\qpdfにあることを確認してください。");
 
         var compactPath = pdfPath + ".qpdf";
         try
@@ -6550,6 +6662,8 @@ public sealed class PdfExportService
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFTextObj_GetTextRenderMode(IntPtr textObject);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFTextObj_SetTextRenderMode(IntPtr textObject, int renderMode);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFPageObj_CreateTextObj(IntPtr document, IntPtr font, float fontSize);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFText_LoadFont(IntPtr document, byte[] data, uint size, int fontType, int cid);
+        [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern void FPDFFont_Close(IntPtr font);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr FPDFPageObj_CreateNewRect(float x, float y, float width, float height);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPath_SetDrawMode(IntPtr path, int fillMode, int stroke);
         [DllImport(Pdfium, CallingConvention = CallingConvention.Cdecl)] internal static extern int FPDFPath_GetDrawMode(IntPtr path, out int fillMode, out int stroke);

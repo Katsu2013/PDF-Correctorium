@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -9,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using AvalonDock.Layout;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core;
@@ -68,6 +70,8 @@ public partial class MainWindow : Window
     private Point _marqueeStart;
     /// <summary>保存確認が完了し、次のClosingイベントで終了を許可するフラグです。</summary>
     private bool _allowClose;
+    /// <summary>Closingで開始した表示設定の書き込み待ちを繰り返さないためのフラグです。</summary>
+    private bool _closingAfterDisplaySettingsFlush;
     /// <summary>終了確認ダイアログの重複表示を防ぐフラグです。</summary>
     private bool _closePromptActive;
     /// <summary>しおりのドラッグ開始位置です。</summary>
@@ -113,9 +117,16 @@ public partial class MainWindow : Window
     // displaying a modal dialog. Normal application runs leave this unset.
     internal Func<MessageBoxResult>? ClosePromptOverride { get; set; }
 
-    public MainWindow()
+    public MainWindow(bool useAvalonDockDiagnosticLayout = false, string? diagnosticDirectory = null)
     {
-        var paths = ApplicationPathResolver.Resolve(AppContext.BaseDirectory);
+        _useAvalonDockDiagnosticLayout = useAvalonDockDiagnosticLayout;
+        var paths = diagnosticDirectory is null
+            ? ApplicationPathResolver.Resolve(AppContext.BaseDirectory)
+            : new ApplicationPaths(StorageMode.Portable,
+                Path.Combine(diagnosticDirectory, ".appstate", "config"),
+                Path.Combine(diagnosticDirectory, ".appstate", "logs"),
+                Path.Combine(diagnosticDirectory, ".appstate", "cache"),
+                Path.Combine(diagnosticDirectory, ".appstate", "workspaces"));
         ApplicationPathResolver.EnsureDirectories(paths);
         var startupSettings = new ApplicationSettingsService(paths).Load();
         LocalizationService.SetLanguage(startupSettings.UiLanguage);
@@ -135,6 +146,7 @@ public partial class MainWindow : Window
             new DiagnosticLog(paths.LogDirectory),
             paths,
             Close);
+        InitializeWorkspaceDocking();
         _lastZoomFactor = ViewModel.ZoomFactor;
         ViewModel.CommitPendingInputs = CommitPendingEditorBindings;
         PreviewKeyDown += (_, _) => ViewModel.NotifyUserActivity();
@@ -725,7 +737,8 @@ public partial class MainWindow : Window
     /// <summary>F6/Shift+F6で主要な作業領域を順方向／逆方向へ移動します。</summary>
     internal void MoveKeyboardPane(bool reverse)
     {
-        FrameworkElement[] panes = [MainToolbarPanel, KeyboardNavigationTabs, OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
+        FrameworkElement[] panes = [MainToolbarPanel, NavigationDockPane, BookmarkDockPane,
+            OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
         var index = Array.FindIndex(panes, pane => pane.IsKeyboardFocusWithin);
         if (index < 0 && reverse) index = 0;
         for (var step = 1; step <= panes.Length; step++)
@@ -1006,6 +1019,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PageTextDecorations_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasDocument) return;
+        var dialog = new PageTextDecorationsWindow(ViewModel.PageItems.Count, ViewModel.GetTextDecorations())
+        {
+            Owner = this,
+        };
+        if (dialog.ShowDialog() == true)
+            ViewModel.ApplyTextDecorations(dialog.ResultDecorations);
+    }
+
     private void LinkAreaAdd_OnClick(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.HasDocument || !ViewModel.HasPreview) return;
@@ -1141,22 +1165,22 @@ public partial class MainWindow : Window
     internal ApplicationSettings CaptureWorkspaceSettings()
     {
         var settings = ViewModel.CurrentApplicationSettings;
+        static double PaneWidth(LayoutAnchorable? anchorable, double fallback)
+        {
+            var width = (anchorable?.Parent as LayoutAnchorablePane)?.DockWidth;
+            return width is { IsAbsolute: true, Value: > 0 } ? width.Value.Value : fallback;
+        }
         return (settings with
         {
-            PageListWidth = settings.ShowPageListPanel && WorkspaceLayoutGrid.ColumnDefinitions[0].ActualWidth > 0
-                ? WorkspaceLayoutGrid.ColumnDefinitions[0].ActualWidth : settings.PageListWidth,
-            PropertiesPanelWidth = settings.ShowPropertiesPanel && WorkspaceLayoutGrid.ColumnDefinitions[4].ActualWidth > 0
-                ? WorkspaceLayoutGrid.ColumnDefinitions[4].ActualWidth : settings.PropertiesPanelWidth,
+            PageListWidth = PaneWidth(_avalonNavigation, settings.PageListWidth),
+            PropertiesPanelWidth = PaneWidth(_avalonProperties, settings.PropertiesPanelWidth),
         }).Normalize();
     }
 
     internal void RestoreWorkspaceWidthBindings()
     {
-        // GridSplitter can replace a one-way Width binding; reattach it when applying settings.
-        WorkspaceLayoutGrid.ColumnDefinitions[0].SetBinding(ColumnDefinition.WidthProperty,
-            new System.Windows.Data.Binding(nameof(MainWindowViewModel.PageListColumnWidth)));
-        WorkspaceLayoutGrid.ColumnDefinitions[4].SetBinding(ColumnDefinition.WidthProperty,
-            new System.Windows.Data.Binding(nameof(MainWindowViewModel.PropertiesPanelColumnWidth)));
+        // Width is assigned according to which pane occupies each side after docking.
+        SynchronizeWorkspaceDocking();
     }
 
     private void OverlayCanvas_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2429,6 +2453,12 @@ public partial class MainWindow : Window
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainWindowViewModel.CurrentApplicationSettings))
+        {
+            if (!_updatingAvalonSettings && HasChangedDockingSettings(ViewModel.CurrentApplicationSettings))
+                SynchronizeWorkspaceDocking();
+            return;
+        }
         if ((e.PropertyName == nameof(MainWindowViewModel.EditorMode) ||
              e.PropertyName == nameof(MainWindowViewModel.PreviewImage)) &&
             _isPickingRedactionColor && (!ViewModel.IsRedactionMode || !ViewModel.HasPreview))
@@ -2491,9 +2521,21 @@ public partial class MainWindow : Window
             ViewModel.ReleaseTransientResources();
             return;
         }
+        if (!_closingAfterDisplaySettingsFlush) CaptureAvalonDockingSettings();
+        if (!_closingAfterDisplaySettingsFlush && ViewModel.HasPendingDisplaySettingsSave)
+        {
+            // A quick close after a native drop must not abandon the asynchronous
+            // layout write and reopen with an older pane position.
+            e.Cancel = true;
+            await ViewModel.FlushDisplaySettingsAsync();
+            _closingAfterDisplaySettingsFlush = true;
+            _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.ApplicationIdle);
+            return;
+        }
         if (ViewModel.IsPdfExporting)
         {
             e.Cancel = true;
+            _closingAfterDisplaySettingsFlush = false;
             MessageBox.Show(
                 "PDFを生成・検証しています。完成ファイルを保護するため、処理が完了してから終了してください。",
                 "PDF Correctorium",
@@ -2514,6 +2556,7 @@ public partial class MainWindow : Window
         if (_closePromptActive)
         {
             e.Cancel = true;
+            _closingAfterDisplaySettingsFlush = false;
             return;
         }
 
@@ -2529,6 +2572,7 @@ public partial class MainWindow : Window
             if (choice == MessageBoxResult.Cancel)
             {
                 e.Cancel = true;
+                _closingAfterDisplaySettingsFlush = false;
                 return;
             }
 
@@ -2546,7 +2590,11 @@ public partial class MainWindow : Window
             // Saving is asynchronous. Cancel this close operation, then queue a
             // new one after the save succeeds and this handler has returned.
             e.Cancel = true;
-            if (!await ViewModel.SaveBeforeCloseAsync()) return;
+            if (!await ViewModel.SaveBeforeCloseAsync())
+            {
+                _closingAfterDisplaySettingsFlush = false;
+                return;
+            }
             _allowClose = true;
             _ = Dispatcher.BeginInvoke(new Action(Close), DispatcherPriority.ApplicationIdle);
         }

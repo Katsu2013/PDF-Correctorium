@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Correctorium | 完全無料・インストール不要のWindows向けPDF総合エディタ</title>
+  <meta name="description" content="商用も完全無料・インストール不要。二度と復元できない本物の墨消し、国会図書館NDLOCR連携による透明OCRテキスト精密校正、無劣化ページ結合ができるWindows向けPDF総合編集ツール。完全ローカル動作で機密書類も安心。">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #0284c7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- ナビゲーションバー -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+          PC
+        </div>
+        <span class="text-xl font-bold tracking-tight text-slate-900">PDF Correctorium</span>
+        <span class="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 rounded-full">ポータブル版</span>
+      </div>
+      <nav class="hidden md:flex items-center space-x-6 text-sm font-medium text-slate-600">
+        <a href="#features" class="hover:text-blue-600 transition">特長</a>
+        <a href="#security" class="hover:text-blue-600 transition">セキュリティ</a>
+        <a href="#comparison" class="hover:text-blue-600 transition">他ツール比較</a>
+        <a href="#faq" class="hover:text-blue-600 transition">よくある質問</a>
+        <a href="https://github.com/Katsu2013/PDF-Correctorium" target="_blank" class="hover:text-blue-600 transition flex items-center gap-1">
+          GitHub
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+      </nav>
+      <div>
+        <a href="#download" class="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm hover:shadow transition">
+          無料ダウンロード
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ヒーローセクション -->
+  <section class="relative pt-16 pb-20 overflow-hidden bg-gradient-to-b from-blue-50/70 to-slate-50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-100/80 text-blue-800 text-xs sm:text-sm font-semibold mb-6 border border-blue-200/60 shadow-xs">
+        <span class="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+        Windows 10 / 11 対応 (64bit) ・ 完全無料 (Apache 2.0)
+      </div>
+
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.15]">
+        商用も無料。インストール不要。<br>
+        <span class="gradient-text">「本物の墨消し」</span>と<span class="gradient-text">「国会図書館OCR校正」</span>ができる<br>高機能PDF総合エディタ
+      </h1>
+
+      <p class="mt-6 text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
+        黒く塗るだけでなく文字データそのものを消去する確実な墨消し、NDLOCR連携による透明OCRテキストの精密校正、画質劣化なしのページ整理を1本で。
+        完全ローカル動作だから、機密書類や個人情報も安心して処理できます。
+      </p>
+
+      <!-- ダウンロードCTA -->
+      <div id="download" class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip" class="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition flex items-center justify-center gap-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          最新版を無料ダウンロード (容量はリリースページに記載)
+        </a>
+        <a href="https://github.com/Katsu2013/PDF-Correctorium" target="_blank" class="w-full sm:w-auto px-6 py-4 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-base rounded-xl border border-slate-300 shadow-sm transition flex items-center justify-center gap-2">
+          GitHubで見る
+        </a>
+      </div>
+
+      <p class="mt-3 text-xs sm:text-sm text-slate-500">
+        バージョン: v1.0.0-dev.199 ｜ 解凍してすぐ使えるポータブル版（レジストリ使用なし・USBメモリ動作OK）
+      </p>
+
+      <!-- アプリ画面モックアップ -->
+      <div class="mt-12 relative rounded-2xl p-2 bg-slate-900/5 ring-1 ring-slate-900/10 shadow-2xl">
+        <div class="rounded-xl overflow-hidden bg-white border border-slate-200">
+          <img src="https://raw.githubusercontent.com/Katsu2013/PDF-Correctorium/main/outputs/PdfCorrectorium-Documentation/assets/svg/SCR-001_MainWindow_Wireframe-v1.0.0-dev165.svg" alt="PDF Correctorium メイン画面プレビュー" class="w-full h-auto">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3大特長セクション -->
+  <section id="features" class="py-20 bg-white border-t border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto mb-16">
+        <h2 class="text-xs sm:text-sm font-bold tracking-widest text-blue-600 uppercase">FEATURES</h2>
+        <p class="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900">
+          PDF Correctorium が選ばれる3つの理由
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- 特長 1: 本物の墨消し -->
+        <div class="bg-slate-50 rounded-2xl p-8 border border-slate-200 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-2xl mb-6 font-bold">
+              🛡️
+            </div>
+            <h3 class="text-xl font-bold text-slate-900 mb-3">
+              二度と復元できない「本物の墨消し」
+            </h3>
+            <p class="text-slate-600 text-sm leading-relaxed mb-4">
+              単に黒い四角形を上に重ねるソフトと違い、PDF内部の<strong>文字描画命令そのものを完全消去</strong>。コピペや文字検索で情報が漏洩する心配がありません。
+            </p>
+            <ul class="text-xs text-slate-600 space-y-2 mb-6">
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 文字選択・矩形・多角形・フリーハンド対応</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 周囲の文字や画像の鮮明さを保つベクター保持</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 出力後に文字が残っていないかの自動チェック機能</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 背景色に自然に合わせるスポイト機能</li>
+            </ul>
+          </div>
+          <div class="rounded-lg overflow-hidden border border-slate-200 bg-white">
+            <img src="https://raw.githubusercontent.com/Katsu2013/PDF-Correctorium/main/outputs/PdfCorrectorium-Documentation/assets/svg/SCR-013_Redaction-v1.0.0-dev165.svg" alt="墨消し機能" class="w-full h-auto">
+          </div>
+        </div>
+
+        <!-- 特長 2: OCR校正 -->
+        <div class="bg-slate-50 rounded-2xl p-8 border border-slate-200 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl mb-6 font-bold">
+              ✏️
+            </div>
+            <h3 class="text-xl font-bold text-slate-900 mb-3">
+              国会図書館OCR連携 & 精密校正
+            </h3>
+            <p class="text-slate-600 text-sm leading-relaxed mb-4">
+              スキャン文書の透明OCRテキストの誤認識、位置ズレ、文字ごとの間隔を視覚的に修正。国立国会図書館「NDLOCR-Lite」出力の取り込みにも対応。
+            </p>
+            <ul class="text-xs text-slate-600 space-y-2 mb-6">
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 誤認識テキストの打ち直しと文字枠の微調整</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 日本語の縦書き・横書き混在と読み順の整理</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 未確認の文字をテンポよく確認する「校正・確認モード」</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 書類全体の一括検索・置換 & 品質診断</li>
+            </ul>
+          </div>
+          <div class="rounded-lg overflow-hidden border border-slate-200 bg-white">
+            <img src="https://raw.githubusercontent.com/Katsu2013/PDF-Correctorium/main/outputs/PdfCorrectorium-Documentation/assets/svg/SCR-009_ReviewMode_Wireframe-v1.0.0-dev165.svg" alt="校正・確認モード" class="w-full h-auto">
+          </div>
+        </div>
+
+        <!-- 特長 3: ページ整理・しおり編集 -->
+        <div class="bg-slate-50 rounded-2xl p-8 border border-slate-200 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mb-6 font-bold">
+              📑
+            </div>
+            <h3 class="text-xl font-bold text-slate-900 mb-3">
+              画質無劣化のページ整理 & しおり
+            </h3>
+            <p class="text-slate-600 text-sm leading-relaxed mb-4">
+              サムネイルのマウス操作でページの並べ替え・回転・結合。写真やイラストを再圧縮しないため、元の画質を100%保ったまま新しいPDFを出力できます。
+            </p>
+            <ul class="text-xs text-slate-600 space-y-2 mb-6">
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> ドラッグ＆ドロップによる直感的な並べ替え・回転</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 他のPDFファイルから必要なページを差し込み結合</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> クリックで飛べる階層目次（しおり）の作成・編集</li>
+              <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 元データを上書きしない安心のプロジェクト保存</li>
+            </ul>
+          </div>
+          <div class="rounded-lg p-6 bg-white border border-slate-200 flex flex-col justify-center items-center text-center">
+            <span class="text-4xl mb-2">⚡</span>
+            <span class="font-bold text-slate-800 text-sm">元データを壊さない安全設計</span>
+            <span class="text-xs text-slate-500 mt-1">作業履歴は .pdfocrproj に保存。<br>いつでも何度でも元に戻せます。</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- セキュリティセクション -->
+  <section id="security" class="py-16 bg-slate-900 text-white">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500/20 text-blue-400 text-2xl mb-4 border border-blue-500/30">
+        🔒
+      </div>
+      <h2 class="text-3xl font-extrabold mb-4">
+        なぜ「完全ローカル・オフライン」なのか？
+      </h2>
+      <p class="text-slate-300 leading-relaxed max-w-2xl mx-auto mb-8 text-sm sm:text-base">
+        Web上のオンラインPDF編集サービスは手軽ですが、<strong>「大切な機密書類、契約書、顧客情報、医療記録が外部サーバーにアップロードされる」</strong>という重大な情報漏洩リスクを抱えています。<br><br>
+        PDF Correctorium は<strong>すべての処理をお手元のPC内だけで完結</strong>します。インターネット通信を行わないため、自治体・官公庁・企業・法務・医療機関などの厳格なセキュリティ基準でも安心してお使いいただけます。
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+        <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
+          <div class="text-blue-400 font-bold text-sm mb-1">クラウド送信ゼロ</div>
+          <p class="text-xs text-slate-400">PDFファイルやテキストデータがお使いのPCから外に出ることは一切ありません。</p>
+        </div>
+        <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
+          <div class="text-blue-400 font-bold text-sm mb-1">容量・回数制限なし</div>
+          <p class="text-xs text-slate-400">オンラインツールのような「1日○回まで」「○MBまで」といった制限や待ち時間がありません。</p>
+        </div>
+        <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
+          <div class="text-blue-400 font-bold text-sm mb-1">完全ポータブル</div>
+          <p class="text-xs text-slate-400">管理者権限（インストール権限）のない社用PCでも、ZIPを展開するだけで利用できます。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 他ツール比較表 -->
+  <section id="comparison" class="py-20 bg-slate-50 border-t border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-2xl mx-auto mb-12">
+        <h2 class="text-xs sm:text-sm font-bold tracking-widest text-blue-600 uppercase">COMPARISON</h2>
+        <p class="mt-2 text-3xl font-extrabold text-slate-900">
+          他ツールとの機能比較
+        </p>
+      </div>
+
+      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-100/80 text-slate-700 border-b border-slate-200">
+              <th class="py-4 px-6 font-semibold">比較項目</th>
+              <th class="py-4 px-6 font-semibold">市販有料ソフト (Acrobat等)</th>
+              <th class="py-4 px-6 font-semibold">Webオンラインツール</th>
+              <th class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">PDF Correctorium</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 text-slate-600">
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">利用料金</td>
+              <td class="py-4 px-6">年間2〜3万円（高額サブスク）</td>
+              <td class="py-4 px-6">無料枠あり（有料誘導あり）</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">完全無料 (商用も無料)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">処理場所・セキュリティ</td>
+              <td class="py-4 px-6">ローカル</td>
+              <td class="py-4 px-6 text-red-500 font-medium">⚠️ 外部サーバーに送信</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">🔒 完全ローカル（外部通信なし）</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">本物の墨消し（文字抹消）</td>
+              <td class="py-4 px-6">高額なPro版のみ対応</td>
+              <td class="py-4 px-6 text-red-500">❌ 単なる黒塗り（裏文字残存）</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">🛡️ 文字コード完全抹消＋自動検証</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">透明OCRテキストの精密校正</td>
+              <td class="py-4 px-6">大まかな文字修正のみ</td>
+              <td class="py-4 px-6 text-slate-400">非対応</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">✏️ 枠位置・字幅・縦書き・読み順対応</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">国会図書館 NDLOCR-Lite 連携</td>
+              <td class="py-4 px-6 text-slate-400">非対応</td>
+              <td class="py-4 px-6 text-slate-400">非対応</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">🇯🇵 公式対応 (JSON/XML取込)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-medium text-slate-900">導入の容易さ</td>
+              <td class="py-4 px-6">インストーラー（要管理者権限）</td>
+              <td class="py-4 px-6">ブラウザのみ（要ネット環境）</td>
+              <td class="py-4 px-6 font-bold text-blue-600 bg-blue-50/50">🚀 完全ポータブル（解凍して即起動）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- クイックスタートガイド -->
+  <section class="py-16 bg-white border-t border-slate-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-extrabold text-slate-900">
+          今すぐ使える3ステップ
+        </h2>
+        <p class="mt-2 text-slate-600 text-sm">
+          インストール作業は不要。ダウンロードから数秒で使い始められます。
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="p-6 rounded-xl border border-slate-200 bg-slate-50 text-center">
+          <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center mx-auto mb-4">1</div>
+          <h3 class="font-bold text-slate-900 mb-2">ZIPをダウンロード</h3>
+          <p class="text-xs text-slate-600">最新の配布ZIP（容量はリリースページに記載）をパソコンにダウンロードします。</p>
+        </div>
+        <div class="p-6 rounded-xl border border-slate-200 bg-slate-50 text-center">
+          <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center mx-auto mb-4">2</div>
+          <h3 class="font-bold text-slate-900 mb-2">お好きなフォルダに解凍</h3>
+          <p class="text-xs text-slate-600">ダウンロードしたZIPを右クリックして「すべて展開」します。USBメモリ上でもOKです。</p>
+        </div>
+        <div class="p-6 rounded-xl border border-slate-200 bg-slate-50 text-center">
+          <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center mx-auto mb-4">3</div>
+          <h3 class="font-bold text-slate-900 mb-2">EXEをクリックして起動</h3>
+          <p class="text-xs text-slate-600">フォルダー内の「PdfCorrectorium.exe」を実行すれば、すぐに編集作業を開始できます！</p>
+        </div>
+      </div>
+
+      <div class="mt-10 text-center">
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip" class="inline-flex items-center gap-2 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          最新版をダウンロードする (無料)
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- よくある質問 (FAQ) -->
+  <section id="faq" class="py-20 bg-slate-50 border-t border-slate-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-12">
+        <h2 class="text-xs sm:text-sm font-bold tracking-widest text-blue-600 uppercase">FAQ</h2>
+        <p class="mt-2 text-3xl font-extrabold text-slate-900">よくあるご質問</p>
+      </div>
+
+      <div class="space-y-4">
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+          <h3 class="font-bold text-slate-900 text-base mb-2">Q. 本当に商用利用も含めて無料ですか？</h3>
+          <p class="text-slate-600 text-sm leading-relaxed">
+            はい、本ソフトウェアはオープンソースの <strong>Apache License 2.0</strong> のもとで配布されており、個人の私的利用はもちろん、企業・法人・官公庁での商用利用も含めて完全無料でご利用いただけます。追加料金や広告表示も一切ありません。
+          </p>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+          <h3 class="font-bold text-slate-900 text-base mb-2">Q. 会社のPCに管理者権限（インストール権限）がありませんが使えますか？</h3>
+          <p class="text-slate-600 text-sm leading-relaxed">
+            はい、ご利用いただけます。本アプリはポータブル設計となっており、インストーラーの実行やレジストリへの書き込みを行いません。ZIPファイルを解凍するだけで、お好みのフォルダーやUSBメモリから即座に起動できます。
+          </p>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+          <h3 class="font-bold text-slate-900 text-base mb-2">Q. 機密情報を含む書類を読み込んでも情報漏洩の心配はありませんか？</h3>
+          <p class="text-slate-600 text-sm leading-relaxed">
+            安心してお使いいただけます。PDF Correctorium は完全なローカルデスクトップアプリケーションであり、処理内容やPDFファイルを外部のサーバーやクラウドへ一切送信しません。インターネットに接続されていないオフライン環境でもすべての機能が動作します。
+          </p>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+          <h3 class="font-bold text-slate-900 text-base mb-2">Q. 起動時に「WindowsによってPCが保護されました」と表示されます</h3>
+          <p class="text-slate-600 text-sm leading-relaxed">
+            公開直後の個人開発ソフトウェアであるため、Windows SmartScreen（保護フィルター）が表示される場合があります。マルウェア等の有害なプログラムは含まれておりませんので、「詳細情報」をクリックし、「実行」ボタンを押して起動してください。
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- フッター -->
+  <footer class="bg-slate-900 text-slate-400 py-12 border-t border-slate-800 text-sm">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-base">
+          PC
+        </div>
+        <span class="text-white font-bold text-base">PDF Correctorium</span>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-center gap-6 text-xs sm:text-sm">
+        <a href="https://github.com/Katsu2013/PDF-Correctorium" target="_blank" class="hover:text-white transition">GitHub リポジトリ</a>
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases" target="_blank" class="hover:text-white transition">リリース一覧</a>
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/wiki" target="_blank" class="hover:text-white transition">公式Wikiマニュアル</a>
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/blob/main/LICENSE" target="_blank" class="hover:text-white transition">ライセンス (Apache 2.0)</a>
+      </div>
+
+      <div class="text-xs text-slate-500 text-center sm:text-right">
+        Designed with AI Pair Programming (ChatGPT Codex).<br>
+        &copy; 2026 Katsu2013 / PDF-Correctorium Contributors.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -9,6 +9,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- AvalonDock's Japanese UI resources are sufficient; other languages fall back
+         to the package's neutral resources instead of creating 16 satellite folders. -->
+    <SatelliteResourceLanguages>ja</SatelliteResourceLanguages>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>PdfCorrectorium</AssemblyName>
     <RootNamespace>PdfCorrectorium.App</RootNamespace>
@@ -26,6 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="bblanchon.PDFium.Win32" Version="154.0.8035" />
+    <PackageReference Include="Dirkster.AvalonDock" Version="4.74.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -50,8 +54,17 @@
              Link="Icons\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
     <None Update="portable.marker" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\AvalonDock\LICENSE"
+             Link="licenses\AvalonDock\LICENSE"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\NotoSansJP.ttf"
+             Link="components\fonts\NotoSansJP.ttf"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\OFL.txt"
+             Link="licenses\NotoSansJP\OFL.txt"
+             CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\tools\qpdf\bin\**\*"
-          Link="%(RecursiveDir)%(Filename)%(Extension)"
+          Link="components\qpdf\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           Condition="Exists('..\..\tools\qpdf\bin\qpdf.exe')" />
     <None Include="..\..\tools\qpdf\licenses\**\*"

@@ -1,6 +1,25 @@
 # Third-party notices
 
-PdfCorrectorium uses the following third-party component in the development build.
+PdfCorrectorium uses the following third-party components in the development build.
+
+## Noto Sans JP
+
+- Purpose: Japanese text for page numbers, headers, footers, and watermarks in exported PDFs
+- License: SIL Open Font License 1.1
+- Project: https://github.com/google/fonts/tree/main/ofl/notosansjp
+- Source revision: `23e54b51ddffbc7713c583748e3bd86f62b1fa4a`
+
+The font is bundled at `components/fonts/NotoSansJP.ttf` in the portable build.
+The license text is included at `licenses/NotoSansJP/OFL.txt`.
+
+## Dirkster.AvalonDock 4.74.1
+
+- Purpose: experimental WPF docking comparison mode for the navigation and properties panes
+- License: Microsoft Public License (Ms-PL)
+- Project: https://github.com/Dirkster99/AvalonDock
+
+The unmodified assembly is used only when the AvalonDock preview mode is selected.
+Its full license text is included under `licenses/AvalonDock/LICENSE` in the repository and portable build.
 
 ## bblanchon.PDFium.Win32 154.0.8035
 
