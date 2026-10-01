@@ -1,6 +1,22 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.200
+## Current repository snapshot: v1.0.0-dev.202
+
+- Includes the progressive document-loading changes described under dev.201 below. Persistence/recent-file diagnostics now wait for editing readiness after initial preview instead of editing a deliberately disabled, still-loading document.
+- Source changes made after the dev.201 portable build require this new revision; the dev.201 build remains historical and is not the handoff artifact.
+- Project format remains 1.10, minimum reader dev.200. Link alignment/geometry-lock specifications await user choices and remain unimplemented.
+- Verification: Release solution build passed with 0 warnings/errors; 33 contract tests passed; source/published versioning passed 17/18 checks. Packaged link/loading 58 checks, persistence 61, recent files 76, file launch 80, document UI 206, keyboard 2,475, organization and smoke passed. Title/About, project-manifest application version, distribution label `1.0.0-dev.202` and four-part executable/assembly `1.0.0.202` agree. Build: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.202-win-x64-20261001-214815`, fingerprint `EF1F228D1EDDC227B55B31AB233CC46F01C7B694BCC875FB532561C1930B783D`. Progressive-loading screenshots were inspected. Large real-file speed ratios and manual pointer interaction are unverified. See docs/releases/v1.0.0-dev.202.md; no GitHub publication is implied.
+
+## Previous repository snapshot: v1.0.0-dev.201
+
+- Prioritize the initial page preview; source-link discovery and input-PDF inspection continue in cancellable document-scoped background work. Browsing remains available during discovery, and editing becomes available once link metadata is ready, without waiting for font/security notices.
+- Initialized projects reuse their saved links and read coordinate metadata only. Large project JSON/thumbnail-cache parsing runs off the UI thread. Link destinations resolve through stable page IDs without rendering the destination's OCR/image solely to create a link.
+- Full-document native property/font inspection has its own resource-limited worker, separate from current-page and neighbor/thumbnail workers. Workers shut down on application exit.
+- Saving/exporting/structural changes wait for required discovery/inspection; auto-save skips pending inspection. Failed link imports retain a usable preview, show the error, and block incomplete saves/edits. Document replacement/closing cancels obsolete work and pending snapshots; stale links/notices cannot enter another document.
+- Project data format remains 1.10, minimum compatible reader dev.200: this revision does not add persistent fields. Link alignment and geometry-lock behavior are still awaiting user choices and are not part of this snapshot.
+- Intermediate verification: source and packaged link diagnostics 57 checks, document UI 206 checks, keyboard 2,475 checks and organization passed; contracts 33 checks, source/published versioning 17/18 checks passed. A supplementary persistence diagnostic edited before metadata readiness and failed its Undo availability assertion; dev.202 corrects that diagnostic timing. See docs/releases/v1.0.0-dev.201.md. This build was not released.
+
+## Previous repository snapshot: v1.0.0-dev.200
 
 - Added a dedicated link-editing mode, independent link-frame visibility, a page-local list, selection, destination editing, deletion, Ctrl-click navigation, rectangle movement/resize and Undo/Redo. Outside link mode, link frames do not intercept OCR editing.
 - Added glyph-based links for visible native text and edited transparent OCR. Multiline selections are grouped as one editable link but exported as separate standard link annotations, leaving intervening whitespace nonclickable. Shared text-selection geometry is used by links and redaction.

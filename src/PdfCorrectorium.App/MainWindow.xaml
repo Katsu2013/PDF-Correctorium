@@ -412,7 +412,7 @@
                 <Separator />
                 <MenuItem Header="終了(_X)" Command="{Binding ExitCommand}"  AutomationProperties.AccessKey="Alt+X"/>
             </MenuItem>
-            <MenuItem Header="編集(_E)" AutomationProperties.AccessKey="Alt+E">
+            <MenuItem Header="編集(_E)" IsEnabled="{Binding CanEditDocument}" AutomationProperties.AccessKey="Alt+E">
                 <MenuItem Header="元に戻す(_U)" InputGestureText="Ctrl+Z" Command="{Binding UndoCommand}"  AutomationProperties.AccessKey="Alt+U"/>
                 <MenuItem Header="やり直す(_R)" InputGestureText="Ctrl+Y" Command="{Binding RedoCommand}"  AutomationProperties.AccessKey="Alt+R"/>
                 <Separator />
@@ -482,7 +482,7 @@
                 <MenuItem Header="しおりをインポート...(_I)" Command="{Binding ImportBookmarksCommand}"  AutomationProperties.AccessKey="Alt+I"/>
                 <MenuItem Header="しおりをエクスポート...(_E)" Command="{Binding ExportBookmarksCommand}"  AutomationProperties.AccessKey="Alt+E"/>
             </MenuItem>
-            <MenuItem x:Name="OcrMenu" Header="OCR(_O)" IsEnabled="{Binding HasDocument}">
+            <MenuItem x:Name="OcrMenu" Header="OCR(_O)" IsEnabled="{Binding CanEditDocument}">
                 <MenuItem Header="透明テキスト領域を追加(_A)"
                           IsEnabled="{Binding CanAddOcrRegion}"
                           IsCheckable="True"
@@ -501,7 +501,7 @@
                 <MenuItem Header="OCR品質の異常候補...(_E)"
                           Click="OcrQualityAnalysisMenuItem_OnClick" />
             </MenuItem>
-            <MenuItem x:Name="PageMenu" Header="ページ(_P)" IsEnabled="{Binding HasDocument}">
+            <MenuItem x:Name="PageMenu" Header="ページ(_P)" IsEnabled="{Binding CanEditDocument}">
                 <MenuItem Header="ページを抽出...(_X)" Command="{Binding ExtractPagesCommand}"
                           ToolTip="指定ページだけを、現在の編集内容を反映した別PDFへ保存" AutomationProperties.AccessKey="Alt+X"/>
                 <MenuItem Header="PDFを分割...(_S)" Command="{Binding SplitPdfCommand}"
@@ -1991,7 +1991,9 @@
 
             <Border x:Name="PropertiesDockPane" Grid.Column="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0">
                 <DockPanel>
-                <ScrollViewer x:Name="KeyboardPropertiesPane" VerticalScrollBarVisibility="Auto" Padding="12,8" Focusable="False">
+                <TextBlock DockPanel.Dock="Top" Text="{Binding DocumentLoadingSummary}" TextWrapping="Wrap" Margin="8"
+                           Visibility="{Binding NeedsDocumentLoadingNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ScrollViewer x:Name="KeyboardPropertiesPane" IsEnabled="{Binding CanEditDocument}" VerticalScrollBarVisibility="Auto" Padding="12,8" Focusable="False">
                     <StackPanel>
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>

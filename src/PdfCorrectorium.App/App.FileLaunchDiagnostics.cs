@@ -38,6 +38,8 @@ public partial class App
             window.DataContext = viewModel;
             var errors = new List<string>();
             viewModel.ErrorDialogOverride = (message, error) => errors.Add(message + " " + error.Message);
+            // A non-interactive missing-source fixture must decline relinking, not open a modal picker.
+            viewModel.SourcePdfSelectionOverride = _ => null;
             var success = await OpenStartupFileAsync(window, arguments[..optionIndex]);
             var report = new StartupFileTestResult(success, viewModel.HasDocument, viewModel.HasPreview,
                 viewModel.PageItems.Count, viewModel.SelectedPage?.PageNumber, viewModel.SourcePdfPath,

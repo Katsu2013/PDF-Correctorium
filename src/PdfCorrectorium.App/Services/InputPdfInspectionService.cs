@@ -25,7 +25,7 @@ internal static class InputPdfInspectionService
     public static async Task<IReadOnlyList<PdfInputIssue>> InspectAsync(string pdfPath, CancellationToken cancellationToken)
     {
         var issues = new List<PdfInputIssue>();
-        var properties = await PdfDocumentPropertiesService.ReadAsync(pdfPath, cancellationToken);
+        var properties = await PdfDocumentPropertiesService.ReadAsync(pdfPath, cancellationToken, useInspectionWorker: true);
         if (!string.IsNullOrWhiteSpace(properties.ErrorMessage))
             issues.Add(new("properties.partial", PdfInputIssueSeverity.Warning, "PDF情報の一部を取得できません", properties.ErrorMessage, "構造"));
         if (!properties.SecurityMethodText.Contains("なし", StringComparison.OrdinalIgnoreCase))

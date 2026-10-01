@@ -23,8 +23,8 @@ public sealed partial class MainWindowViewModel
 
     public bool IsReviewMode => EditorMode == EditorInteractionMode.Review;
     // This is a temporary interaction restriction, not a change to the saved geometry locks.
-    public bool CanEditGeometry => IsOcrEditMode || IsReadingOrderMode;
-    public bool CanAddOcrRegion => CanUsePreview && IsOcrEditMode;
+    public bool CanEditGeometry => CanEditDocument && (IsOcrEditMode || IsReadingOrderMode);
+    public bool CanAddOcrRegion => CanEditDocument && CanUsePreview && IsOcrEditMode;
     public bool CanEditSelectedCharacterAdvance => CanEditGeometry && SelectedOverlay?.HasUnlockedSelectedCharacters == true;
     public bool IsReviewNavigating => _reviewNavigationCancellation is not null;
     public ObservableCollection<OverlayRegionViewModel> ReviewItems { get; } = [];

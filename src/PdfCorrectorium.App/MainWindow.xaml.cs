@@ -997,7 +997,7 @@ public partial class MainWindow : Window
 
     private void CommentsAndTags_OnClick(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasDocument) return;
+        if (!ViewModel.CanEditDocument) return;
         CommitPendingEditorBindings();
         var dialog = new ProjectCommentsWindow(ViewModel.GetCurrentCommentTarget(), ViewModel.GetComments(), ViewModel.GetTags()) { Owner = this };
         if (dialog.ShowDialog() == true)
@@ -1023,7 +1023,7 @@ public partial class MainWindow : Window
 
     private void PageTextDecorations_OnClick(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasDocument) return;
+        if (!ViewModel.CanEditDocument) return;
         var dialog = new PageTextDecorationsWindow(ViewModel.PageItems.Count, ViewModel.GetTextDecorations())
         {
             Owner = this,
@@ -1545,6 +1545,7 @@ public partial class MainWindow : Window
 
     private void PreviewPageHost_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (!ViewModel.CanEditDocument) return;
         if (ViewModel.IsLinkEditMode)
         {
             if (ViewModel.LinkInputModeIndex > 0)

@@ -316,6 +316,7 @@ public partial class App : Application
     {
         PdfNativeWorkerClient.Shared.Shutdown();
         PdfNativeWorkerClient.Background.Shutdown();
+        PdfNativeWorkerClient.Inspection.Shutdown();
         _diagnostics?.Write("shutdown", $"Exit code: {e.ApplicationExitCode}");
         base.OnExit(e);
     }

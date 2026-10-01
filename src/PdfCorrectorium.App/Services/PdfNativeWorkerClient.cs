@@ -20,6 +20,8 @@ internal sealed class PdfNativeWorkerClient
     /// process so queued background rendering cannot delay an explicit page move.
     /// </summary>
     public static PdfNativeWorkerClient Background { get; } = new();
+    /// <summary>Whole-document font/property inspection never queues ahead of page or thumbnail rendering.</summary>
+    public static PdfNativeWorkerClient Inspection { get; } = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly StringBuilder _standardError = new();

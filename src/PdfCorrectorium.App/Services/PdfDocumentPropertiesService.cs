@@ -18,12 +18,15 @@ internal static class PdfDocumentPropertiesService
     /// </summary>
     /// <param name="pdfPath">読み取るPDFファイルの絶対パスです。</param>
     /// <param name="cancellationToken">読み取りを中止するためのトークンです。</param>
+    /// <param name="useInspectionWorker">全ページの自動検査を閲覧用ワーカーから分離します。</param>
     /// <returns>画面表示用に整形した文書情報です。</returns>
     public static Task<PdfDocumentPropertiesInfo> ReadAsync(
         string pdfPath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useInspectionWorker = false)
     {
-        return PdfNativeWorkerClient.Shared.ReadPropertiesAsync(pdfPath, cancellationToken);
+        var worker = useInspectionWorker ? PdfNativeWorkerClient.Inspection : PdfNativeWorkerClient.Shared;
+        return worker.ReadPropertiesAsync(pdfPath, cancellationToken);
     }
 
     /// <summary>

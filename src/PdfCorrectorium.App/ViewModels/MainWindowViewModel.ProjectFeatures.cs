@@ -43,7 +43,7 @@ public sealed partial class MainWindowViewModel
         }
     }
     public bool HasSelectedLinkArea => SelectedLinkArea is not null;
-    public bool CanEditLinkSelection => (HasSelectedOverlay || HasSelectedLinkArea) &&
+    public bool CanEditLinkSelection => CanEditDocument && (HasSelectedOverlay || HasSelectedLinkArea) &&
         GetSelectedInternalLink()?.UnsupportedAction is null;
     public bool CanNavigateInternalLinkBack => _internalLinkBackStack.Count > 0;
     public bool CanNavigateInternalLinkForward => _internalLinkForwardStack.Count > 0;
@@ -58,13 +58,14 @@ public sealed partial class MainWindowViewModel
         };
     }
 
-    private async Task InspectInputPdfAsync(string pdfPath)
+    private async Task InspectInputPdfAsync(string pdfPath, CancellationToken cancellationToken, Func<bool> isCurrent)
     {
-        InputPdfIssues.Clear();
         try
         {
-            foreach (var issue in await InputPdfInspectionService.InspectAsync(pdfPath, CancellationToken.None))
-                InputPdfIssues.Add(issue);
+            var issues = await Task.Run(() => InputPdfInspectionService.InspectAsync(pdfPath, cancellationToken), cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!isCurrent()) return;
+            foreach (var issue in issues) InputPdfIssues.Add(issue);
             if (_unsupportedSourceLinkActions > 0)
                 InputPdfIssues.Add(new PdfInputIssue(
                     "links.unsupported_actions", PdfInputIssueSeverity.Critical,
@@ -72,8 +73,10 @@ public sealed partial class MainWindowViewModel
                     $"{_unsupportedSourceLinkActions}件のリンクに未対応のアクションや解決できない移動先があります。リンク編集の一覧で理由を確認できます。アプリ内では実行しません。",
                     "アクション"));
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
+            if (!isCurrent()) return;
             InputPdfIssues.Add(new PdfInputIssue(
                 "inspection.failed",
                 PdfInputIssueSeverity.Warning,
@@ -145,14 +148,13 @@ public sealed partial class MainWindowViewModel
         string description,
         string? externalUri = null)
     {
-        if (_project is null || SelectedPage is null || SelectedOverlay is not { IsDeleted: false } region ||
+        if (!CanEditDocument || _project is null || SelectedPage is null || SelectedOverlay is not { IsDeleted: false } region ||
             (string.IsNullOrWhiteSpace(externalUri) && (destinationPageNumber < 1 || destinationPageNumber > PageItems.Count))) return null;
-        if (string.IsNullOrWhiteSpace(externalUri))
-            await EnsurePageOverlaysLoadedForSearchAsync(destinationPageNumber);
+        await EnsureDocumentMetadataAsync(includeInspection: false);
         SynchronizeProjectPages();
         var sourcePage = _project.Pages.FirstOrDefault(page => page.PageNumber == SelectedPage.PageNumber);
         var destinationPage = string.IsNullOrWhiteSpace(externalUri)
-            ? _project.Pages.FirstOrDefault(page => page.PageNumber == destinationPageNumber)
+            ? _project.PageSequence.ElementAtOrDefault(destinationPageNumber - 1)
             : null;
         if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
         var before = CaptureProjectAnnotationSnapshot();
@@ -163,12 +165,12 @@ public sealed partial class MainWindowViewModel
             Id = existing?.Id ?? Guid.NewGuid(),
             SourcePageId = sourcePage.Id,
             SourceRegionId = region.Id,
-            DestinationPageId = destinationPage?.Id ?? Guid.Empty,
+            DestinationPageId = destinationPage?.PageId ?? Guid.Empty,
             ExternalUri = NormalizeExternalUri(externalUri),
             DestinationZoomPercent = zoomPercent,
-            DestinationPosition = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationPosition : null,
-            DestinationViewType = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationViewType : null,
-            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.Id ? UpdatedDestinationParameters(existing, zoomPercent) : [],
+            DestinationPosition = existing?.DestinationPageId == destinationPage?.PageId ? existing?.DestinationPosition : null,
+            DestinationViewType = existing?.DestinationPageId == destinationPage?.PageId ? existing?.DestinationViewType : null,
+            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.PageId ? UpdatedDestinationParameters(existing, zoomPercent) : [],
             Description = description.Trim(),
             IsEnabled = true,
             SourceAnnotationReference = existing?.SourceAnnotationReference,
@@ -192,16 +194,15 @@ public sealed partial class MainWindowViewModel
         string? externalUri,
         IReadOnlyList<Rect>? textAreas = null)
     {
-        if (_project is null || SelectedPage is null ||
+        if (!CanEditDocument || _project is null || SelectedPage is null ||
             !_pageMetrics.TryGetValue(SelectedPage.PageNumber, out var metrics) ||
             previewBounds.Width < 4 || previewBounds.Height < 4 ||
             (string.IsNullOrWhiteSpace(externalUri) && (destinationPageNumber < 1 || destinationPageNumber > PageItems.Count))) return null;
-        if (string.IsNullOrWhiteSpace(externalUri))
-            await EnsurePageOverlaysLoadedForSearchAsync(destinationPageNumber);
+        await EnsureDocumentMetadataAsync(includeInspection: false);
         SynchronizeProjectPages();
         var sourcePage = _project.Pages.FirstOrDefault(page => page.PageNumber == SelectedPage.PageNumber);
         var destinationPage = string.IsNullOrWhiteSpace(externalUri)
-            ? _project.Pages.FirstOrDefault(page => page.PageNumber == destinationPageNumber)
+            ? _project.PageSequence.ElementAtOrDefault(destinationPageNumber - 1)
             : null;
         if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
         var before = CaptureProjectAnnotationSnapshot();
@@ -216,7 +217,7 @@ public sealed partial class MainWindowViewModel
             SourceAreas = textAreas is not null
                 ? textAreas.Select(area => LinkFromPreview(area, metrics, SelectedPage.PageNumber)).ToArray()
                 : existing?.SourceAreas ?? [],
-            DestinationPageId = destinationPage?.Id ?? Guid.Empty,
+            DestinationPageId = destinationPage?.PageId ?? Guid.Empty,
             ExternalUri = NormalizeExternalUri(externalUri),
             DestinationZoomPercent = zoomPercent,
             Description = description.Trim(),
@@ -224,9 +225,9 @@ public sealed partial class MainWindowViewModel
             SourceAnnotationReference = existing?.SourceAnnotationReference,
             OriginalSourceBounds = existing?.OriginalSourceBounds,
             IsModified = existing?.SourceAnnotationReference is not null,
-            DestinationPosition = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationPosition : null,
-            DestinationViewType = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationViewType : null,
-            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.Id ? UpdatedDestinationParameters(existing, zoomPercent) : [],
+            DestinationPosition = existing?.DestinationPageId == destinationPage?.PageId ? existing?.DestinationPosition : null,
+            DestinationViewType = existing?.DestinationPageId == destinationPage?.PageId ? existing?.DestinationViewType : null,
+            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.PageId ? UpdatedDestinationParameters(existing, zoomPercent) : [],
         };
         _project = _project with
         {
@@ -239,7 +240,7 @@ public sealed partial class MainWindowViewModel
 
     public void DeleteSelectedInternalLink()
     {
-        if (_project is null || FindSelectedInternalLink() is not { UnsupportedAction: null } link) return;
+        if (!CanEditDocument || _project is null || FindSelectedInternalLink() is not { UnsupportedAction: null } link) return;
         var before = CaptureProjectAnnotationSnapshot();
         _project = _project with
         {

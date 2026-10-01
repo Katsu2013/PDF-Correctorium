@@ -84,6 +84,75 @@ public partial class App
             Check(scanned.Links.Single(link => link.UnsupportedAction is not null).UnsupportedAction == "/JavaScript",
                 "JavaScript is classified as unsupported without execution.");
 
+            var scanGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            vm.DocumentMetadataScanOverride = async (path, sequence, token, coordinatesOnly) =>
+            {
+                await scanGate.Task.WaitAsync(token);
+                return await PdfSourceLinkService.ReadAsync(path, sequence, token, coordinatesOnly);
+            };
+            await vm.LoadPdfPreviewForDiagnosticsAsync(fixture);
+            Check(vm.HasDocument && vm.CanUsePreview && vm.IsDocumentMetadataLoading && !vm.CanEditDocument,
+                "First-page preview is available before delayed metadata, without enabling premature edits.");
+            await LayoutAsync(); Snapshot("00-progressive-loading");
+            Check(await vm.CreateLinkAreaAsync(new Rect(10, 10, 100, 30), 2, null, "premature", null) is null &&
+                vm.ProjectForDiagnostics!.InternalLinks.Count == 0,
+                "Link creation cannot bypass the pending-metadata interaction guard.");
+            await vm.SelectLinkPageAsync(2, Guid.Empty);
+            Check(vm.SelectedPage?.PageNumber == 2 && vm.IsDocumentMetadataLoading,
+                "Page navigation remains available while link import is pending.");
+            var progressiveProject = Path.Combine(directory, "progressive.pdfocrproj");
+            var pendingSave = vm.SaveProjectForDiagnosticsAsync(progressiveProject, ProjectPdfStorageMode.Relative);
+            Check(!pendingSave.IsCompleted && !File.Exists(progressiveProject),
+                "A save requested during background import waits before writing any project.");
+            scanGate.SetResult();
+            await pendingSave;
+            Check((await packages.OpenAsync(progressiveProject)).InternalLinks.Count == 3 &&
+                vm.ProjectForDiagnostics!.SourceLinksInitialized && vm.CanEditDocument,
+                "The waiting save includes all imported links and editing is subsequently enabled.");
+            Check(PdfNativeWorkerClient.Inspection.WorkerProcessId is { } inspectionPid &&
+                inspectionPid != PdfNativeWorkerClient.Shared.WorkerProcessId &&
+                inspectionPid != PdfNativeWorkerClient.Background.WorkerProcessId &&
+                PdfNativeWorkerClient.Inspection.WorkerHasResourceJob,
+                "Whole-document inspection runs in a separate resource-limited native worker.");
+
+            var coordinateReads = 0;
+            vm.DocumentMetadataScanOverride = async (path, sequence, token, coordinatesOnly) =>
+            {
+                if (coordinatesOnly) Interlocked.Increment(ref coordinateReads);
+                var result = await PdfSourceLinkService.ReadAsync(path, sequence, token, coordinatesOnly);
+                Check(!coordinatesOnly || result.Links.Count == 0, "Initialized projects skip annotation/action re-import.");
+                return result;
+            };
+            await vm.LoadProjectForDiagnosticsAsync(progressiveProject);
+            Check(coordinateReads == 1 && vm.ProjectForDiagnostics!.InternalLinks.Count == 3,
+                "Opening a saved project reuses its imported link data.");
+
+            var obsoleteGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            vm.DocumentMetadataScanOverride = async (path, sequence, token, coordinatesOnly) =>
+            {
+                scanStarted.TrySetResult();
+                await obsoleteGate.Task.WaitAsync(token);
+                return await PdfSourceLinkService.ReadAsync(path, sequence, token, coordinatesOnly);
+            };
+            await vm.LoadPdfPreviewForDiagnosticsAsync(fixture);
+            await scanStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var obsoleteCompletion = vm.EnsureDocumentMetadataAsync();
+            vm.DocumentMetadataScanOverride = null;
+            await vm.LoadPdfForDiagnosticsAsync(blank);
+            try { await obsoleteCompletion; Check(false, "Obsolete document waits must be cancelled."); }
+            catch (OperationCanceledException) { Check(true, "Replacing a document cancels old metadata and pending snapshot operations."); }
+            Check(vm.ProjectForDiagnostics!.InternalLinks.Count == 0 && vm.InputPdfIssues.All(issue => issue.Code != "links.unsupported_actions"),
+                "Old links and warnings cannot appear in the replacement document.");
+
+            vm.DocumentMetadataScanOverride = (_, _, _, _) =>
+                Task.FromException<PdfSourceLinkService.ScanResult>(new InvalidDataException("Injected metadata read failure."));
+            await vm.LoadPdfPreviewForDiagnosticsAsync(fixture);
+            try { await vm.EnsureDocumentMetadataAsync(); Check(false, "Import failure must block saving."); }
+            catch (InvalidOperationException) { Check(true, "A metadata failure is reported and does not permit an incomplete save."); }
+            Check(vm.CanUsePreview && !vm.CanEditDocument && vm.InputPdfIssues.Any(issue => issue.Code == "links.read.failed"),
+                "Import failure keeps the preview usable and shows its reason.");
+            vm.DocumentMetadataScanOverride = null;
             await vm.LoadPdfForDiagnosticsAsync(fixture);
             vm.ActivateLinkEditMode();
             await LayoutAsync();

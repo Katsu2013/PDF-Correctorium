@@ -110,7 +110,7 @@ public sealed partial class MainWindowViewModel
     public RelayCommand DeleteSelectedRedactionCommand { get; }
     public RelayCommand ClearCurrentPageRedactionsCommand { get; }
 
-    private bool CanEnterRedactionMode() => HasDocument && CanUsePreview &&
+    private bool CanEnterRedactionMode() => CanEditDocument && CanUsePreview &&
                                              !IsPdfExporting && !IsBackgroundOperationVisible;
 
     private void ActivateOcrEditMode()
@@ -492,7 +492,7 @@ public sealed partial class MainWindowViewModel
     /// <summary>旧プロジェクトを含む現在ページの既存文字帯を、モード開始時に1回のUndo操作として整理します。</summary>
     private void ConsolidateCurrentPageTextRedactions()
     {
-        if (_project is null || SelectedPage is null ||
+        if (!CanEditDocument || _project is null || SelectedPage is null ||
             _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber) is not { } page)
             return;
         var pageTextBands = _project.Redactions
@@ -571,7 +571,7 @@ public sealed partial class MainWindowViewModel
         return redaction;
     }
 
-    private bool CanAddRedaction() => IsRedactionMode && HasDocument && CanUsePreview && SelectedPage is not null &&
+    private bool CanAddRedaction() => IsRedactionMode && CanEditDocument && CanUsePreview && SelectedPage is not null &&
                                       !IsPdfExporting && !IsBackgroundOperationVisible;
 
     private bool CanAddSelectedRedactions() => CanAddRedaction() &&

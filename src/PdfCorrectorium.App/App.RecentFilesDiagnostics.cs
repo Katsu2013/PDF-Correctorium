@@ -109,9 +109,12 @@ public partial class App
             var fresh = CreateVm();
             Check(!fresh.HasDocument && fresh.CanOpenRecentFiles && fresh.RecentFiles.Count == 2, "A new app can reopen history before any document is loaded.");
             Check(await fresh.OpenRecentFileAsync(pdf) && fresh.HasPreview && fresh.SourcePdfPath == pdf, "Recent entry uses normal loading from an empty app.");
+            await fresh.EnsureDocumentMetadataAsync();
+            fresh.ReleaseTransientResources();
             vm.ReloadRecentFiles();
             Check(vm.RecentFiles[0].FullPath == pdf, "Menu refresh observes another instance's latest file order.");
             Check(await vm.OpenRecentFileAsync(projectPath) && vm.RecentFiles[0].FullPath == projectPath, "Recent project reopens and moves to the top.");
+            await vm.EnsureDocumentMetadataAsync();
             vm.AddManualOcrRegion(new Rect(20, 20, 140, 30));
             var commits = 0; vm.CommitPendingInputs = () => commits++;
             vm.DocumentSwitchPromptOverride = () => MessageBoxResult.Cancel;

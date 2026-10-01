@@ -16,9 +16,9 @@ public sealed partial class MainWindowViewModel
     internal void EndLinkTextSelection() => _linkSelectionCharacters = null;
     public ObservableCollection<DocumentLinkOverlayViewModel> LinkListItems { get; } = [];
     public bool IsLinkEditMode => EditorMode == EditorInteractionMode.LinkEditing;
-    public bool IsLinkOverlayDisplayed => IsLinkEditMode || IsLinkOverlayVisible;
+    public bool IsLinkOverlayDisplayed => CanEditDocument && (IsLinkEditMode || IsLinkOverlayVisible);
     public bool IsPointerSurfaceVisible => IsOcrOverlayVisible || IsLinkEditMode;
-    public bool CanHitLinkAreas => IsLinkEditMode && LinkInputModeIndex == 0;
+    public bool CanHitLinkAreas => CanEditDocument && IsLinkEditMode && LinkInputModeIndex == 0;
     public bool IsLinkOverlayVisible
     {
         get => _isLinkOverlayVisible;

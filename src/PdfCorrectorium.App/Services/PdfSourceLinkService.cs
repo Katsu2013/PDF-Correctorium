@@ -14,7 +14,8 @@ internal static class PdfSourceLinkService
         IReadOnlyDictionary<int, PageCoordinates> PageCoordinates);
 
     internal static async Task<ScanResult> ReadAsync(
-        string pdfPath, IReadOnlyList<ProjectPageReference> sequence, CancellationToken cancellationToken)
+        string pdfPath, IReadOnlyList<ProjectPageReference> sequence, CancellationToken cancellationToken,
+        bool coordinatesOnly = false)
     {
         var qpdf = PdfBookmarkService.ResolveQpdfPath() ??
             throw new FileNotFoundException("リンクの確認に必要なqpdf.exeが見つかりません。");
@@ -36,7 +37,7 @@ internal static class PdfSourceLinkService
             foreach (var entry in values) pageValues[entry.Key] = entry.Value?.DeepClone();
             foreach (var pair in chunk)
             {
-                if (values["obj:" + pair.Value]?["value"]?["/Annots"] is not { } annotations) continue;
+                if (coordinatesOnly || values["obj:" + pair.Value]?["value"]?["/Annots"] is not { } annotations) continue;
                 if (annotations is JsonArray array)
                     pageAnnotations[pair.Key] = array.Select(item => item!.DeepClone()).ToList();
                 else if (TryReference(annotations, out var reference))
@@ -82,6 +83,7 @@ internal static class PdfSourceLinkService
             }
             coordinates[pair.Key] = new PageCoordinates(rotation, new PdfPoint(originX, originY));
         }
+        if (coordinatesOnly) return new ScanResult([], 0, coordinates);
         var links = new List<PdfInternalLink>();
         var unsupported = 0;
         foreach (var (sourcePhysical, annotations) in pageAnnotations)

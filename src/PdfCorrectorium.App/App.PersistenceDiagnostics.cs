@@ -108,6 +108,7 @@ public partial class App
             var input = Path.Combine(directory, "input.pdfocrproj");
             await packages.SaveAsync(input, project);
             Check(await vm.OpenDocumentPathAsync(input), "Fixture project opens.");
+            await vm.EnsureDocumentMetadataAsync();
             var region = vm.OverlayItems.Single();
             region.Text = "UNSAVED";
             vm.DocumentSwitchPromptOverride = () => MessageBoxResult.Cancel;
@@ -240,6 +241,7 @@ public partial class App
             WritePersistenceTextPdf(textPdf);
             vm.EditorModeIndex = 0;
             Check(await vm.OpenDocumentPathAsync(textPdf), "PDF with real invisible text opens.");
+            await vm.EnsureDocumentMetadataAsync();
             Check(vm.OverlayItems.Count > 0 && string.Concat(vm.OverlayItems.Select(r => r.Text)).Contains("ABCDEF"), "Fixture has extractable source text before editing.");
             foreach (var textRegion in vm.OverlayItems) textRegion.Text = "";
             var emptyProject = Path.Combine(directory, "empty-export.pdfocrproj");

@@ -440,7 +440,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         RefreshLocalizedOptions();
         OpenPdfCommand = new AsyncCommand(OpenPdfAsync, () => !IsOpeningDocument);
         OpenProjectCommand = new AsyncCommand(OpenProjectAsync, () => !IsOpeningDocument);
-        ImportOcrDataCommand = new AsyncCommand(ImportOcrDataAsync, () => HasDocument);
+        ImportOcrDataCommand = new AsyncCommand(ImportOcrDataAsync, () => CanEditDocument);
         SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => HasDocument);
         SaveProjectAsCommand = new AsyncCommand(SaveProjectAsAsync, () => HasDocument);
         ExportPdfCommand = new AsyncCommand(ExportPdfAsync, () => HasDocument);
@@ -462,11 +462,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ZoomInCommand = new RelayCommand(() => ChangeZoomStep(increase: true), () => CanUsePreview && ZoomPercent < 400);
         ZoomOutCommand = new RelayCommand(() => ChangeZoomStep(increase: false), () => CanUsePreview && ZoomPercent > 25);
         ActualSizeCommand = new RelayCommand(() => ZoomPercent = 100, () => CanUsePreview);
-        AddBookmarkCommand = new RelayCommand(AddBookmark, () => HasDocument && SelectedPage is not null);
-        AddChildBookmarkCommand = new RelayCommand(AddChildBookmark, () => HasDocument && SelectedBookmark is not null);
-        DeleteBookmarkCommand = new RelayCommand(DeleteBookmark, () => HasDocument && SelectedBookmark is not null);
-        MoveBookmarkUpCommand = new RelayCommand(() => MoveBookmark(-1), () => HasDocument && CanMoveBookmark(-1));
-        MoveBookmarkDownCommand = new RelayCommand(() => MoveBookmark(1), () => HasDocument && CanMoveBookmark(1));
+        AddBookmarkCommand = new RelayCommand(AddBookmark, () => CanEditDocument && SelectedPage is not null);
+        AddChildBookmarkCommand = new RelayCommand(AddChildBookmark, () => CanEditDocument && SelectedBookmark is not null);
+        DeleteBookmarkCommand = new RelayCommand(DeleteBookmark, () => CanEditDocument && SelectedBookmark is not null);
+        MoveBookmarkUpCommand = new RelayCommand(() => MoveBookmark(-1), () => CanEditDocument && CanMoveBookmark(-1));
+        MoveBookmarkDownCommand = new RelayCommand(() => MoveBookmark(1), () => CanEditDocument && CanMoveBookmark(1));
         GoToBookmarkCommand = new RelayCommand(GoToBookmark, () => HasDocument && SelectedBookmark is not null);
         ImportBookmarksCommand = new AsyncCommand(ImportBookmarksAsync, () => HasDocument);
         ExportBookmarksCommand = new AsyncCommand(ExportBookmarksAsync, () => HasDocument && BookmarkItems.Count > 0);
@@ -1062,7 +1062,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>読込済み文書のプレビュー操作を許可する場合は<c>true</c>。</summary>
     public bool CanUsePreview => HasDocument && HasPreview;
     /// <summary>文書を読み込み、OCR編集モードを選択している場合は<c>true</c>。</summary>
-    public bool CanUseOcrEditControls => CanUsePreview && IsOcrEditMode;
+    public bool CanUseOcrEditControls => CanEditDocument && CanUsePreview && IsOcrEditMode;
     /// <summary>復旧対象となる保存先がある文書だけ、バックアップ復旧操作を許可します。</summary>
     public bool CanRestoreProjectBackup => HasDocument && _projectFilePath is not null;
     public bool IsOpeningDocument
@@ -1597,7 +1597,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>設定した間隔が経過し、未保存編集がある場合だけ作業用の自動保存ファイルを更新します。</summary>
     public async Task AutoSaveIfDueAsync()
     {
-        if (_autoSaveInProgress || IsBackgroundOperationVisible || IsOpeningDocument) return;
+        if (_autoSaveInProgress || IsBackgroundOperationVisible || IsOpeningDocument || !CanEditDocument || _isDocumentInspectionLoading) return;
         var idle = DateTimeOffset.UtcNow - _lastUserActivityAtUtc >= TimeSpan.FromSeconds(30);
         if (idle) CommitPendingInputs?.Invoke();
         if (_project is null || !HasUnsavedChanges ||
@@ -1928,8 +1928,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    internal Task LoadPdfForDiagnosticsAsync(string pdfPath) => LoadPdfAsync(pdfPath);
-    internal Task LoadProjectForDiagnosticsAsync(string projectPath) => LoadProjectAsync(projectPath);
+    internal async Task LoadPdfForDiagnosticsAsync(string pdfPath)
+    {
+        await LoadPdfAsync(pdfPath);
+        await EnsureDocumentMetadataAsync();
+    }
+    internal async Task LoadProjectForDiagnosticsAsync(string projectPath)
+    {
+        await LoadProjectAsync(projectPath);
+        await EnsureDocumentMetadataAsync();
+    }
+    internal Task LoadPdfPreviewForDiagnosticsAsync(string pdfPath) => LoadPdfAsync(pdfPath);
     internal string? ResolvedPdfPathForDiagnostics => _resolvedPdfPath;
     internal PdfCorrectoriumProject? ProjectForDiagnostics => _project;
     internal int UndoCountForDiagnostics => _undo.Count;
@@ -1969,13 +1978,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     {
         _sourceRelinkedOnOpen = false;
         var fullPath = Path.GetFullPath(projectPath);
-        var validation = await _packages.ValidateAsync(fullPath);
+        var validation = await Task.Run(() => _packages.ValidateAsync(fullPath));
         if (!validation.IsValid)
             throw new InvalidDataException("プロジェクトの構造検証に失敗しました:" + Environment.NewLine +
                 string.Join(Environment.NewLine, validation.Issues.Where(issue => issue.IsError)
                     .Select(issue => $"[{issue.Code}] {issue.Message}")));
-        var project = await _packages.OpenAsync(fullPath);
-        var thumbnails = await _packages.ReadThumbnailCacheAsync(fullPath);
+        var project = await Task.Run(() => _packages.OpenAsync(fullPath));
+        var thumbnails = await Task.Run(() => _packages.ReadThumbnailCacheAsync(fullPath));
         var projectDirectory = Path.GetDirectoryName(fullPath)!;
         var relinked = false;
         if (!project.SourcePdf.IsEmbedded && !await _packages.VerifySourceAsync(project.SourcePdf, projectDirectory))
@@ -2374,6 +2383,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     internal async Task<PdfExportResult> ExportPdfForDiagnosticsAsync(string outputPath)
     {
         if (_project is null || _resolvedPdfPath is null) throw new InvalidOperationException("No PDF project is loaded.");
+        await EnsureDocumentMetadataAsync();
         SynchronizeProjectPages();
         var prepared = await PrepareMaterializedProjectSourceAsync();
         try { return await _exportService.ExportAsync(prepared.PdfPath, outputPath, prepared.Project); }
@@ -2486,6 +2496,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ProjectPdfStorageMode? requestedStorageMode = null)
     {
         if (_project is null) return;
+        await EnsureDocumentMetadataAsync();
         BeginBackgroundOperation("プロジェクトを保存・検証しています...");
         try
         {
@@ -2845,6 +2856,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private async Task ExportPdfAsync()
     {
         if (_project is null || _resolvedPdfPath is null) return;
+        try { await EnsureDocumentMetadataAsync(); }
+        catch (Exception ex)
+        {
+            await ShowErrorAsync("文書の読み込みが完了していないためPDF出力を開始できませんでした。", ex);
+            return;
+        }
         var dialog = new SaveFileDialog
         {
             Filter = "PDFファイル (*.pdf)|*.pdf",
@@ -3034,22 +3051,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             }
         }
 
+        CancelDocumentMetadata();
         _unsupportedSourceLinkActions = 0;
         _sourceLinkPageCoordinates.Clear();
-        try
-        {
-            var sourceLinks = await PdfSourceLinkService.ReadAsync(resolvedPath, project.PageSequence, CancellationToken.None);
-            foreach (var pair in sourceLinks.PageCoordinates) _sourceLinkPageCoordinates[pair.Key] = pair.Value;
-            if (!project.SourceLinksInitialized || project.SourceLinkImportVersion < 2)
-            {
-                project = UpgradeImportedLinks(project, sourceLinks);
-            }
-            _unsupportedSourceLinkActions = sourceLinks.UnsupportedActions;
-        }
-        catch (Exception ex)
-        {
-            await _log.WriteAsync(LogLevel.Warning, "links.read.failed", ex.Message, ex);
-        }
 
         HasDocument = false;
         CancelThumbnailLoading(clearImages: true);
@@ -3089,7 +3093,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         foreach (var overlay in overlays) AttachOverlay(overlay);
         await RenderPageAsync(1, populatePageList: true, preparedPreview: preview);
         HasDocument = HasPreview && PageItems.Count > 0;
-        await InspectInputPdfAsync(resolvedPath);
         RefreshProjectFeatureState();
         ResetEditState();
         SaveProjectCommand.RaiseCanExecuteChanged();
@@ -3100,6 +3103,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ImportBookmarksCommand.RaiseCanExecuteChanged();
         ExportBookmarksCommand.RaiseCanExecuteChanged();
         RaisePageManagementCommands();
+        StartDocumentMetadata(resolvedPath);
     }
 
     private void LoadBookmarkItems(IReadOnlyList<PdfBookmark> bookmarks)
@@ -3773,7 +3777,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     }
 
     private bool CanModifySelectedPages() =>
-        HasDocument && _selectedPageNumbers.Count > 0;
+        CanEditDocument && _selectedPageNumbers.Count > 0;
 
     private bool CanDeleteSelectedPages() =>
         CanModifySelectedPages() && _selectedPageNumbers.Count < PageItems.Count;
@@ -3911,6 +3915,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_project is null || _resolvedPdfPath is null)
             throw new InvalidOperationException("PDFが開かれていません。");
+        await EnsureDocumentMetadataAsync();
         SynchronizeProjectPages();
         var prepared = await PrepareMaterializedProjectSourceAsync();
         try
@@ -3928,6 +3933,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private async Task InsertPagesFromFileAsync(string inputPdfPath, int insertAfter)
     {
         if (_resolvedPdfPath is null) return;
+        await EnsureDocumentMetadataAsync();
         try
         {
             var imported = await _previewService.RenderPageAsync(inputPdfPath, 1, 240);
@@ -3993,6 +3999,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private async Task RotateSelectedPagesAsync(int clockwiseDegrees)
     {
         if (!CanModifySelectedPages() || _resolvedPdfPath is null || _project is null) return;
+        await EnsureDocumentMetadataAsync();
         BeginBackgroundOperation("ページを回転して再構成しています...");
         try
         {
@@ -4032,6 +4039,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         string historyDescription)
     {
         if (_resolvedPdfPath is null || _project is null || oldPageAtNewPosition.Count == 0) return;
+        await EnsureDocumentMetadataAsync();
         BeginBackgroundOperation("ページ構成を更新しています...");
         try
         {
@@ -6699,7 +6707,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     }
 
     private bool CanUseHistory() =>
-        !_historyOperationInProgress && !IsBackgroundOperationVisible && !IsPdfExporting;
+        CanEditDocument && !_historyOperationInProgress && !IsBackgroundOperationVisible && !IsPdfExporting;
 
     private void ApplyHistory(OverlayRegionViewModel region, OverlayRegionSnapshot snapshot)
     {
@@ -6779,6 +6787,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>アプリ終了時にこの編集セッションが所有する一時PDFをすべて解放します。</summary>
     public void ReleaseTransientResources()
     {
+        CancelDocumentMetadata();
         _renderCancellation?.Cancel();
         _thumbnailCancellation?.Cancel();
         _adjacentPreviewCancellation?.Cancel();
