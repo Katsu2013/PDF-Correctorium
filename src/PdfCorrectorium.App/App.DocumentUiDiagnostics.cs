@@ -29,6 +29,7 @@ public partial class App
                 throw new IOException("Use a new output directory to avoid overwriting test results.");
             Directory.CreateDirectory(directory);
             var viewModel = (MainWindowViewModel)window.DataContext;
+            window.ClosePromptOverride = () => MessageBoxResult.No;
             var content = (FrameworkElement)window.Content;
             var checks = new List<string>();
             void Check(bool condition, string message)

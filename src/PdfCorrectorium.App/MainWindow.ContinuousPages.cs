@@ -163,6 +163,7 @@ public partial class MainWindow
             new Binding(nameof(ViewModel.ZoomFactor)) { Source = ViewModel });
         surface.LayoutTransform = scale;
         surface.Children.Add(image);
+        surface.Children.Add(CreatePassiveLinkOverlay(pageNumber, width, height));
         surface.Children.Add(new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(204, 38, 55, 70)),
@@ -282,6 +283,7 @@ public partial class MainWindow
                     visual.Image.Source = cached;
                     visual.Surface.Width = cached.PixelWidth;
                     visual.Surface.Height = cached.PixelHeight;
+                    RefreshPassiveLinkSurface(visual.Surface, candidate.PageNumber);
                     ContinuousDocumentLayoutHost.SetPageSize(candidate.PageNumber, cached.PixelWidth, cached.PixelHeight);
                     MarkContinuousPreviewUsed(candidate.PageNumber);
                     continue;
@@ -295,6 +297,7 @@ public partial class MainWindow
                 visual.Surface.Width = result.Image.PixelWidth;
                 visual.Surface.Height = result.Image.PixelHeight;
                 visual.Image.Source = result.Image;
+                RefreshPassiveLinkSurface(visual.Surface, candidate.PageNumber);
                 ContinuousDocumentLayoutHost.SetPageSize(candidate.PageNumber, result.Image.PixelWidth, result.Image.PixelHeight);
                 _continuousPreviewCache[candidate.PageNumber] = result.Image;
                 MarkContinuousPreviewUsed(candidate.PageNumber);

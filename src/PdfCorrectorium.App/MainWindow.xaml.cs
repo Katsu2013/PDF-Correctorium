@@ -153,6 +153,7 @@ public partial class MainWindow : Window
         PreviewMouseDown += (_, _) => ViewModel.NotifyUserActivity();
         PreviewMouseMove += (_, _) => ViewModel.NotifyUserActivity();
         ViewModel.PropertyChanged += ViewModel_OnPropertyChanged;
+        ViewModel.LinkNavigationRequested += ApplyLinkDestinationView;
         ViewModel.OcrSearchSelectionRequested += ViewModel_OnOcrSearchSelectionRequested;
         InitializeContinuousPageView();
         UpdatePreviewDocumentLayout();
@@ -616,6 +617,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (HandleLinkEditingKey(e)) return;
         if (TryExecuteConfiguredShortcut(e))
         {
             e.Handled = true;
@@ -1004,7 +1006,7 @@ public partial class MainWindow : Window
 
     private async void InternalLinkEdit_OnClick(object sender, RoutedEventArgs e)
     {
-        if (!ViewModel.HasDocument || (!ViewModel.HasSelectedOverlay && !ViewModel.HasSelectedLinkArea)) return;
+        if (!ViewModel.HasDocument || !ViewModel.CanEditLinkSelection) return;
         CommitPendingEditorBindings();
         var existing = ViewModel.GetSelectedInternalLink();
         var dialog = new InternalLinkWindow(ViewModel.PageItems.Count, existing, ViewModel.GetInternalLinkDestinationPage(existing)) { Owner = this };
@@ -1034,18 +1036,9 @@ public partial class MainWindow : Window
     {
         if (!ViewModel.HasDocument || !ViewModel.HasPreview) return;
         CancelPointerRectangle();
+        ViewModel.ActivateLinkEditMode();
         ViewModel.SelectedLinkArea = null;
-        _isAddingLinkArea = true;
-        LinkAreaOverlayLayer.IsHitTestVisible = false;
-        ViewModel.StatusMessageForInteraction("リンク範囲追加: ページ上のクリック範囲をドラッグしてください。Escで中止できます。");
-    }
-
-    private void LinkAreaOverlay_OnClick(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement { DataContext: DocumentLinkOverlayViewModel item }) return;
-        ViewModel.SelectedLinkArea = item;
-        ViewModel.SelectedOverlay = null;
-        e.Handled = true;
+        ViewModel.LinkInputModeIndex = 2;
     }
 
     private async void InternalLinkNavigate_OnClick(object sender, RoutedEventArgs e) => await ViewModel.NavigateSelectedInternalLinkAsync();
@@ -1214,6 +1207,7 @@ public partial class MainWindow : Window
         CommitPendingEditorBindings();
         if (_isAddingLinkArea)
         {
+            ViewModel.BeginLinkTextSelection();
             _marqueeStart = e.GetPosition(OverlayCanvas);
             Canvas.SetLeft(MarqueeSelectionRectangle, _marqueeStart.X);
             Canvas.SetTop(MarqueeSelectionRectangle, _marqueeStart.Y);
@@ -1226,6 +1220,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (ViewModel.IsLinkEditMode) { e.Handled = true; return; }
         if (ViewModel.IsRedactionMode)
         {
             // 文字マーカーは文字との対応を壊さないよう移動・サイズ変更させません。
@@ -1329,7 +1324,9 @@ public partial class MainWindow : Window
         var top = Math.Min(_marqueeStart.Y, current.Y);
         var width = Math.Abs(current.X - _marqueeStart.X);
         var height = Math.Abs(current.Y - _marqueeStart.Y);
-        if (_isAddingRedaction && ViewModel.RedactionInputMode == RedactionInputMode.TextSelection)
+        if (_isAddingLinkArea && ViewModel.LinkInputModeIndex == 1)
+            UpdateLinkTextSelectionPreview(new Rect(left, top, width, height));
+        else if (_isAddingRedaction && ViewModel.RedactionInputMode == RedactionInputMode.TextSelection)
         {
             UpdateTextRedactionMarkerPreview(new Rect(left, top, width, height));
         }
@@ -1348,24 +1345,14 @@ public partial class MainWindow : Window
         if (_isAddingLinkArea)
         {
             _isAddingLinkArea = false;
-            LinkAreaOverlayLayer.IsHitTestVisible = true;
             if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
             var end = e.GetPosition(OverlayCanvas);
             var bounds = new Rect(
-                Math.Min(_marqueeStart.X, end.X),
-                Math.Min(_marqueeStart.Y, end.Y),
-                Math.Abs(end.X - _marqueeStart.X),
-                Math.Abs(end.Y - _marqueeStart.Y));
+                Math.Min(_marqueeStart.X, end.X), Math.Min(_marqueeStart.Y, end.Y),
+                Math.Abs(end.X - _marqueeStart.X), Math.Abs(end.Y - _marqueeStart.Y));
             ResetPointerRectangle();
-            if (bounds.Width >= 8 && bounds.Height >= 8)
-            {
-                var dialog = new InternalLinkWindow(ViewModel.PageItems.Count, null,
-                    Math.Min((ViewModel.SelectedPage?.PageNumber ?? 1) + 1, ViewModel.PageItems.Count)) { Owner = this };
-                if (dialog.ShowDialog() == true)
-                    await ViewModel.CreateLinkAreaAsync(bounds, dialog.ResultDestinationPage, dialog.ResultZoomPercent,
-                        dialog.Description, dialog.ResultExternalUri);
-            }
-            else ViewModel.StatusMessageForInteraction("リンク範囲が小さすぎるため作成しませんでした。");
+            try { await CompleteLinkSelectionAsync(bounds); }
+            finally { ViewModel.EndLinkTextSelection(); }
             e.Handled = true;
             return;
         }
@@ -1470,12 +1457,13 @@ public partial class MainWindow : Window
         _isAddingOcrRegion = false;
         _isAddingRedaction = false;
         _isAddingLinkArea = false;
+        ViewModel.EndLinkTextSelection();
         _isMarqueeSelecting = false;
         _isDrawingFreehandRedaction = false;
         if (OverlayCanvas.IsMouseCaptured) OverlayCanvas.ReleaseMouseCapture();
         ResetPointerRectangle();
         CancelRedactionPath();
-        if (LinkAreaOverlayLayer is not null) LinkAreaOverlayLayer.IsHitTestVisible = true;
+        // Link hit testing is owned by its mode binding; do not clear that binding here.
     }
 
     private void UpdateRedactionPathPreview()
@@ -1557,6 +1545,18 @@ public partial class MainWindow : Window
 
     private void PreviewPageHost_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (ViewModel.IsLinkEditMode)
+        {
+            if (ViewModel.LinkInputModeIndex > 0)
+            {
+                ViewModel.SelectedLinkArea = null;
+                _isAddingLinkArea = true;
+                OverlayCanvas_OnPreviewMouseLeftButtonDown(sender, e);
+                return;
+            }
+            if (FindAncestor<Grid>(e.OriginalSource as DependencyObject)?.DataContext is not DocumentLinkOverlayViewModel)
+                ViewModel.SelectedLinkArea = null;
+        }
         if (!_isPickingRedactionColor) return;
         var point = e.GetPosition(OverlayCanvas);
         var colorHex = TrySamplePreviewColor(
@@ -2453,6 +2453,14 @@ public partial class MainWindow : Window
 
     private void ViewModel_OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(MainWindowViewModel.EditorMode) or nameof(MainWindowViewModel.SelectedPage))
+        {
+            CancelLinkTransform();
+            CancelPointerRectangle();
+        }
+        if (e.PropertyName is nameof(MainWindowViewModel.IsLinkOverlayDisplayed) or nameof(MainWindowViewModel.CanHitLinkAreas) or
+            nameof(MainWindowViewModel.LinkOverlayVersion) or nameof(MainWindowViewModel.PreviousPreviewImage) or nameof(MainWindowViewModel.NextPreviewImage))
+            Dispatcher.BeginInvoke(RefreshPassiveLinkOverlays, DispatcherPriority.Loaded);
         if (e.PropertyName == nameof(MainWindowViewModel.CurrentApplicationSettings))
         {
             if (!_updatingAvalonSettings && HasChangedDockingSettings(ViewModel.CurrentApplicationSettings))

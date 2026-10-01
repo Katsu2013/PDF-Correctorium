@@ -1,5 +1,17 @@
 # 05-01 データモデル
 
+## dev.200のリンクモデル（現行）
+
+- `PdfInternalLink.SourceBounds`は元PDFの未回転座標での外接矩形、`SourceAreas`は行／列ごとの独立したクリック矩形です。表示時だけ回転とCropBox原点を変換します。
+- `SourceAnnotations`は元注釈の参照、元矩形、任意の`/NM`識別名を保持します。元のオブジェクト番号はPDF再保存で変化し得るため、置換時は一意な矩形／名前の照合が必要です。
+- `DestinationViewType`と`DestinationViewParameters`にXYZ／Fit系の移動先とnullパラメーターを保存します。`UnsupportedAction`付きリンクは表示のみで、編集・実行しません。
+- `LinkOverlayVisible`はプロジェクトの明示的な枠表示設定です。`SourceLinkImportVersion`は取り込み移行用で、旧リンクIDと削除状態を維持して補完します。
+- 複数矩形のPDF出力には標準Link注釈を用い、`/NM=pdfcorrectorium-link-<ID>-<index>`で再取り込み時に一つのリンクへまとめます。
+- ページIDの解決は論理ページ列に依存し、OCRの遅延読込状態には依存しません。元のPDFと編集プロジェクトは非破壊です。
+
+以下のdev.152等の節は当時の履歴です。既存PDFリンクの取り込み・編集は現在実装済みです。
+
+
 ## dev.163の輪郭付き墨消しモデル
 
 - `PdfRedaction.ShapeKind`は`Rectangle`、`TextSelection`、`Polygon`、`Freehand`を区別する。

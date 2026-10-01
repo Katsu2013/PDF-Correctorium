@@ -51,6 +51,7 @@ public partial class App : Application
         _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--document-organization-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--link-editing-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--ocr-rendering-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--settings-test", StringComparer.OrdinalIgnoreCase);
@@ -190,9 +191,11 @@ public partial class App : Application
             }
 
             var avalonDockTestIndex = Array.FindIndex(e.Args, value => value.Equals("--avalondock-test", StringComparison.OrdinalIgnoreCase));
-            var window = new MainWindow(useAvalonDockDiagnosticLayout: avalonDockTestIndex >= 0,
-                diagnosticDirectory: avalonDockTestIndex >= 0 && e.Args.Length > avalonDockTestIndex + 1
-                    ? Path.GetFullPath(e.Args[avalonDockTestIndex + 1]) : null);
+            var linkDiagnosticIndex = Array.FindIndex(e.Args, value => value.Equals("--link-editing-test", StringComparison.OrdinalIgnoreCase));
+            var dockingDiagnosticIndex = avalonDockTestIndex >= 0 ? avalonDockTestIndex : linkDiagnosticIndex;
+            var window = new MainWindow(useAvalonDockDiagnosticLayout: dockingDiagnosticIndex >= 0,
+                diagnosticDirectory: dockingDiagnosticIndex >= 0 && e.Args.Length > dockingDiagnosticIndex + 1
+                    ? Path.GetFullPath(e.Args[dockingDiagnosticIndex + 1]) : null);
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
 
@@ -260,6 +263,12 @@ public partial class App : Application
                 return;
             }
 
+            var linkTestIndex = Array.FindIndex(e.Args, value => value.Equals("--link-editing-test", StringComparison.OrdinalIgnoreCase));
+            if (linkTestIndex >= 0)
+            {
+                await RunLinkEditingTestAsync(window, e.Args, linkTestIndex);
+                return;
+            }
             if (_isSmokeTest)
             {
                 RunSmokeTest(window);

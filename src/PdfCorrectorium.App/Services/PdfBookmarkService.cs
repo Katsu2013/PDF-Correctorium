@@ -514,7 +514,8 @@ public sealed class PdfBookmarkService
         bool replaceBookmarks,
         IReadOnlyList<PdfInternalLink>? internalLinks,
         IReadOnlyList<OcrPage>? projectPages,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<ProjectPageReference>? pageSequence = null)
     {
         var fullPath = Path.GetFullPath(pdfPath);
         var operationDirectory = Path.Combine(
@@ -643,7 +644,8 @@ public sealed class PdfBookmarkService
                     pageReferences,
                     updateObjects,
                     nextObjectId,
-                    cancellationToken);
+                    cancellationToken,
+                    pageSequence);
             }
 
             updateObjects[$"obj:{rootReference}"] = new JsonObject { ["value"] = catalogValue };
@@ -702,9 +704,15 @@ public sealed class PdfBookmarkService
         IReadOnlyDictionary<int, string> pageReferences,
         JsonObject updateObjects,
         int nextObjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<ProjectPageReference>? pageSequence)
     {
         var pagesById = projectPages.ToDictionary(page => page.Id);
+        // Link targets must not depend on whether their OCR data has been lazily rendered.
+        if (pageSequence is not null)
+            for (var index = 0; index < pageSequence.Count; index++)
+                pagesById.TryAdd(pageSequence[index].PageId,
+                    new OcrPage { Id = pageSequence[index].PageId, PageNumber = index + 1 });
         foreach (var sourceGroup in links.Where(link => link.IsEnabled || link.IsModified).GroupBy(link => link.SourcePageId))
         {
             if (!pagesById.TryGetValue(sourceGroup.Key, out var sourcePage) ||
@@ -734,53 +742,55 @@ public sealed class PdfBookmarkService
                 annotations = [];
             }
 
+            // Resolve annotations once per page, in batches. Extraction may renumber objects,
+            // so a reference alone is not sufficient evidence that this is the original link.
+            var annotationValues = await LoadLinkAnnotationValuesAsync(pdfPath, annotations, cancellationToken);
             foreach (var link in sourceGroup.Where(link => link.IsModified && link.SourceAnnotationReference is not null))
             {
-                var index = await FindOriginalAnnotationIndexAsync(
-                    pdfPath, annotations, link, cancellationToken);
-                if (index < 0)
-                    throw new InvalidDataException($"元PDFのリンク注釈を特定できませんでした（{sourcePage.PageNumber}ページ）。重複リンクを防ぐため出力を中止しました。");
-                annotations.RemoveAt(index);
+                var originals = link.SourceAnnotations.Count > 0 ? link.SourceAnnotations :
+                    new[] { new PdfSourceLinkAnnotation { Reference = link.SourceAnnotationReference!,
+                        Bounds = link.OriginalSourceBounds ?? link.SourceBounds ?? default } };
+                foreach (var original in originals)
+                {
+                    var index = FindOriginalAnnotationIndex(annotations, annotationValues, original);
+                    if (index < 0)
+                        throw new InvalidDataException($"元PDFのリンク注釈を特定できませんでした（{sourcePage.PageNumber}ページ）。重複リンクを防ぐため出力を中止しました。");
+                    annotations.RemoveAt(index);
+                }
             }
 
-            foreach (var link in sourceGroup.Where(link => link.IsEnabled &&
+            foreach (var link in sourceGroup.Where(link => link.IsEnabled && link.UnsupportedAction is null &&
                          (link.SourceAnnotationReference is null || link.IsModified)))
             {
+                if (link.SourceRegionId is { } regionId && sourcePage.TextRegions.FirstOrDefault(region => region.Id == regionId) is { IsDeleted: true }) continue;
                 var bounds = link.SourceBounds ?? sourcePage.TextRegions.FirstOrDefault(region => region.Id == link.SourceRegionId)?.EditedGeometry.LocalBounds;
-                if (bounds is not { IsValid: true } rectangle) continue;
-                var annotationReference = $"{nextObjectId++} 0 R";
-                var annotation = new JsonObject
+                var areas = link.SourceAreas.Count > 0 ? link.SourceAreas :
+                    bounds is { IsValid: true } sourceRectangle ? new[] { sourceRectangle } : [];
+                for (var areaIndex = 0; areaIndex < areas.Count; areaIndex++)
                 {
-                    ["/Type"] = "/Annot",
-                    ["/Subtype"] = "/Link",
-                    ["/Rect"] = new JsonArray(rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Top),
-                    ["/Border"] = new JsonArray(0, 0, 0),
-                    ["/NM"] = "u:pdfcorrectorium-link-" + link.Id.ToString("N"),
-                };
-                if (!string.IsNullOrWhiteSpace(link.ExternalUri) &&
-                    Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) &&
-                    uri.Scheme is "http" or "https")
-                {
-                    annotation["/A"] = new JsonObject
+                    var rectangle = areas[areaIndex];
+                    if (!rectangle.IsValid) continue;
+                    var annotationReference = $"{nextObjectId++} 0 R";
+                    var annotation = new JsonObject
                     {
-                        ["/S"] = "/URI",
-                        ["/URI"] = "u:" + uri.AbsoluteUri,
+                        ["/Type"] = "/Annot", ["/Subtype"] = "/Link",
+                        ["/Rect"] = new JsonArray(rectangle.Left, rectangle.Bottom, rectangle.Right, rectangle.Top),
+                        ["/Border"] = new JsonArray(0, 0, 0),
+                        ["/NM"] = "u:pdfcorrectorium-link-" + link.Id.ToString("N") + "-" + areaIndex,
                     };
+                    if (!string.IsNullOrWhiteSpace(link.ExternalUri) &&
+                        Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+                        annotation["/A"] = new JsonObject { ["/S"] = "/URI", ["/URI"] = "u:" + uri.AbsoluteUri };
+                    else
+                    {
+                        if (!pagesById.TryGetValue(link.DestinationPageId, out var destinationPage) ||
+                            !pageReferences.TryGetValue(destinationPage.PageNumber, out var destinationPageReference)) continue;
+                        annotation["/Dest"] = CreateLinkDestination(link, destinationPageReference);
+                    }
+                    if (!string.IsNullOrWhiteSpace(link.Description)) annotation["/Contents"] = "u:" + link.Description;
+                    updateObjects[$"obj:{annotationReference}"] = new JsonObject { ["value"] = annotation };
+                    annotations.Add(annotationReference);
                 }
-                else
-                {
-                    if (!pagesById.TryGetValue(link.DestinationPageId, out var destinationPage) ||
-                        !pageReferences.TryGetValue(destinationPage.PageNumber, out var destinationPageReference)) continue;
-                    annotation["/Dest"] = link.DestinationZoomPercent is > 0
-                        ? new JsonArray(destinationPageReference, "/XYZ",
-                            link.DestinationPosition?.X is { } x ? JsonValue.Create(x) : null,
-                            link.DestinationPosition?.Y is { } y ? JsonValue.Create(y) : null,
-                            link.DestinationZoomPercent.Value / 100d)
-                        : new JsonArray(destinationPageReference, "/Fit");
-                }
-                if (!string.IsNullOrWhiteSpace(link.Description)) annotation["/Contents"] = "u:" + link.Description;
-                updateObjects[$"obj:{annotationReference}"] = new JsonObject { ["value"] = annotation };
-                annotations.Add(annotationReference);
             }
 
             if (indirectAnnotationsReference is not null)
@@ -794,33 +804,65 @@ public sealed class PdfBookmarkService
         return nextObjectId;
     }
 
-    private async Task<int> FindOriginalAnnotationIndexAsync(
-        string pdfPath, JsonArray annotations, PdfInternalLink link, CancellationToken cancellationToken)
+    private static JsonArray CreateLinkDestination(PdfInternalLink link, string pageReference)
     {
-        for (var index = 0; index < annotations.Count; index++)
-            if (annotations[index] is JsonValue value && value.TryGetValue<string>(out var reference) &&
-                reference == link.SourceAnnotationReference) return index;
+        if (link.DestinationViewType is { } type && link.DestinationViewParameters.Count > 0)
+        {
+            var destination = new JsonArray(pageReference, type);
+            foreach (var value in link.DestinationViewParameters)
+                destination.Add(value is { } number ? JsonValue.Create(number) : null);
+            return destination;
+        }
+        if (link.DestinationViewType is "/Fit" or "/FitB")
+            return new JsonArray(pageReference, link.DestinationViewType);
+        return link.DestinationZoomPercent is > 0 || link.DestinationPosition is not null
+            ? new JsonArray(pageReference, "/XYZ",
+                link.DestinationPosition?.X is { } x ? JsonValue.Create(x) : null,
+                link.DestinationPosition?.Y is { } y ? JsonValue.Create(y) : null,
+                link.DestinationZoomPercent is { } zoom ? JsonValue.Create(zoom / 100d) : null)
+            : new JsonArray(pageReference, "/Fit");
+    }
 
-        // Page extraction/reordering may renumber objects. Match the unchanged source geometry
-        // only when exactly one Link annotation has that rectangle; ambiguity must stop export.
+    private async Task<Dictionary<string, JsonNode?>> LoadLinkAnnotationValuesAsync(
+        string pdfPath, JsonArray annotations, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+        var references = annotations.OfType<JsonValue>().Select(node =>
+            node.TryGetValue<string>(out var value) ? value : null)
+            .Where(value => value?.EndsWith(" R", StringComparison.Ordinal) == true).Cast<string>().Distinct();
+        foreach (var batch in references.Chunk(64))
+        {
+            var args = new List<string> { "--json-output=2" };
+            foreach (var reference in batch)
+            {
+                var (number, generation) = ParseReference(reference);
+                args.Add($"--json-object={number},{generation}");
+            }
+            args.Add(pdfPath); args.Add("-");
+            var json = JsonNode.Parse(await RunQpdfForTextAsync(args.ToArray(), cancellationToken))!;
+            foreach (var reference in batch)
+                result[reference] = json["qpdf"]![1]![$"obj:{reference}"]?["value"];
+        }
+        return result;
+    }
+
+    private static int FindOriginalAnnotationIndex(JsonArray annotations,
+        IReadOnlyDictionary<string, JsonNode?> values, PdfSourceLinkAnnotation original)
+    {
         var matches = new List<int>();
         for (var index = 0; index < annotations.Count; index++)
         {
-            JsonNode? annotation = annotations[index];
-            if (annotation is JsonValue value && value.TryGetValue<string>(out var reference) &&
-                reference.EndsWith(" R", StringComparison.Ordinal))
-            {
-                var (objectNumber, generation) = ParseReference(reference);
-                var json = JsonNode.Parse(await RunQpdfForTextAsync(
-                    ["--json-output=2", $"--json-object={objectNumber},{generation}", pdfPath, "-"],
-                    cancellationToken))!;
-                annotation = json["qpdf"]![1]![$"obj:{reference}"]!["value"];
-            }
-            if (annotation is JsonObject candidate &&
-                candidate["/Subtype"]?.GetValue<string>() == "/Link" &&
-                AnnotationRectMatches(candidate["/Rect"], link.OriginalSourceBounds ?? link.SourceBounds))
-                matches.Add(index);
-            if (matches.Count > 1) return -1;
+            var reference = annotations[index] is JsonValue node && node.TryGetValue<string>(out var value) ? value : null;
+            var candidate = reference is not null && values.TryGetValue(reference, out var resolved)
+                ? resolved as JsonObject : annotations[index] as JsonObject;
+            if (candidate?["/Subtype"]?.GetValue<string>() != "/Link" ||
+                !AnnotationRectMatches(candidate["/Rect"], original.Bounds)) continue;
+            var name = candidate["/NM"] is JsonValue nameValue && nameValue.TryGetValue<string>(out var nameText)
+                ? DecodeQpdfString(nameText) : null;
+            if (original.Name is not null && name != original.Name) continue;
+            // A renumbered reference can coincidentally match a different annotation.
+            // Only a unique rectangle/name match is safe to replace.
+            matches.Add(index);
         }
         return matches.Count == 1 ? matches[0] : -1;
     }

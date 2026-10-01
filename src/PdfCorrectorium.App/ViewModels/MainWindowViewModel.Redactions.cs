@@ -330,67 +330,16 @@ public sealed partial class MainWindowViewModel
     /// 補った細い方向の範囲は交差判定に使い、隣の文字ボックスへ触れただけでは選択しません。
     /// </summary>
     internal static PdfSelectableTextCharacter[] GetSelectablePdfCharactersForDiagnostics(
-        IReadOnlyList<PdfSelectableTextCharacter> characters,
-        Rect hitSelection,
-        Rect pointerSelection)
-    {
-        var raw = new Rect(
-            Math.Min(pointerSelection.Left, pointerSelection.Right),
-            Math.Min(pointerSelection.Top, pointerSelection.Bottom),
-            Math.Abs(pointerSelection.Width),
-            Math.Abs(pointerSelection.Height));
-        var horizontal = raw.Width >= raw.Height;
-        const double coordinateTolerance = 0.01d;
-        return characters
-            .Where(character =>
-            {
-                if (string.IsNullOrWhiteSpace(character.Text)) return false;
-                var box = new Rect(character.Left, character.Top, character.Width, character.Height);
-                if (!hitSelection.IntersectsWith(box)) return false;
-                var center = horizontal
-                    ? character.Left + character.Width / 2d
-                    : character.Top + character.Height / 2d;
-                var start = horizontal ? raw.Left : raw.Top;
-                var end = horizontal ? raw.Right : raw.Bottom;
-                return center >= start - coordinateTolerance && center <= end + coordinateTolerance;
-            })
-            .ToArray();
-    }
+        IReadOnlyList<PdfSelectableTextCharacter> characters, Rect hitSelection, Rect pointerSelection) =>
+        PdfTextSelectionService.Select(characters, hitSelection, pointerSelection);
 
     /// <summary>
     /// ワープロの文字選択と同様に、横方向だけ（縦書きでは縦方向だけ）へドラッグしても
     /// ポインター位置を通る文字行へ当たり判定を持たせます。表示する帯は文字境界から
     /// 作るため、この補助幅自体が墨消し矩形になることはありません。
     /// </summary>
-    private Rect NormalizeTextSelectionBounds(Rect value)
-    {
-        var normalized = NormalizePreviewBounds(value);
-        var typicalHeight = _currentSelectableCharacters
-            .Where(character => character.Height > 0 && double.IsFinite(character.Height))
-            .Select(character => character.Height)
-            .Order()
-            .ToArray();
-        var typicalWidth = _currentSelectableCharacters
-            .Where(character => character.Width > 0 && double.IsFinite(character.Width))
-            .Select(character => character.Width)
-            .Order()
-            .ToArray();
-        var minimumHeight = Math.Clamp(
-            typicalHeight.Length == 0 ? 6d : typicalHeight[typicalHeight.Length / 2] * 0.45d,
-            4d,
-            12d);
-        var minimumWidth = Math.Clamp(
-            typicalWidth.Length == 0 ? 4d : typicalWidth[typicalWidth.Length / 2] * 0.45d,
-            3d,
-            10d);
-        var centerX = value.Left + value.Width / 2d;
-        var centerY = value.Top + value.Height / 2d;
-        var width = Math.Max(normalized.Width, minimumWidth);
-        var height = Math.Max(normalized.Height, minimumHeight);
-        var left = Math.Clamp(centerX - width / 2d, 0d, Math.Max(0d, PreviewPixelWidth - width));
-        var top = Math.Clamp(centerY - height / 2d, 0d, Math.Max(0d, PreviewPixelHeight - height));
-        return new Rect(left, top, width, height);
-    }
+    private Rect NormalizeTextSelectionBounds(Rect value) =>
+        PdfTextSelectionService.Normalize(value, _currentSelectableCharacters, PreviewPixelWidth, PreviewPixelHeight);
 
     /// <summary>
     /// 選択文字を同じ行ごとにまとめ、蛍光マーカーのような連続した墨消し帯へ変換します。

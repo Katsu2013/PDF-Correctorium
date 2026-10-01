@@ -17,6 +17,49 @@
         <KeyBinding Key="S" Modifiers="Control+Shift" Command="{Binding SaveProjectAsCommand}" />
     </Window.InputBindings>
     <Window.Resources>
+        <Style x:Key="LinkResizeHandleStyle" TargetType="Thumb">
+            <Setter Property="Width" Value="8" /><Setter Property="Height" Value="8" />
+            <Setter Property="Background" Value="#2563EB" /><Setter Property="Cursor" Value="SizeNWSE" />
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb"><Border Background="{TemplateBinding Background}" BorderBrush="White" BorderThickness="1" /></ControlTemplate></Setter.Value></Setter>
+            <EventSetter Event="DragStarted" Handler="LinkResize_OnStarted" />
+            <EventSetter Event="DragDelta" Handler="LinkResize_OnDelta" />
+            <EventSetter Event="DragCompleted" Handler="LinkResize_OnCompleted" />
+            <Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions>
+                <Condition Binding="{Binding IsSelected}" Value="True" />
+                <Condition Binding="{Binding DataContext.CanTransformSelectedLink, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
+            </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible" /></MultiDataTrigger></Style.Triggers>
+        </Style>
+        <DataTemplate x:Key="LinkOverlayTemplate">
+            <Grid Width="{Binding Width}" Height="{Binding Height}" ToolTip="{Binding ToolTip}"
+                  MouseLeftButtonDown="LinkAreaOverlay_OnClick" MouseMove="LinkMove_OnMove" MouseLeftButtonUp="LinkMove_OnUp"
+                  MouseRightButtonDown="LinkAreaOverlay_OnRightClick">
+                <Grid.ContextMenu><ContextMenu>
+                    <MenuItem Header="リンクを編集(_E)" Click="InternalLinkEdit_OnClick" IsEnabled="{Binding IsEditable}" />
+                    <MenuItem Header="リンク先へ移動(_G)" Click="InternalLinkNavigate_OnClick" IsEnabled="{Binding IsEditable}" />
+                    <MenuItem Header="リンクを削除(_D)" Click="InternalLinkDelete_OnClick" IsEnabled="{Binding IsEditable}" />
+                </ContextMenu></Grid.ContextMenu>
+                <Border>
+                    <Border.Style><Style TargetType="Border">
+                        <Setter Property="Background" Value="#182563EB" /><Setter Property="BorderBrush" Value="#2563EB" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsExternal}" Value="True"><Setter Property="BorderBrush" Value="#7C3AED" /></DataTrigger>
+                            <DataTrigger Binding="{Binding IsEditable}" Value="False"><Setter Property="BorderBrush" Value="#64748B" /></DataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="BorderThickness" Value="2" /><Setter Property="Background" Value="#402563EB" /></DataTrigger>
+                        </Style.Triggers>
+                    </Style></Border.Style>
+                </Border>
+                <Thumb Tag="NW" HorizontalAlignment="Left" VerticalAlignment="Top" Style="{StaticResource LinkResizeHandleStyle}" />
+                <Thumb Tag="N" HorizontalAlignment="Center" VerticalAlignment="Top" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeNS" />
+                <Thumb Tag="NE" HorizontalAlignment="Right" VerticalAlignment="Top" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeNESW" />
+                <Thumb Tag="E" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeWE" />
+                <Thumb Tag="SE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Style="{StaticResource LinkResizeHandleStyle}" />
+                <Thumb Tag="S" HorizontalAlignment="Center" VerticalAlignment="Bottom" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeNS" />
+                <Thumb Tag="SW" HorizontalAlignment="Left" VerticalAlignment="Bottom" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeNESW" />
+                <Thumb Tag="W" HorizontalAlignment="Left" VerticalAlignment="Center" Style="{StaticResource LinkResizeHandleStyle}" Cursor="SizeWE" />
+            </Grid>
+        </DataTemplate>
         <!--
             ツールバー共通の内側余白。
             ボタン種別ごとのスタイルから参照することで、余白を変更するときに
@@ -425,6 +468,8 @@
                     </MenuItem>
                 </MenuItem>
                 <Separator />
+                <MenuItem Header="リンク枠を表示(_R)" IsCheckable="True" IsChecked="{Binding IsLinkOverlayVisible, Mode=TwoWay}" IsEnabled="{Binding CanUsePreview}" AutomationProperties.AccessKey="Alt+R" />
+                <MenuItem Header="リンク編集モード(_E)" Click="LinkEditingMode_OnClick" IsEnabled="{Binding CanUsePreview}" AutomationProperties.AccessKey="Alt+E" />
                 <MenuItem Header="プロパティの詳しい説明(_H)"
                           IsCheckable="True"
                           IsChecked="{Binding ShowPropertyHelpText, Mode=TwoWay}"  AutomationProperties.AccessKey="Alt+H"/>
@@ -662,11 +707,35 @@
                         <ComboBoxItem Content="段落編集" />
                         <ComboBoxItem Content="文字編集" />
                     </ComboBox>
+                    <ToggleButton IsChecked="{Binding IsLinkOverlayVisible, Mode=TwoWay}" IsEnabled="{Binding CanUsePreview}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="リンク枠を表示／非表示（リンク編集モード中は常に表示）"
+                                  kb:KeyboardAccess.Key="L" AutomationProperties.Name="リンク枠の表示">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.6" Fill="Transparent"
+                                      Data="M 3,5 L 21,5 L 21,19 L 3,19 Z M 8,10 L 16,10 L 16,14 L 8,14 Z" />
+                            </Viewbox>
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="リンク表示" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <ToggleButton Click="LinkEditingMode_OnClick" IsChecked="{Binding IsLinkEditMode, Mode=OneWay}" IsEnabled="{Binding CanUsePreview}"
+                                  Style="{StaticResource ToolbarIconToggleStyle}" ToolTip="リンクを選択・編集／文字・範囲から追加（Alt+Mからも選択可能）"
+                                  AutomationProperties.Name="リンク編集モード">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Style="{StaticResource ToolbarIconViewboxStyle}">
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"
+                                      Data="M 9,16 L 7,18 A 4,4 0 0 1 1.5,12.5 L 6,8 A 4,4 0 0 1 12,8 M 15,8 L 17,6 A 4,4 0 0 1 22.5,11.5 L 18,16 A 4,4 0 0 1 12,16 M 8,16 L 16,8" />
+                            </Viewbox>
+                            <TextBlock Style="{StaticResource ToolbarLabelStyle}" Text="リンク編集" />
+                        </StackPanel>
+                    </ToggleButton>
                     <ComboBox x:Name="EditorModeSelector" IsEnabled="{Binding CanUsePreview}" Width="150" Margin="4,1" SelectedIndex="{Binding EditorModeIndex, Mode=TwoWay}" Style="{StaticResource BrandModeComboBoxStyle}" ToolTip="プレビュー上の操作モードを切り替えます" kb:KeyboardAccess.Key="M" AutomationProperties.Name="編集モード" AutomationProperties.AccessKey="Alt+M">
                         <ComboBoxItem Content="OCR編集" />
                         <ComboBoxItem Content="読み順編集" />
                         <ComboBoxItem Content="校正・確認" />
                         <ComboBoxItem Content="墨消し" />
+                        <ComboBoxItem Content="リンク編集" />
                     </ComboBox>
                 </ToolBar>
                 <ToolBar x:Name="PageLayoutToolBar" Band="1" BandIndex="0" Padding="0,2" Background="Transparent">
@@ -1248,7 +1317,7 @@
                                                  PreviewMouseLeftButtonDown="OverlayCanvas_OnPreviewMouseLeftButtonDown"
                                                  PreviewMouseMove="OverlayCanvas_OnPreviewMouseMove"
                                                  PreviewMouseLeftButtonUp="OverlayCanvas_OnPreviewMouseLeftButtonUp"
-                                                 Visibility="{Binding IsOcrOverlayVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                 Visibility="{Binding IsPointerSurfaceVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                  Background="Transparent" BorderThickness="0"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -1293,6 +1362,9 @@
                                                         </Setter.Value>
                                                     </Setter>
                                                     <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.IsLinkEditMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsDeleted}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                             <Setter Property="IsHitTestVisible" Value="False" />
@@ -1678,39 +1750,15 @@
                                             </ListBox.ItemTemplate>
                                         </ListBox>
                                         <!-- OCR領域に依存しない文書内／Webリンクのクリック範囲です。 -->
-                                        <ItemsControl x:Name="LinkAreaOverlayLayer" ItemsSource="{Binding LinkAreaItems}" Panel.ZIndex="70">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate><Canvas /></ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemContainerStyle>
-                                                <Style TargetType="ContentPresenter">
-                                                    <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                                                    <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                                                </Style>
-                                            </ItemsControl.ItemContainerStyle>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Width="{Binding Width}" Height="{Binding Height}"
-                                                            ToolTip="{Binding Description}" MouseLeftButtonDown="LinkAreaOverlay_OnClick">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border">
-                                                                <Setter Property="Background" Value="#182563EB" />
-                                                                <Setter Property="BorderBrush" Value="#FF2563EB" />
-                                                                <Setter Property="BorderThickness" Value="2" />
-                                                                <Setter Property="Cursor" Value="Hand" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsExternal}" Value="True">
-                                                                        <Setter Property="BorderBrush" Value="#FF7C3AED" />
-                                                                        <Setter Property="Background" Value="#187C3AED" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
+                                        <ItemsControl x:Name="LinkAreaOverlayLayer" ItemsSource="{Binding LinkAreaItems}" Panel.ZIndex="70"
+                                                      Visibility="{Binding IsLinkOverlayDisplayed, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                      IsHitTestVisible="{Binding CanHitLinkAreas}" ItemTemplate="{StaticResource LinkOverlayTemplate}">
+                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter">
+                                                <Setter Property="Canvas.Left" Value="{Binding Left}" /><Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                            </Style></ItemsControl.ItemContainerStyle>
                                         </ItemsControl>
-                                        <Canvas IsHitTestVisible="False">
+                                        <Canvas IsHitTestVisible="False" Panel.ZIndex="90">
                                             <Border x:Name="MarqueeSelectionRectangle"
                                                     Visibility="Collapsed"
                                                     Background="#28D32F2F"
@@ -1896,7 +1944,6 @@
                                                              Visibility="Collapsed" />
                                 </Grid>
                             </ScrollViewer>
-
                             <Border Width="620" Height="700" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="2" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border.Style>
                                     <Style TargetType="Border">
@@ -1985,6 +2032,32 @@
                         </UniformGrid>
                         </StackPanel>
                         <Separator Margin="0,14" />
+                        <StackPanel x:Name="LinkEditingPanel" Visibility="{Binding IsLinkEditMode, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Label Content="リンクの指定方法(_I)" Target="{Binding ElementName=LinkInputSelector}" Padding="0,3" />
+                            <ComboBox x:Name="LinkInputSelector" SelectedIndex="{Binding LinkInputModeIndex, Mode=TwoWay}" Margin="0,0,0,8">
+                                <ComboBoxItem Content="リンクを選択・編集" /><ComboBoxItem Content="文字を選択して追加" /><ComboBoxItem Content="範囲を指定して追加" />
+                            </ComboBox>
+                            <TextBlock Text="{Binding LinkEditingHint}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <TextBlock Text="青：文書内／紫：Web／灰：編集対象外" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,6" />
+                            <ListBox x:Name="LinkList" ItemsSource="{Binding LinkListItems}" SelectedItem="{Binding SelectedLinkArea, Mode=TwoWay}"
+                                     MaxHeight="260" MinHeight="70" SelectionChanged="LinkList_OnSelectionChanged" Margin="0,0,0,8">
+                                <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="3">
+                                    <TextBlock Text="{Binding DestinationSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding DestinationSummary}" />
+                                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel></DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding SelectedLinkSummary}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <UniformGrid Columns="2">
+                                <Button Content="リンクを編集(_E)" Click="InternalLinkEdit_OnClick" IsEnabled="{Binding CanEditLinkSelection}" Margin="0,0,3,4" />
+                                <Button Content="リンクを削除(_D)" Click="InternalLinkDelete_OnClick" IsEnabled="{Binding CanEditLinkSelection}" ToolTip="選択したリンクを削除 (Del)" Margin="3,0,0,4" />
+                                <Button Content="リンク先へ(_G)" Click="InternalLinkNavigate_OnClick" IsEnabled="{Binding CanEditLinkSelection}" Margin="0,0,3,4" />
+                                <Button Content="範囲で追加(_A)" Click="LinkAreaAdd_OnClick" Margin="3,0,0,4" />
+                                <Button Content="戻る(_B)" Click="InternalLinkBack_OnClick" IsEnabled="{Binding CanNavigateInternalLinkBack}" Margin="0,0,3,4" />
+                                <Button Content="進む(_F)" Click="InternalLinkForward_OnClick" IsEnabled="{Binding CanNavigateInternalLinkForward}" Margin="3,0,0,4" />
+                            </UniformGrid>
+                            <TextBlock Text="矩形リンクは枠内ドラッグで移動、ハンドルでサイズ変更できます。複数行の文字リンクは行ごとの範囲を保持します。編集・削除はUndo／Redoに対応します。"
+                                       TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,6,0,0" />
+                        </StackPanel>
                         <StackPanel x:Name="RedactionPanel" Visibility="{Binding IsRedactionMode, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Border Background="#FFF4F4" BorderBrush="#D32F2F" BorderThickness="1" CornerRadius="4" Padding="9" Margin="0,0,0,9">
                             <TextBlock Text="墨消しモードです。文字選択、矩形、多角形、フリーハンドから指定方法を選べます。作成後は移動・サイズ変更でき、Escキーで未確定形状を取り消します。"

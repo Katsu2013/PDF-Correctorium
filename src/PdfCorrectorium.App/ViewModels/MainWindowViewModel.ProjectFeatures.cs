@@ -30,14 +30,21 @@ public sealed partial class MainWindowViewModel
         get => _selectedLinkArea;
         set
         {
+            // Every area of a multiline link shares the canonical list item. Otherwise the
+            // ListBox two-way SelectedItem binding can reject a secondary area and clear selection.
+            if (value is not null) value = LinkListItems.FirstOrDefault(item => item.Id == value.Id) ?? value;
             if (!Set(ref _selectedLinkArea, value)) return;
+            foreach (var item in LinkAreaItems) item.IsSelected = item.Id == value?.Id;
+            foreach (var item in LinkListItems) item.IsSelected = item.Id == value?.Id;
+            NotifyLinkSelection();
             OnPropertyChanged(nameof(HasSelectedLinkArea));
             OnPropertyChanged(nameof(CanEditLinkSelection));
             OnPropertyChanged(nameof(HasInternalLinkForSelection));
         }
     }
     public bool HasSelectedLinkArea => SelectedLinkArea is not null;
-    public bool CanEditLinkSelection => HasSelectedOverlay || HasSelectedLinkArea;
+    public bool CanEditLinkSelection => (HasSelectedOverlay || HasSelectedLinkArea) &&
+        GetSelectedInternalLink()?.UnsupportedAction is null;
     public bool CanNavigateInternalLinkBack => _internalLinkBackStack.Count > 0;
     public bool CanNavigateInternalLinkForward => _internalLinkForwardStack.Count > 0;
 
@@ -62,7 +69,7 @@ public sealed partial class MainWindowViewModel
                 InputPdfIssues.Add(new PdfInputIssue(
                     "links.unsupported_actions", PdfInputIssueSeverity.Critical,
                     "編集対象外のPDFリンクがあります",
-                    $"{_unsupportedSourceLinkActions}件のリンクは内部ページ移動またはHTTP(S)ではありません。アプリ内では実行せず、出力後に安全性と動作を確認してください。",
+                    $"{_unsupportedSourceLinkActions}件のリンクに未対応のアクションや解決できない移動先があります。リンク編集の一覧で理由を確認できます。アプリ内では実行しません。",
                     "アクション"));
         }
         catch (Exception ex)
@@ -130,7 +137,7 @@ public sealed partial class MainWindowViewModel
     public int GetInternalLinkDestinationPage(PdfInternalLink? link) =>
         link is null || !string.IsNullOrWhiteSpace(link.ExternalUri)
             ? Math.Min((SelectedPage?.PageNumber ?? 1) + 1, Math.Max(1, PageItems.Count)) :
-        _project?.Pages.FirstOrDefault(page => page.Id == link.DestinationPageId)?.PageNumber ?? 1;
+        _project?.PageSequence.Select((page, index) => (page, index)).FirstOrDefault(pair => pair.page.PageId == link.DestinationPageId).index + 1 ?? 1;
 
     public async Task<PdfInternalLink?> CreateInternalLinkAsync(
         int destinationPageNumber,
@@ -150,7 +157,8 @@ public sealed partial class MainWindowViewModel
         if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
         var before = CaptureProjectAnnotationSnapshot();
         var existing = FindSelectedInternalLink();
-        var link = new PdfInternalLink
+        if (existing?.UnsupportedAction is not null) return null;
+        var link = (existing ?? new PdfInternalLink()) with
         {
             Id = existing?.Id ?? Guid.NewGuid(),
             SourcePageId = sourcePage.Id,
@@ -158,6 +166,9 @@ public sealed partial class MainWindowViewModel
             DestinationPageId = destinationPage?.Id ?? Guid.Empty,
             ExternalUri = NormalizeExternalUri(externalUri),
             DestinationZoomPercent = zoomPercent,
+            DestinationPosition = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationPosition : null,
+            DestinationViewType = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationViewType : null,
+            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.Id ? UpdatedDestinationParameters(existing, zoomPercent) : [],
             Description = description.Trim(),
             IsEnabled = true,
             SourceAnnotationReference = existing?.SourceAnnotationReference,
@@ -178,7 +189,8 @@ public sealed partial class MainWindowViewModel
         int destinationPageNumber,
         double? zoomPercent,
         string description,
-        string? externalUri)
+        string? externalUri,
+        IReadOnlyList<Rect>? textAreas = null)
     {
         if (_project is null || SelectedPage is null ||
             !_pageMetrics.TryGetValue(SelectedPage.PageNumber, out var metrics) ||
@@ -194,11 +206,16 @@ public sealed partial class MainWindowViewModel
         if (sourcePage is null || (string.IsNullOrWhiteSpace(externalUri) && destinationPage is null)) return null;
         var before = CaptureProjectAnnotationSnapshot();
         var existing = SelectedLinkArea?.Link;
-        var link = new PdfInternalLink
+        if (existing?.UnsupportedAction is not null) return null;
+        var link = (existing ?? new PdfInternalLink()) with
         {
-            Id = existing?.Id ?? Guid.NewGuid(),
             SourcePageId = sourcePage.Id,
-            SourceBounds = ToPdfRectangle(NormalizePreviewBounds(previewBounds), metrics),
+            SourceBounds = textAreas is null && existing?.SourceAreas.Count > 1
+                ? existing.SourceBounds
+                : LinkFromPreview(NormalizePreviewBounds(previewBounds), metrics, SelectedPage.PageNumber),
+            SourceAreas = textAreas is not null
+                ? textAreas.Select(area => LinkFromPreview(area, metrics, SelectedPage.PageNumber)).ToArray()
+                : existing?.SourceAreas ?? [],
             DestinationPageId = destinationPage?.Id ?? Guid.Empty,
             ExternalUri = NormalizeExternalUri(externalUri),
             DestinationZoomPercent = zoomPercent,
@@ -207,6 +224,9 @@ public sealed partial class MainWindowViewModel
             SourceAnnotationReference = existing?.SourceAnnotationReference,
             OriginalSourceBounds = existing?.OriginalSourceBounds,
             IsModified = existing?.SourceAnnotationReference is not null,
+            DestinationPosition = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationPosition : null,
+            DestinationViewType = existing?.DestinationPageId == destinationPage?.Id ? existing?.DestinationViewType : null,
+            DestinationViewParameters = existing?.DestinationPageId == destinationPage?.Id ? UpdatedDestinationParameters(existing, zoomPercent) : [],
         };
         _project = _project with
         {
@@ -219,7 +239,7 @@ public sealed partial class MainWindowViewModel
 
     public void DeleteSelectedInternalLink()
     {
-        if (_project is null || FindSelectedInternalLink() is not { } link) return;
+        if (_project is null || FindSelectedInternalLink() is not { UnsupportedAction: null } link) return;
         var before = CaptureProjectAnnotationSnapshot();
         _project = _project with
         {
@@ -251,7 +271,9 @@ public sealed partial class MainWindowViewModel
 
     private async Task<bool> FollowLinkAsync(PdfInternalLink link, bool recordHistory)
     {
-        if (_project is null) return false;
+        if (_project is null || link.UnsupportedAction is not null) return false;
+        if (string.IsNullOrWhiteSpace(link.ExternalUri) && !_project.PageSequence.Any(page => page.PageId == link.DestinationPageId))
+        { StatusMessage = "リンクの移動先ページがありません。リンク設定で修正してください。"; return false; }
         if (!string.IsNullOrWhiteSpace(link.ExternalUri))
         {
             if (!Uri.TryCreate(link.ExternalUri, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return false;
@@ -266,6 +288,7 @@ public sealed partial class MainWindowViewModel
             _internalLinkForwardStack.Clear();
         }
         await NavigateToPageIdAsync(link.DestinationPageId, link.DestinationZoomPercent);
+        LinkNavigationRequested?.Invoke(link);
         RefreshProjectFeatureState();
         return true;
     }
@@ -290,14 +313,13 @@ public sealed partial class MainWindowViewModel
 
     private async Task NavigateToPageIdAsync(Guid pageId, double? zoomPercent)
     {
-        if (_project?.Pages.FirstOrDefault(page => page.Id == pageId) is not { } destination) return;
+        var pageNumber = _project?.PageSequence.Select((page, index) => (page, index))
+            .Where(pair => pair.page.PageId == pageId).Select(pair => pair.index + 1).FirstOrDefault() ?? 0;
+        if (pageNumber < 1 || pageNumber > PageItems.Count) return;
         if (zoomPercent is > 0) ZoomPercent = zoomPercent.Value;
-        if (destination.PageNumber >= 1 && destination.PageNumber <= PageItems.Count)
-        {
-            SelectedPage = PageItems[destination.PageNumber - 1];
-            await RenderPageAsync(destination.PageNumber, populatePageList: false);
-            StatusMessage = $"ページリンクで{destination.PageNumber}ページへ移動しました。";
-        }
+        SelectedPage = PageItems[pageNumber - 1];
+        await RenderPageAsync(pageNumber, populatePageList: false);
+        StatusMessage = $"ページリンクで{pageNumber}ページへ移動しました。";
     }
 
     private PdfInternalLink? FindSelectedInternalLink()
@@ -313,16 +335,30 @@ public sealed partial class MainWindowViewModel
     {
         var previousId = selectId ?? SelectedLinkArea?.Id;
         LinkAreaItems.Clear();
+        LinkListItems.Clear();
+        LinkOverlayVersion++;
+        OnPropertyChanged(nameof(LinkOverlayVersion));
         if (_project is null || SelectedPage is null || !_pageMetrics.TryGetValue(SelectedPage.PageNumber, out var metrics))
         {
             SelectedLinkArea = null;
+            OnPropertyChanged(nameof(CurrentPageLinkCount));
             return;
         }
-        var page = _project.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage.PageNumber);
-        if (page is null) return;
-        foreach (var link in _project.InternalLinks.Where(item => item.IsEnabled && item.SourcePageId == page.Id && item.SourceBounds is { IsValid: true }))
-            LinkAreaItems.Add(new DocumentLinkOverlayViewModel(link, ToPreviewRectangle(link.SourceBounds!.Value, metrics)));
+        foreach (var item in GetLinkOverlaysForPage(SelectedPage.PageNumber, PreviewPixelWidth, PreviewPixelHeight))
+            LinkAreaItems.Add(item);
+        foreach (var item in LinkAreaItems.DistinctBy(item => item.Id)) LinkListItems.Add(item);
+        OnPropertyChanged(nameof(CurrentPageLinkCount));
+        OnPropertyChanged(nameof(PropertiesPaneSummary));
         SelectedLinkArea = LinkAreaItems.FirstOrDefault(item => item.Id == previousId);
+    }
+
+    private static IReadOnlyList<double?> UpdatedDestinationParameters(PdfInternalLink? link, double? zoom)
+    {
+        if (link?.DestinationViewType != "/XYZ" || link.DestinationZoomPercent == zoom)
+            return link?.DestinationViewParameters ?? [];
+        var values = link.DestinationViewParameters.Concat(Enumerable.Repeat<double?>(null, 3)).Take(3).ToArray();
+        values[2] = zoom / 100d;
+        return values;
     }
 
     private static string? NormalizeExternalUri(string? value)

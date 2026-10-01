@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="570" viewBox="0 0 1000 570" role="img" aria-labelledby="title desc">
+<title id="title">dev.200 リンク編集の操作図</title>
+<desc id="desc">リンク表示と編集モードを切り分け、ページの青と紫の枠を一覧から編集する概念図です。実画面のスクリーンショットではありません。</desc>
+<rect width="1000" height="570" fill="#f4f6f8"/>
+<g font-family="Yu Gothic UI,Meiryo,sans-serif" fill="#243746">
+<text x="20" y="30" font-size="20">リンク編集 ─ 操作と情報の対応（概念図）</text>
+<rect x="15" y="48" width="970" height="42" rx="4" fill="white" stroke="#bcc6d1"/>
+<rect x="30" y="57" width="140" height="24" rx="3" fill="#edf4ff" stroke="#2563eb"/>
+<text x="42" y="74" font-size="13">リンク表示：ON/OFF</text>
+<rect x="200" y="57" width="145" height="24" rx="3" fill="#d32f2f"/>
+<text x="214" y="74" font-size="13" fill="white">編集モード：リンク編集</text>
+<text x="374" y="74" font-size="12">編集モード中は枠を表示。他のモードでは表示のみ。</text>
+<rect x="15" y="100" width="620" height="385" rx="4" fill="#343d47"/>
+<rect x="115" y="115" width="420" height="355" fill="white"/>
+<text x="145" y="150" font-size="17">PDFページ</text>
+<rect x="144" y="171" width="292" height="32" fill="#e8efff" stroke="#2563eb" stroke-width="2"/>
+<text x="154" y="193" font-size="15">文書内の移動先：12ページ</text>
+<g fill="white" stroke="#2563eb"><rect x="140" y="167" width="8" height="8"/><rect x="432" y="199" width="8" height="8"/></g>
+<rect x="144" y="226" width="257" height="26" fill="#f3eaff" stroke="#7c3aed"/>
+<rect x="144" y="268" width="210" height="26" fill="#f3eaff" stroke="#7c3aed"/>
+<text x="154" y="245" font-size="13">複数行の文字に同じWebリンク</text>
+<text x="154" y="287" font-size="13">行間はクリック範囲にしない</text>
+<rect x="144" y="326" width="275" height="27" fill="#f2f2f2" stroke="#64748b"/>
+<text x="154" y="345" font-size="13">編集対象外：JavaScript（実行しない）</text>
+<text x="145" y="394" font-size="13">矩形：枠内で移動、ハンドルでサイズ調整</text>
+<text x="145" y="425" font-size="13">文字：行／列ごとの範囲を一括設定</text>
+<rect x="650" y="100" width="335" height="385" fill="white" stroke="#bcc6d1"/>
+<text x="665" y="127" font-size="17">リンクプロパティ</text>
+<rect x="665" y="145" width="302" height="28" fill="#f7f9fc" stroke="#bcc6d1"/>
+<text x="676" y="165" font-size="13">選択・編集 / 文字で追加 / 範囲で追加</text>
+<rect x="665" y="190" width="302" height="32" fill="#e8efff"/>
+<text x="677" y="212" font-size="13" fill="#2563eb">文書内：12ページ（選択中）</text>
+<text x="677" y="251" font-size="13" fill="#7c3aed">Web：https://example.com</text>
+<text x="677" y="288" font-size="13" fill="#64748b">編集対象外：JavaScript</text>
+<rect x="665" y="317" width="143" height="30" fill="#f7f9fc" stroke="#bcc6d1"/>
+<rect x="824" y="317" width="143" height="30" fill="#f7f9fc" stroke="#bcc6d1"/>
+<text x="695" y="337" font-size="13">リンクを編集</text><text x="846" y="337" font-size="13">削除（Del）</text>
+<text x="665" y="385" font-size="13">通常クリック：選択</text>
+<text x="665" y="413" font-size="13">Ctrl＋クリック：移動</text>
+<text x="665" y="441" font-size="13">ダブルクリック：設定編集</text>
+<text x="20" y="518" font-size="14">変更・削除・矩形調整はUndo／Redoに対応。元PDFは変更しません。</text>
+<text x="20" y="547" font-size="13">プロジェクト形式1.10 / dev.200以降 ─ 編集状態を保存し、出力PDFへ標準リンク注釈として反映。</text>
+</g></svg>

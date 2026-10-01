@@ -291,7 +291,7 @@ public sealed class PdfPreviewService
                     : ExtractTextRegions(page, textPage, widthPoints, heightPoints, pixelWidth, pixelHeight);
                 var selectableCharacters = textPage == IntPtr.Zero
                     ? []
-                    : ExtractSelectableCharacters(textPage, widthPoints, heightPoints, pixelWidth, pixelHeight);
+                    : ExtractSelectableCharacters(page, textPage, widthPoints, heightPoints, pixelWidth, pixelHeight);
                 return new PdfPreviewResult(image, pageCount, pageNumber, widthPoints, heightPoints, textRegions, selectableCharacters);
             }
             finally
@@ -306,6 +306,7 @@ public sealed class PdfPreviewService
     }
 
     private static IReadOnlyList<PdfSelectableTextCharacter> ExtractSelectableCharacters(
+        IntPtr page,
         IntPtr textPage,
         double pageWidth,
         double pageHeight,
@@ -313,23 +314,28 @@ public sealed class PdfPreviewService
         int pixelHeight)
     {
         var result = new List<PdfSelectableTextCharacter>();
+        var mapper = PdfPageCoordinateMapper.Create(page, pageWidth, pageHeight, pixelWidth, pixelHeight);
         var count = NativeMethods.FPDFText_CountChars(textPage);
         for (var index = 0; index < count; index++)
         {
             var textObject = NativeMethods.FPDFText_GetTextObject(textPage, index);
             var unicode = NativeMethods.FPDFText_GetUnicode(textPage, index);
-            if (textObject == IntPtr.Zero || unicode == 0 || unicode > 0x10FFFF ||
+            if (textObject == IntPtr.Zero || unicode == 0 || unicode > 0x10FFFF || unicode is >= 0xD800 and <= 0xDFFF ||
                 NativeMethods.FPDFText_GetCharBox(textPage, index, out var left, out var right, out var bottom, out var top) == 0 ||
+                !double.IsFinite(left) || !double.IsFinite(right) || !double.IsFinite(bottom) || !double.IsFinite(top) ||
                 right <= left || top <= bottom)
                 continue;
             var alpha = 255u;
             if (NativeMethods.FPDFText_GetFillColor(textPage, index, out _, out _, out _, out alpha) == 0) alpha = 255;
+            var corners = new[] { mapper.Map(left, bottom), mapper.Map(left, top), mapper.Map(right, bottom), mapper.Map(right, top) };
+            var visibleLeft = Math.Max(0, corners.Min(point => point.X));
+            var visibleTop = Math.Max(0, corners.Min(point => point.Y));
+            var visibleRight = Math.Min(pixelWidth, corners.Max(point => point.X));
+            var visibleBottom = Math.Min(pixelHeight, corners.Max(point => point.Y));
+            if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) continue;
             result.Add(new PdfSelectableTextCharacter(
-                char.ConvertFromUtf32((int)unicode),
-                left / pageWidth * pixelWidth,
-                (pageHeight - top) / pageHeight * pixelHeight,
-                (right - left) / pageWidth * pixelWidth,
-                (top - bottom) / pageHeight * pixelHeight,
+                char.ConvertFromUtf32((int)unicode), visibleLeft, visibleTop,
+                visibleRight - visibleLeft, visibleBottom - visibleTop,
                 NativeMethods.FPDFTextObj_GetTextRenderMode(textObject) == 3 || alpha <= 5));
         }
         return result;

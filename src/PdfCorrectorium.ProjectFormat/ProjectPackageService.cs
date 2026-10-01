@@ -766,6 +766,16 @@ public sealed class ProjectPackageService
                 issues.Add(new("links.destination", "An internal-link destination contains invalid coordinates.", true));
             if (link.DestinationZoomPercent is { } zoom && (!double.IsFinite(zoom) || zoom is < 25 or > 400))
                 issues.Add(new("links.zoom", "An internal-link destination zoom is outside 25–400 percent.", true));
+            if (link.SourceAreas.Count > 4096 || link.SourceAreas.Any(area => !area.IsValid) ||
+                link.SourceAnnotations.Count > 4096 ||
+                link.SourceAnnotations.Any(item => !item.Bounds.IsValid || item.Reference.Length is 0 or > 64 || item.Name is { Length: > 256 }))
+                issues.Add(new("links.areas", "A grouped link contains invalid or excessive areas.", true));
+            if (link.DestinationViewType is { } view && view is not ("/XYZ" or "/Fit" or "/FitH" or "/FitV" or "/FitR" or "/FitB" or "/FitBH" or "/FitBV") ||
+                link.DestinationViewParameters.Count > 4 ||
+                link.DestinationViewParameters.Any(value => value.HasValue && !double.IsFinite(value.Value)))
+                issues.Add(new("links.view", "A link destination contains invalid viewing parameters.", true));
+            if (link.UnsupportedAction is { Length: > 256 })
+                issues.Add(new("links.action", "An unsupported link action description is too long.", true));
             if (link.SourceAnnotationReference is { Length: > 64 })
                 issues.Add(new("links.sourceReference", "A source annotation reference is too long.", true));
         }

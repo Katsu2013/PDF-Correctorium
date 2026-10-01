@@ -55,12 +55,25 @@ public sealed record ProjectComment
 }
 
 /// <summary>出力PDFにも保存する文書内ページリンクです。</summary>
+public sealed record PdfSourceLinkAnnotation
+{
+    public string Reference { get; init; } = string.Empty;
+    public string? Name { get; init; }
+    public PdfRectangle Bounds { get; init; }
+}
+
+/// <summary>一つの編集対象に、複数行分の独立したクリック範囲を持てるPDFリンクです。</summary>
 public sealed record PdfInternalLink
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid SourcePageId { get; init; }
     public Guid? SourceRegionId { get; init; }
     public PdfRectangle? SourceBounds { get; init; }
+    public IReadOnlyList<PdfRectangle> SourceAreas { get; init; } = [];
+    public IReadOnlyList<PdfSourceLinkAnnotation> SourceAnnotations { get; init; } = [];
+    public string? UnsupportedAction { get; init; }
+    public string? DestinationViewType { get; init; }
+    public IReadOnlyList<double?> DestinationViewParameters { get; init; } = [];
     public Guid DestinationPageId { get; init; }
     /// <summary>
     /// 外部Webページを開く絶対HTTP(S) URIです。値がある場合は
@@ -321,6 +334,8 @@ public sealed record PdfCorrectoriumProject
     public IReadOnlyList<PdfInternalLink> InternalLinks { get; init; } = [];
     /// <summary>元PDFの既存リンクを確認済みかを示し、再オープン時の二重取り込みを防ぎます。</summary>
     public bool SourceLinksInitialized { get; init; }
+    public bool LinkOverlayVisible { get; init; }
+    public int SourceLinkImportVersion { get; init; }
     /// <summary>ページ番号、ヘッダー／フッター、文字透かしの設定です。</summary>
     public IReadOnlyList<PdfTextDecoration> TextDecorations { get; init; } = [];
     /// <summary>

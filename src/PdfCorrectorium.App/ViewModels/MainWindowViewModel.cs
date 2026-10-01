@@ -27,7 +27,7 @@ public enum OcrEditUnit { Line, Paragraph, Character }
 /// プレビュー上でマウス操作が何を編集するかを表します。
 /// 各値はツールバーの編集モード選択順と一致させます。
 /// </summary>
-public enum EditorInteractionMode { OcrEditing, ReadingOrder, Review, Redaction }
+public enum EditorInteractionMode { OcrEditing, ReadingOrder, Review, Redaction, LinkEditing }
 
 /// <summary>しおりをドラッグした際、対象ノードのどこへ挿入するかを表します。</summary>
 public enum BookmarkDropPosition { Before, AsChild, After }
@@ -1189,13 +1189,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             NotifyHistoryState();
         }
     }
-    public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set => Set(ref _isOcrOverlayVisible, value); }
+    public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set { if (Set(ref _isOcrOverlayVisible, value)) OnPropertyChanged(nameof(IsPointerSurfaceVisible)); } }
     public int EditorModeIndex
     {
         get => _editorModeIndex;
         set
         {
-            if (!Set(ref _editorModeIndex, Math.Clamp(value, 0, (int)EditorInteractionMode.Redaction))) return;
+            if (!Set(ref _editorModeIndex, Math.Clamp(value, 0, (int)EditorInteractionMode.LinkEditing))) return;
             OnEditorModeChanged();
         }
     }
@@ -1208,9 +1208,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public bool IsReadingOrderMode => EditorMode == EditorInteractionMode.ReadingOrder;
     public bool IsRedactionMode => EditorMode == EditorInteractionMode.Redaction;
     /// <summary>OCR領域を扱う3モードでは<c>true</c>、墨消し専用モードでは<c>false</c>です。</summary>
-    public bool IsOcrInteractionMode => !IsRedactionMode;
-    public string PropertiesPaneTitle => LocalizationService.Translate(IsRedactionMode ? "墨消しプロパティ" : "OCRプロパティ");
-    public string PropertiesPaneSummary => IsRedactionMode
+    public bool IsOcrInteractionMode => !IsRedactionMode && !IsLinkEditMode;
+    public string PropertiesPaneTitle => LocalizationService.Translate(IsLinkEditMode ? "リンクプロパティ" : IsRedactionMode ? "墨消しプロパティ" : "OCRプロパティ");
+    public string PropertiesPaneSummary => IsLinkEditMode ? $"このページのリンク: {CurrentPageLinkCount}件" : IsRedactionMode
         ? LocalizationService.Translate($"このページの墨消し範囲: {CurrentPageRedactionCount}件")
         : OverlaySummary;
     public bool ShowMultipleSelectionProperties => IsOcrInteractionMode && HasMultipleSelection;
@@ -3035,16 +3035,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         }
 
         _unsupportedSourceLinkActions = 0;
+        _sourceLinkPageCoordinates.Clear();
         try
         {
             var sourceLinks = await PdfSourceLinkService.ReadAsync(resolvedPath, project.PageSequence, CancellationToken.None);
-            if (!project.SourceLinksInitialized)
+            foreach (var pair in sourceLinks.PageCoordinates) _sourceLinkPageCoordinates[pair.Key] = pair.Value;
+            if (!project.SourceLinksInitialized || project.SourceLinkImportVersion < 2)
             {
-                project = project with
-                {
-                    InternalLinks = project.InternalLinks.Concat(sourceLinks.Links).ToArray(),
-                    SourceLinksInitialized = true,
-                };
+                project = UpgradeImportedLinks(project, sourceLinks);
             }
             _unsupportedSourceLinkActions = sourceLinks.UnsupportedActions;
         }
@@ -3059,6 +3057,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _project = project.SourcePdf.IsEmbedded
             ? project with { SourcePdf = project.SourcePdf with { AbsolutePathHint = resolvedPath } }
             : project;
+        _isLinkOverlayVisible = _project.LinkOverlayVisible;
+        OnPropertyChanged(nameof(IsLinkOverlayVisible));
+        OnPropertyChanged(nameof(IsLinkOverlayDisplayed));
         ApplyEditorViewState(_project.EditorViewState ??
             ProjectEditorViewStateMapping.FromViewerSettings(_project.ViewerSettings));
         _hasPageStructureEdits = false;
@@ -3500,6 +3501,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OverlayItems.Clear();
             foreach (var region in pageOverlayModels) OverlayItems.Add(region);
             RefreshRedactionItems();
+            RefreshLinkAreaItems();
             RecalculateReadingOrderCommand.RaiseCanExecuteChanged();
             SelectedOverlay = null;
             UpdateOverlaySummary();
@@ -3581,6 +3583,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>準備済みまたは遅延描画済みの相方ページを、現在ページとの前後関係に応じて設定します。</summary>
     private void ApplyAdjacentPreview(PdfPreviewResult result, int selectedPageNumber)
     {
+        _pageMetrics[result.PageNumber] = new PageMetrics(result.Image.PixelWidth, result.Image.PixelHeight, result.PageWidthPoints, result.PageHeightPoints);
         if (result.PageNumber < selectedPageNumber)
         {
             PreviousPreviewPixelWidth = result.Image.PixelWidth;
@@ -6461,6 +6464,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             };
         }
         _project = _project with { Pages = pages.Values.OrderBy(page => page.PageNumber).ToArray() };
+        SynchronizeRegionLinkBounds();
     }
 
     private static IReadOnlyList<WordReading> ParseWordReadings(string value)

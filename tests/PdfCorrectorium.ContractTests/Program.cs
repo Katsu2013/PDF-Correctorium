@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Build revision matches every application assembly and manifest", BuildVersionAsync),
     ("Project package round-trips and validates", ProjectRoundTripAsync),
     ("Project format 1.8 preserves safe external URI links", ExternalUriLinkRoundTripAsync),
+    ("Project format 1.10 preserves grouped links and destination views", GroupedLinkRoundTripAsync),
     ("Project format 1.8 preserves imported links and text decorations", TextDecorationRoundTripAsync),
     ("Project format 1.4 supports external relative PDF paths", ExternalRelativeSourceAsync),
     ("Project formats 1.5 and 1.6 validate without duplicate source entries", CanonicalLegacyVersionsAsync),
@@ -44,6 +45,50 @@ var tests = new (string Name, Func<Task> Run)[]
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
     ("Project format 1.7 preserves and validates shaped redactions", RedactionRoundTripAsync),
 };
+
+static async Task GroupedLinkRoundTripAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "links.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var packages = new ProjectPackageService();
+        var pageId = Guid.NewGuid();
+        var first = new PdfRectangle(new PdfPoint(10, 200), new PdfSize(90, 12));
+        var second = new PdfRectangle(new PdfPoint(10, 170), new PdfSize(70, 12));
+        var path = Path.Combine(directory, "links.pdfocrproj");
+        var project = new PdfCorrectoriumProject
+        {
+            SourcePdf = await packages.CreateSourceReferenceAsync(pdf, directory),
+            Pages = [new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
+            LinkOverlayVisible = true, SourceLinksInitialized = true, SourceLinkImportVersion = 2,
+            InternalLinks = [new PdfInternalLink
+            {
+                SourcePageId = pageId, DestinationPageId = pageId, SourceBounds = first,
+                SourceAreas = [first, second], SourceAnnotationReference = "20 0 R",
+                SourceAnnotations = [new() { Reference = "20 0 R", Bounds = first }, new() { Reference = "21 0 R", Bounds = second }],
+                DestinationViewType = "/XYZ", DestinationViewParameters = [null, 700, 1.25],
+                IsModified = true, Description = "複数行リンク",
+            }],
+        };
+        await packages.SaveAsync(path, project);
+        True((await packages.ValidateAsync(path)).IsValid, "Grouped imported links validate.");
+        var reopened = await packages.OpenAsync(path);
+        var link = reopened.InternalLinks.Single();
+        True(reopened.LinkOverlayVisible && reopened.SourceLinkImportVersion == 2, "Overlay preference and import marker round-trip.");
+        True(link.SourceAreas.SequenceEqual([first, second]), "Separate rows round-trip without a union click area.");
+        Equal(2, link.SourceAnnotations.Count, "All source annotations remain replaceable.");
+        True(link.DestinationViewParameters.SequenceEqual([null, 700, 1.25]), "Null XYZ parameters and original destination view round-trip.");
+        try
+        {
+            await packages.SaveAsync(path, project with { InternalLinks = [link with { SourceAreas = [new PdfRectangle(new PdfPoint(0, 0), new PdfSize(-10, 10))] }] });
+            throw new Exception("Invalid grouped geometry was saved.");
+        }
+        catch (InvalidDataException) { }
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
 
 static async Task ExternalUriLinkRoundTripAsync()
 {
@@ -77,7 +122,7 @@ static async Task ExternalUriLinkRoundTripAsync()
         var reopened = await packages.OpenAsync(path);
         Equal("https://example.com/reference?q=pdf", reopened.InternalLinks.Single().ExternalUri,
             "External URI links must round-trip without requiring a destination page.");
-        Equal("1.9", ProjectManifest.CurrentVersion, "Odd/even decoration positions require project format 1.9.");
+        Equal("1.10", ProjectManifest.CurrentVersion, "Grouped links require project format 1.10.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }
@@ -452,8 +497,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.9", ProjectManifest.CurrentVersion, "Odd/even decoration positions require project format 1.9.");
-    Equal("1.0.0-dev.199", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.9 must name the first compatible reader.");
+    Equal("1.10", ProjectManifest.CurrentVersion, "Grouped links require project format 1.10.");
+    Equal("1.0.0-dev.200", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.10 names its first compatible reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -507,7 +552,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.9", manifest["formatVersion"]!.GetValue<string>(), "New containers require odd/even decoration support.");
+            Equal("1.10", manifest["formatVersion"]!.GetValue<string>(), "New containers require grouped-link support.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();

@@ -587,6 +587,7 @@ public sealed class PdfExportService
             var warnings = new List<string>();
             var textSpacingRequests = new List<TextSpacingRequest>();
             var textRedactionRequests = new List<TextRedactionRequest>();
+            var outputLinks = project.InternalLinks;
             var modifiedRegions = 0;
             var modifiedPages = 0;
 
@@ -750,6 +751,9 @@ public sealed class PdfExportService
                         {
                             NativeMethods.FPDFText_ClosePage(textPage);
                             textPage = IntPtr.Zero;
+                            outputLinks = PdfLinkRedactionPolicy.Apply(outputLinks, projectPage.Id, pageRedactions,
+                                annotationsRemoved: false, out var excludedLinks);
+                            if (excludedLinks > 0) warnings.Add($"{projectPage.PageNumber}ページ: 墨消しと重なるリンク {excludedLinks}件を出力から除外しました。");
                             appliedRedactions += pageRedactions.Length;
                             redactedPages++;
                             pageChanged = true;
@@ -789,6 +793,9 @@ public sealed class PdfExportService
                                 pageRedactions,
                                 preservationPlan,
                                 cancellationToken);
+                            outputLinks = PdfLinkRedactionPolicy.Apply(outputLinks, projectPage.Id, pageRedactions,
+                                annotationsRemoved: true, out var excludedLinks);
+                            if (excludedLinks > 0) warnings.Add($"{projectPage.PageNumber}ページ: 墨消しと重なる／編集対象外のリンク {excludedLinks}件を出力から除外しました。");
                             appliedRedactions += pageRedactions.Length;
                             redactedPages++;
                             pageChanged = true;
@@ -928,9 +935,10 @@ public sealed class PdfExportService
                     project.OutputPdfVersion,
                     project.DocumentLanguage,
                     project.BookmarksModified,
-                    project.InternalLinks,
+                    outputLinks,
                     project.Pages,
-                    cancellationToken)
+                    cancellationToken,
+                    project.PageSequence)
                 .GetAwaiter()
                 .GetResult();
             return new PdfExportResult(

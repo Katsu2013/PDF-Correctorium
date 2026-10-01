@@ -97,7 +97,7 @@ public sealed partial class MainWindowViewModel
     private void OnEditorModeChanged()
     {
         CancelReviewNavigation();
-        if (IsReviewMode || IsRedactionMode)
+        if (IsReviewMode || IsRedactionMode || IsLinkEditMode)
             IsAddOcrRegionMode = false;
         if (IsReviewMode)
         {
@@ -110,6 +110,11 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(IsReadingOrderMode));
         OnPropertyChanged(nameof(IsReviewMode));
         OnPropertyChanged(nameof(IsRedactionMode));
+        OnPropertyChanged(nameof(IsLinkEditMode));
+        OnPropertyChanged(nameof(IsLinkOverlayDisplayed));
+        OnPropertyChanged(nameof(IsPointerSurfaceVisible));
+        OnPropertyChanged(nameof(CanHitLinkAreas));
+        NotifyLinkSelection();
         OnPropertyChanged(nameof(IsOcrInteractionMode));
         OnPropertyChanged(nameof(CanUseOcrEditControls));
         OnPropertyChanged(nameof(PropertiesPaneTitle));
@@ -138,6 +143,7 @@ public sealed partial class MainWindowViewModel
             EditorInteractionMode.ReadingOrder => "読み順編集モード: OCR領域の読み順を確認・変更します。",
             EditorInteractionMode.Review => "校正・確認モード: 文字と確認状態を点検します。",
             EditorInteractionMode.Redaction => "墨消しモード: ページ上をドラッグして墨消し範囲を指定します。EscでOCR編集へ戻ります。",
+            EditorInteractionMode.LinkEditing => "リンク編集モード: 枠や一覧からリンクを選択します。文字指定・範囲指定でも追加できます。",
             _ => StatusMessage,
         };
     }
