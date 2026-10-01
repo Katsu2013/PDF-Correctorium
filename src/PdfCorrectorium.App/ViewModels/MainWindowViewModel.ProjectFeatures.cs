@@ -288,7 +288,14 @@ public sealed partial class MainWindowViewModel
             _internalLinkBackStack.Push(sourcePage.Id);
             _internalLinkForwardStack.Clear();
         }
+        var projectId = _project.ProjectId;
+        var destinationNumber = GetInternalLinkDestinationPage(link);
         await NavigateToPageIdAsync(link.DestinationPageId, link.DestinationZoomPercent);
+        if (_project?.ProjectId != projectId || SelectedPage?.PageNumber != destinationNumber) return false;
+        try { await EnsureLinkPageReadyAsync(destinationNumber); }
+        catch (OperationCanceledException) { return false; }
+        catch (InvalidOperationException ex) { StatusMessage = ex.Message; return false; }
+        if (_project?.ProjectId != projectId || SelectedPage?.PageNumber != destinationNumber) return false;
         LinkNavigationRequested?.Invoke(link);
         RefreshProjectFeatureState();
         return true;
@@ -381,18 +388,31 @@ public sealed partial class MainWindowViewModel
         _project?.Comments.ToArray() ?? [], _project?.Tags.ToArray() ?? [], _project?.InternalLinks.ToArray() ?? [],
         _project?.Redactions.ToArray() ?? []);
 
-    private void ApplyProjectAnnotationSnapshot(ProjectAnnotationSnapshot snapshot)
+    private void ApplyProjectAnnotationSnapshot(ProjectAnnotationSnapshot snapshot, ProjectAnnotationSnapshot counterpart)
     {
         if (_project is null) return;
         _project = _project with
         {
             Comments = snapshot.Comments.ToArray(),
             Tags = snapshot.Tags.ToArray(),
-            InternalLinks = snapshot.InternalLinks.ToArray(),
+            // Restore only IDs changed by this operation, not unrelated links discovered later.
+            InternalLinks = RestoreLinkChanges(_project.InternalLinks, snapshot.InternalLinks, counterpart.InternalLinks),
             Redactions = snapshot.Redactions.ToArray(),
         };
         RefreshRedactionItems();
         RefreshProjectFeatureState();
+    }
+
+    internal static IReadOnlyList<PdfInternalLink> RestoreLinkChanges(IReadOnlyList<PdfInternalLink> current,
+        IReadOnlyList<PdfInternalLink> target, IReadOnlyList<PdfInternalLink> counterpart)
+    {
+        var targetById = target.ToDictionary(link => link.Id);
+        var previousById = counterpart.ToDictionary(link => link.Id);
+        var changed = targetById.Keys.Union(previousById.Keys)
+            .Where(id => targetById.GetValueOrDefault(id) != previousById.GetValueOrDefault(id)).ToHashSet();
+        var result = current.Where(link => !changed.Contains(link.Id)).ToList();
+        result.AddRange(target.Where(link => changed.Contains(link.Id)));
+        return result;
     }
 
     private void RecordProjectAnnotationChange(ProjectAnnotationSnapshot before, string description)

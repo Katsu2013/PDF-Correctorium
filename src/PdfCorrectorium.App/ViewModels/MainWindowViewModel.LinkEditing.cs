@@ -16,7 +16,7 @@ public sealed partial class MainWindowViewModel
     internal void EndLinkTextSelection() => _linkSelectionCharacters = null;
     public ObservableCollection<DocumentLinkOverlayViewModel> LinkListItems { get; } = [];
     public bool IsLinkEditMode => EditorMode == EditorInteractionMode.LinkEditing;
-    public bool IsLinkOverlayDisplayed => CanEditDocument && (IsLinkEditMode || IsLinkOverlayVisible);
+    public bool IsLinkOverlayDisplayed => HasDocument && (IsLinkEditMode || IsLinkOverlayVisible);
     public bool IsPointerSurfaceVisible => IsOcrOverlayVisible || IsLinkEditMode;
     public bool CanHitLinkAreas => CanEditDocument && IsLinkEditMode && LinkInputModeIndex == 0;
     public bool IsLinkOverlayVisible
@@ -67,7 +67,8 @@ public sealed partial class MainWindowViewModel
         LinkInputModeIndex = 0;
     }
 
-    internal static PdfCorrectoriumProject UpgradeImportedLinks(PdfCorrectoriumProject project, PdfSourceLinkService.ScanResult scan)
+    internal static PdfCorrectoriumProject UpgradeImportedLinks(PdfCorrectoriumProject project, PdfSourceLinkService.ScanResult scan,
+        bool complete = true)
     {
         var sourceLinks = scan.Links.SelectMany(link => link.SourceAnnotations.Select(annotation =>
                 (Key: (link.SourcePageId, annotation.Reference), Link: link)))
@@ -82,9 +83,10 @@ public sealed partial class MainWindowViewModel
                     ? imported with { Id = existing.Id, IsEnabled = existing.IsEnabled }
                     : existing with { SourceAnnotations = imported.SourceAnnotations };
             // Prior rectangle links used displayed-page coordinates. Migrate once to raw PDF coordinates.
-            if (existing.SourceAnnotationReference is null && existing.SourceRegionId is null &&
+            if (project.SourceLinkImportVersion < 2 && existing.SourceAnnotationReference is null && existing.SourceRegionId is null &&
                 existing.SourceBounds is { } bounds && pages.TryGetValue(existing.SourcePageId, out var page) &&
-                sequence.TryGetValue(existing.SourcePageId, out var source))
+                sequence.TryGetValue(existing.SourcePageId, out var source) &&
+                scan.PageCoordinates.ContainsKey(source.SourcePageNumber))
             {
                 var coordinates = scan.PageCoordinates.GetValueOrDefault(source.SourcePageNumber) ?? new(0, new PdfPoint(0, 0));
                 var rotation = ProjectPageSequence.NormalizeRotation(source.RotationDegrees + coordinates.Rotation);
@@ -97,7 +99,12 @@ public sealed partial class MainWindowViewModel
         var known = retained.SelectMany(link => link.SourceAnnotations.Select(annotation => (link.SourcePageId, annotation.Reference))
             .Concat(link.SourceAnnotationReference is { } reference ? [(link.SourcePageId, reference)] : [])).ToHashSet();
         var additions = scan.Links.Where(link => !link.SourceAnnotations.Any(annotation => known.Contains((link.SourcePageId, annotation.Reference))));
-        return project with { InternalLinks = retained.Concat(additions).ToArray(), SourceLinksInitialized = true, SourceLinkImportVersion = 2 };
+        return project with
+        {
+            InternalLinks = retained.Concat(additions).ToArray(),
+            SourceLinksInitialized = complete || project.SourceLinksInitialized,
+            SourceLinkImportVersion = complete ? 2 : project.SourceLinkImportVersion,
+        };
     }
 
     private PdfSourceLinkService.PageCoordinates LinkSourceCoordinates(int pageNumber)
@@ -206,6 +213,9 @@ public sealed partial class MainWindowViewModel
     public IReadOnlyList<DocumentLinkOverlayViewModel> GetLinkOverlaysForPage(int pageNumber, double width, double height)
     {
         if (_project is null) return [];
+        RequestLinkPage(pageNumber);
+        // Missing metadata must not draw rotated/cropped links at incorrect fallback coordinates.
+        if (_isDocumentMetadataLoading && !IsLinkPageReady(pageNumber)) return [];
         var page = _project.Pages.FirstOrDefault(page => page.PageNumber == pageNumber);
         var pageId = page?.Id ?? _project.PageSequence.ElementAtOrDefault(pageNumber - 1)?.PageId;
         if (pageId is null) return [];

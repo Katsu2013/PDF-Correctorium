@@ -1,6 +1,21 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.202
+## Current repository snapshot: v1.0.0-dev.204
+
+- Includes dev.203's page-prioritized source-link discovery below, plus clearing premature saved-project frames before their rotation/crop metadata is ready. An explicit delayed-coordinate project-reopen regression checks this guard.
+- Internal-link viewport navigation waits for destination-page coordinates only, without waiting for offscreen links or font inspection; cancelled/replaced documents cannot apply stale destination positions.
+- New revision required because this application/diagnostic change follows the certified dev.203 intermediate build. Format remains 1.10, minimum reader dev.200.
+- Final verification: Release build 0 warnings/errors; contracts 33; source/published versioning 17/18; source and packaged link/loading 74, persistence 61; packaged recent files 76, file launch 80, document UI 206, keyboard 2,475, organization and smoke passed. Title/About, project-manifest application version and distribution label agree with 1.0.0-dev.204; executable/assembly versions are 1.0.0.204. Build: `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.204-win-x64-20261001-231231`, fingerprint `D45A7E3374EAD8E4ECC01CF7A7940073FB5B448EDEEDDB9296A13FB342CD623D`. Source early-ready and packaged link-mode screenshots inspected; large real-file speed ratios and manual interaction remain unverified. See docs/releases/v1.0.0-dev.204.md. No GitHub publication is implied.
+
+## Previous repository snapshot: v1.0.0-dev.203
+
+- Source-link metadata is discovered in page batches: current/realized facing or continuous pages take priority, and ready pages display/edit links before the remaining document finishes. Reuse a document-scoped page/object/destination index; initialized projects read only page-coordinate metadata.
+- Display-only frames no longer wait on whole-document editing readiness. Unread pages do not use fallback rotation/crop coordinates. Reading progress distinguishes ready visible pages from background completion.
+- Offscreen discovery does not replace active frames mid-interaction. Annotation Undo/Redo restores changed link IDs only, retaining links discovered later and preserving edited/deleted source annotations. Save/export/structural operations still await complete discovery; cancellation and failure guards remain.
+- Fixed link export when page IDs come from PageSequence but no OCR pages are populated. Project format remains 1.10; minimum reader remains dev.200. Alignment/geometry lock remain awaiting specification.
+- Intermediate verification: Release build 0 warnings/errors; contracts 33; source/published versioning 17/18; source and packaged link/loading 72; source persistence 61, document UI 206, keyboard 2,475 and organization passed. A final review added the dev.204 saved-frame startup guard; dev.203 is not the handoff build. See docs/releases/v1.0.0-dev.203.md.
+
+## Previous repository snapshot: v1.0.0-dev.202
 
 - Includes the progressive document-loading changes described under dev.201 below. Persistence/recent-file diagnostics now wait for editing readiness after initial preview instead of editing a deliberately disabled, still-loading document.
 - Source changes made after the dev.201 portable build require this new revision; the dev.201 build remains historical and is not the handoff artifact.

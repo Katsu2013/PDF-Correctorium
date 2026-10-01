@@ -15,7 +15,16 @@ internal static class PdfSourceLinkService
 
     internal static async Task<ScanResult> ReadAsync(
         string pdfPath, IReadOnlyList<ProjectPageReference> sequence, CancellationToken cancellationToken,
-        bool coordinatesOnly = false)
+        bool coordinatesOnly = false, IReadOnlyCollection<int>? physicalPages = null)
+    {
+        var session = await CreateSessionAsync(pdfPath, sequence, cancellationToken);
+        return await session.ReadPagesAsync(physicalPages ?? sequence.Select(page => page.SourcePageNumber).Distinct().ToArray(),
+            coordinatesOnly);
+    }
+
+    // One index/object cache per document. Page batches reuse inherited properties and named destinations.
+    internal static async Task<Session> CreateSessionAsync(
+        string pdfPath, IReadOnlyList<ProjectPageReference> sequence, CancellationToken cancellationToken)
     {
         var qpdf = PdfBookmarkService.ResolveQpdfPath() ??
             throw new FileNotFoundException("リンクの確認に必要なqpdf.exeが見つかりません。");
@@ -24,177 +33,205 @@ internal static class PdfSourceLinkService
         var pageReferences = pagesJson["pages"]!.AsArray()
             .ToDictionary(page => page!["pageposfrom1"]!.GetValue<int>(),
                 page => page!["object"]!.GetValue<string>());
-        var physicalByReference = pageReferences.ToDictionary(pair => pair.Value, pair => pair.Key);
-        var logicalByPhysical = sequence.Select((page, index) => (page, index))
-            .GroupBy(pair => pair.page.SourcePageNumber)
-            .ToDictionary(group => group.Key, group => group.First().page.PageId);
-        var pageValues = new JsonObject();
-        var pageAnnotations = new Dictionary<int, List<JsonNode>>();
-        var indirectArrays = new Dictionary<int, string>();
-        foreach (var chunk in pageReferences.Chunk(64))
+        return new Session(qpdf, pdfPath, sequence, pageReferences, cancellationToken);
+    }
+
+    internal sealed class Session
+    {
+        private readonly string qpdf;
+        private readonly string pdfPath;
+        private readonly CancellationToken cancellationToken;
+        private readonly IReadOnlyDictionary<int, string> allPageReferences;
+        private readonly IReadOnlyDictionary<string, int> physicalByReference;
+        private readonly IReadOnlyDictionary<int, Guid> logicalByPhysical;
+        private readonly PdfLinkObjectReader reader;
+
+        internal Session(string qpdf, string pdfPath, IReadOnlyList<ProjectPageReference> sequence,
+            IReadOnlyDictionary<int, string> pageReferences, CancellationToken cancellationToken)
         {
-            var values = await ReadObjectsAsync(qpdf, pdfPath, chunk.Select(pair => pair.Value), cancellationToken);
-            foreach (var entry in values) pageValues[entry.Key] = entry.Value?.DeepClone();
-            foreach (var pair in chunk)
-            {
-                if (coordinatesOnly || values["obj:" + pair.Value]?["value"]?["/Annots"] is not { } annotations) continue;
-                if (annotations is JsonArray array)
-                    pageAnnotations[pair.Key] = array.Select(item => item!.DeepClone()).ToList();
-                else if (TryReference(annotations, out var reference))
-                    indirectArrays[pair.Key] = reference;
-            }
-        }
-        foreach (var chunk in indirectArrays.Chunk(64))
-        {
-            var values = await ReadObjectsAsync(qpdf, pdfPath, chunk.Select(pair => pair.Value), cancellationToken);
-            foreach (var pair in chunk)
-                if (values["obj:" + pair.Value]?["value"] is JsonArray array)
-                    pageAnnotations[pair.Key] = array.Select(item => item!.DeepClone()).ToList();
+            this.qpdf = qpdf;
+            this.pdfPath = pdfPath;
+            this.cancellationToken = cancellationToken;
+            allPageReferences = pageReferences;
+            physicalByReference = pageReferences.ToDictionary(pair => pair.Value, pair => pair.Key);
+            logicalByPhysical = sequence.GroupBy(page => page.SourcePageNumber)
+                .ToDictionary(group => group.Key, group => group.First().PageId);
+            reader = new PdfLinkObjectReader(qpdf, pdfPath, cancellationToken);
         }
 
-        var annotationReferences = pageAnnotations.Values.SelectMany(items => items)
-            .Select(item => TryReference(item, out var reference) ? reference : null)
-            .Where(reference => reference is not null).Cast<string>().Distinct().ToArray();
-        var annotationValues = new JsonObject();
-        foreach (var chunk in annotationReferences.Chunk(64))
+        // Calls are serialized by the document loader; the resolver is deliberately not shared across documents.
+        internal async Task<ScanResult> ReadPagesAsync(IReadOnlyCollection<int> physicalPages, bool coordinatesOnly)
         {
-            var values = await ReadObjectsAsync(qpdf, pdfPath, chunk, cancellationToken);
-            foreach (var pair in values) annotationValues[pair.Key] = pair.Value?.DeepClone();
-        }
-
-        var reader = new PdfLinkObjectReader(qpdf, pdfPath, cancellationToken);
-        reader.Seed(annotationValues);
-        reader.Seed(pageValues);
-        var coordinates = new Dictionary<int, PageCoordinates>();
-        foreach (var pair in pageReferences)
-        {
-            var page = pageValues["obj:" + pair.Value]?["value"];
-            var rotationNode = await reader.ReadInheritedAsync(page, "/Rotate");
-            var rotation = TryNumber(rotationNode, out var degrees) && degrees % 90 == 0
-                ? ProjectPageSequence.NormalizeRotation((int)degrees) : 0;
-            var media = await reader.ReadInheritedAsync(page, "/MediaBox") as JsonArray;
-            var crop = await reader.ReadInheritedAsync(page, "/CropBox") as JsonArray ?? media;
-            var originX = crop is { Count: 4 } && TryNumber(crop[0], out var x) ? x : 0;
-            var originY = crop is { Count: 4 } && TryNumber(crop[1], out var y) ? y : 0;
-            if (media is { Count: 4 })
+            var pageReferences = physicalPages.Distinct().ToDictionary(number => number,
+                number => allPageReferences.TryGetValue(number, out var reference) ? reference
+                    : throw new InvalidDataException($"PDF内に{number}ページがありません。"));
+            var pageValues = new JsonObject();
+            var pageAnnotations = new Dictionary<int, List<JsonNode>>();
+            var indirectArrays = new Dictionary<int, string>();
+            foreach (var chunk in pageReferences.Chunk(64))
             {
-                if (TryNumber(media[0], out var mediaX)) originX = Math.Max(originX, mediaX);
-                if (TryNumber(media[1], out var mediaY)) originY = Math.Max(originY, mediaY);
-            }
-            coordinates[pair.Key] = new PageCoordinates(rotation, new PdfPoint(originX, originY));
-        }
-        if (coordinatesOnly) return new ScanResult([], 0, coordinates);
-        var links = new List<PdfInternalLink>();
-        var unsupported = 0;
-        foreach (var (sourcePhysical, annotations) in pageAnnotations)
-        {
-            if (!logicalByPhysical.TryGetValue(sourcePhysical, out var sourceId)) continue;
-            for (var annotationIndex = 0; annotationIndex < annotations.Count; annotationIndex++)
-            {
-                var annotationNode = annotations[annotationIndex];
-                var reference = TryReference(annotationNode, out var objectReference) ? objectReference : null;
-                var annotation = reference is null ? annotationNode : annotationValues["obj:" + reference]?["value"];
-                if (annotation is not JsonObject value || ReadString(value["/Subtype"]) != "/Link") continue;
-                if (value["/Rect"] is not JsonArray rect || rect.Count != 4 ||
-                    !TryNumber(rect[0], out var left) || !TryNumber(rect[1], out var bottom) ||
-                    !TryNumber(rect[2], out var right) || !TryNumber(rect[3], out var top) ||
-                    right <= left || top <= bottom) continue;
-
-                var destination = value["/Dest"];
-                var action = await reader.ResolveAsync(value["/A"]);
-                string? uri = null;
-                string? unsupportedReason = value["/AA"] is not null ? "追加アクション付きリンク" : null;
-                if (action is JsonObject actionValue)
+                var values = await ReadObjectsAsync(qpdf, pdfPath, chunk.Select(pair => pair.Value), cancellationToken);
+                foreach (var entry in values) pageValues[entry.Key] = entry.Value?.DeepClone();
+                foreach (var pair in chunk)
                 {
-                    var kind = ReadString(actionValue["/S"]);
-                    if (actionValue["/Next"] is not null) unsupportedReason = "連続アクション付きリンク";
-                    if (kind == "/GoTo") destination = actionValue["/D"];
-                    else if (kind == "/URI")
-                    {
-                        var candidate = DecodeString(ReadString(await reader.ResolveAsync(actionValue["/URI"])));
-                        if (Uri.TryCreate(candidate, UriKind.Absolute, out var parsed) &&
-                            parsed.Scheme is "http" or "https") uri = parsed.AbsoluteUri;
-                        else unsupportedReason ??= "HTTP(S)以外のアドレス";
-                    }
-                    else unsupportedReason ??= kind ?? "不明なアクション";
+                    if (coordinatesOnly || values["obj:" + pair.Value]?["value"]?["/Annots"] is not { } annotations) continue;
+                    if (annotations is JsonArray array)
+                        pageAnnotations[pair.Key] = array.Select(item => item!.DeepClone()).ToList();
+                    else if (TryReference(annotations, out var reference))
+                        indirectArrays[pair.Key] = reference;
                 }
-                else if (value["/A"] is not null) unsupportedReason ??= "解決できないアクション";
+            }
+            foreach (var chunk in indirectArrays.Chunk(64))
+            {
+                var values = await ReadObjectsAsync(qpdf, pdfPath, chunk.Select(pair => pair.Value), cancellationToken);
+                foreach (var pair in chunk)
+                    if (values["obj:" + pair.Value]?["value"] is JsonArray array)
+                        pageAnnotations[pair.Key] = array.Select(item => item!.DeepClone()).ToList();
+            }
 
-                var destinationId = Guid.Empty;
-                double? zoom = null;
-                PdfPoint? destinationPosition = null;
-                string? viewType = null;
-                double?[] parameters = [];
-                if (uri is null && unsupportedReason is null)
+            var annotationReferences = pageAnnotations.Values.SelectMany(items => items)
+                .Select(item => TryReference(item, out var reference) ? reference : null)
+                .Where(reference => reference is not null).Cast<string>().Distinct().ToArray();
+            var annotationValues = new JsonObject();
+            foreach (var chunk in annotationReferences.Chunk(64))
+            {
+                var values = await ReadObjectsAsync(qpdf, pdfPath, chunk, cancellationToken);
+                foreach (var pair in values) annotationValues[pair.Key] = pair.Value?.DeepClone();
+            }
+
+            reader.Seed(annotationValues);
+            reader.Seed(pageValues);
+            var coordinates = new Dictionary<int, PageCoordinates>();
+            foreach (var pair in pageReferences)
+            {
+                var page = pageValues["obj:" + pair.Value]?["value"];
+                var rotationNode = await reader.ReadInheritedAsync(page, "/Rotate");
+                var rotation = TryNumber(rotationNode, out var degrees) && degrees % 90 == 0
+                    ? ProjectPageSequence.NormalizeRotation((int)degrees) : 0;
+                var media = await reader.ReadInheritedAsync(page, "/MediaBox") as JsonArray;
+                var crop = await reader.ReadInheritedAsync(page, "/CropBox") as JsonArray ?? media;
+                var originX = crop is { Count: 4 } && TryNumber(crop[0], out var x) ? x : 0;
+                var originY = crop is { Count: 4 } && TryNumber(crop[1], out var y) ? y : 0;
+                if (media is { Count: 4 })
                 {
-                    var target = await reader.ResolveDestinationAsync(destination) as JsonArray;
-                    if (target is null || target.Count < 2 ||
-                        !TryReference(target[0], out var targetReference) ||
-                        !physicalByReference.TryGetValue(targetReference, out var targetPhysical) ||
-                        !logicalByPhysical.TryGetValue(targetPhysical, out destinationId))
-                        unsupportedReason = "移動先ページを解決できないリンク";
-                    else
+                    if (TryNumber(media[0], out var mediaX)) originX = Math.Max(originX, mediaX);
+                    if (TryNumber(media[1], out var mediaY)) originY = Math.Max(originY, mediaY);
+                }
+                coordinates[pair.Key] = new PageCoordinates(rotation, new PdfPoint(originX, originY));
+            }
+            if (coordinatesOnly) return new ScanResult([], 0, coordinates);
+            var links = new List<PdfInternalLink>();
+            var unsupported = 0;
+            foreach (var (sourcePhysical, annotations) in pageAnnotations)
+            {
+                if (!logicalByPhysical.TryGetValue(sourcePhysical, out var sourceId)) continue;
+                for (var annotationIndex = 0; annotationIndex < annotations.Count; annotationIndex++)
+                {
+                    var annotationNode = annotations[annotationIndex];
+                    var reference = TryReference(annotationNode, out var objectReference) ? objectReference : null;
+                    var annotation = reference is null ? annotationNode : annotationValues["obj:" + reference]?["value"];
+                    if (annotation is not JsonObject value || ReadString(value["/Subtype"]) != "/Link") continue;
+                    if (value["/Rect"] is not JsonArray rect || rect.Count != 4 ||
+                        !TryNumber(rect[0], out var left) || !TryNumber(rect[1], out var bottom) ||
+                        !TryNumber(rect[2], out var right) || !TryNumber(rect[3], out var top) ||
+                        right <= left || top <= bottom) continue;
+
+                    var destination = value["/Dest"];
+                    var action = await reader.ResolveAsync(value["/A"]);
+                    string? uri = null;
+                    string? unsupportedReason = value["/AA"] is not null ? "追加アクション付きリンク" : null;
+                    if (action is JsonObject actionValue)
                     {
-                        viewType = ReadString(target[1]);
-                        if (viewType is not ("/XYZ" or "/Fit" or "/FitH" or "/FitV" or "/FitR" or "/FitB" or "/FitBH" or "/FitBV") ||
-                            target.Count > 6 || target.Skip(2).Any(item => item is not null && !TryNumber(item, out _)))
-                        { unsupportedReason = "未対応の移動先表示方法"; viewType = null; }
+                        var kind = ReadString(actionValue["/S"]);
+                        if (actionValue["/Next"] is not null) unsupportedReason = "連続アクション付きリンク";
+                        if (kind == "/GoTo") destination = actionValue["/D"];
+                        else if (kind == "/URI")
+                        {
+                            var candidate = DecodeString(ReadString(await reader.ResolveAsync(actionValue["/URI"])));
+                            if (Uri.TryCreate(candidate, UriKind.Absolute, out var parsed) &&
+                                parsed.Scheme is "http" or "https") uri = parsed.AbsoluteUri;
+                            else unsupportedReason ??= "HTTP(S)以外のアドレス";
+                        }
+                        else unsupportedReason ??= kind ?? "不明なアクション";
+                    }
+                    else if (value["/A"] is not null) unsupportedReason ??= "解決できないアクション";
+
+                    var destinationId = Guid.Empty;
+                    double? zoom = null;
+                    PdfPoint? destinationPosition = null;
+                    string? viewType = null;
+                    double?[] parameters = [];
+                    if (uri is null && unsupportedReason is null)
+                    {
+                        var target = await reader.ResolveDestinationAsync(destination) as JsonArray;
+                        if (target is null || target.Count < 2 ||
+                            !TryReference(target[0], out var targetReference) ||
+                            !physicalByReference.TryGetValue(targetReference, out var targetPhysical) ||
+                            !logicalByPhysical.TryGetValue(targetPhysical, out destinationId))
+                            unsupportedReason = "移動先ページを解決できないリンク";
                         else
                         {
-                            parameters = target.Skip(2).Select(item => TryNumber(item, out var number) ? (double?)number : null).ToArray();
-                            if (viewType == "/XYZ")
+                            viewType = ReadString(target[1]);
+                            if (viewType is not ("/XYZ" or "/Fit" or "/FitH" or "/FitV" or "/FitR" or "/FitB" or "/FitBH" or "/FitBV") ||
+                                target.Count > 6 || target.Skip(2).Any(item => item is not null && !TryNumber(item, out _)))
+                            { unsupportedReason = "未対応の移動先表示方法"; viewType = null; }
+                            else
                             {
-                                if (parameters.Length >= 2 && parameters[0] is { } x && parameters[1] is { } y)
-                                    destinationPosition = new PdfPoint(x, y);
-                                if (parameters.Length >= 3 && parameters[2] is { } factor && factor * 100 is >= 25 and <= 400)
-                                    zoom = factor * 100;
+                                parameters = target.Skip(2).Select(item => TryNumber(item, out var number) ? (double?)number : null).ToArray();
+                                if (viewType == "/XYZ")
+                                {
+                                    if (parameters.Length >= 2 && parameters[0] is { } x && parameters[1] is { } y)
+                                        destinationPosition = new PdfPoint(x, y);
+                                    if (parameters.Length >= 3 && parameters[2] is { } factor && factor * 100 is >= 25 and <= 400)
+                                        zoom = factor * 100;
+                                }
                             }
                         }
                     }
+                    if (unsupportedReason is not null) unsupported++;
+                    var sourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom));
+                    var marker = DecodeString(ReadString(value["/NM"]));
+                    var markerParts = marker.Split('-');
+                    var groupedId = marker.StartsWith("pdfcorrectorium-link-", StringComparison.Ordinal) &&
+                        markerParts.Length >= 3 && Guid.TryParseExact(markerParts[2], "N", out var parsedId) ? parsedId : Guid.NewGuid();
+                    links.Add(new PdfInternalLink
+                    {
+                        Id = groupedId,
+                        SourcePageId = sourceId,
+                        SourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom)),
+                        DestinationPageId = destinationId,
+                        ExternalUri = uri,
+                        DestinationZoomPercent = zoom,
+                        DestinationPosition = destinationPosition,
+                        DestinationViewType = viewType,
+                        DestinationViewParameters = parameters,
+                        UnsupportedAction = unsupportedReason,
+                        SourceAnnotations = [new PdfSourceLinkAnnotation { Reference = reference ?? $"direct:{annotationIndex}", Bounds = sourceBounds, Name = marker.Length is > 0 and <= 256 ? marker : null }],
+                        Description = DecodeString(ReadString(value["/Contents"])),
+                        SourceAnnotationReference = reference ?? $"direct:{annotationIndex}",
+                        OriginalSourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom)),
+                    });
                 }
-                if (unsupportedReason is not null) unsupported++;
-                var sourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom));
-                var marker = DecodeString(ReadString(value["/NM"]));
-                var markerParts = marker.Split('-');
-                var groupedId = marker.StartsWith("pdfcorrectorium-link-", StringComparison.Ordinal) &&
-                    markerParts.Length >= 3 && Guid.TryParseExact(markerParts[2], "N", out var parsedId) ? parsedId : Guid.NewGuid();
-                links.Add(new PdfInternalLink
-                {
-                    Id = groupedId,
-                    SourcePageId = sourceId,
-                    SourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom)),
-                    DestinationPageId = destinationId,
-                    ExternalUri = uri,
-                    DestinationZoomPercent = zoom,
-                    DestinationPosition = destinationPosition,
-                    DestinationViewType = viewType,
-                    DestinationViewParameters = parameters,
-                    UnsupportedAction = unsupportedReason,
-                    SourceAnnotations = [new PdfSourceLinkAnnotation { Reference = reference ?? $"direct:{annotationIndex}", Bounds = sourceBounds, Name = marker.Length is > 0 and <= 256 ? marker : null }],
-                    Description = DecodeString(ReadString(value["/Contents"])),
-                    SourceAnnotationReference = reference ?? $"direct:{annotationIndex}",
-                    OriginalSourceBounds = new PdfRectangle(new PdfPoint(left, bottom), new PdfSize(right - left, top - bottom)),
-                });
             }
-        }
-        // Our multiline output uses separate standard annotations, but remains one editable link.
-        var grouped = links.GroupBy(link => (link.SourcePageId, link.Id, link.ExternalUri, link.DestinationPageId))
-            .Select(group =>
-            {
-                var first = group.First();
-                var areas = group.Select(link => link.SourceBounds!.Value).ToArray();
-                var union = new PdfRectangle(
-                    new PdfPoint(areas.Min(area => area.Left), areas.Min(area => area.Bottom)),
-                    new PdfSize(areas.Max(area => area.Right) - areas.Min(area => area.Left),
-                        areas.Max(area => area.Top) - areas.Min(area => area.Bottom)));
-                return first with
+            // Our multiline output uses separate standard annotations, but remains one editable link.
+            var grouped = links.GroupBy(link => (link.SourcePageId, link.Id, link.ExternalUri, link.DestinationPageId))
+                .Select(group =>
                 {
-                    SourceBounds = union,
-                    SourceAreas = areas.Length > 1 ? areas : [],
-                    SourceAnnotations = group.SelectMany(link => link.SourceAnnotations).ToArray(),
-                };
-            }).ToArray();
-        return new ScanResult(grouped, unsupported, coordinates);
+                    var first = group.First();
+                    var areas = group.Select(link => link.SourceBounds!.Value).ToArray();
+                    var union = new PdfRectangle(
+                        new PdfPoint(areas.Min(area => area.Left), areas.Min(area => area.Bottom)),
+                        new PdfSize(areas.Max(area => area.Right) - areas.Min(area => area.Left),
+                            areas.Max(area => area.Top) - areas.Min(area => area.Bottom)));
+                    return first with
+                    {
+                        SourceBounds = union,
+                        SourceAreas = areas.Length > 1 ? areas : [],
+                        SourceAnnotations = group.SelectMany(link => link.SourceAnnotations).ToArray(),
+                    };
+                }).ToArray();
+            return new ScanResult(grouped, unsupported, coordinates);
+        }
     }
 
     private static async Task<JsonObject> ReadObjectsAsync(

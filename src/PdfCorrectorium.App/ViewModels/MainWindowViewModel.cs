@@ -1740,6 +1740,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CurrentPageImageOptimizationActionText));
             OptimizeCurrentPageImageCommand.RaiseCanExecuteChanged();
             AddBookmarkCommand.RaiseCanExecuteChanged();
+            RequestLinkPage(value?.PageNumber ?? 0);
+            NotifyDocumentLoading();
             RefreshProjectFeatureState();
             if (value is not null && _resolvedPdfPath is not null && !_isApplyingPreparedFacingNavigation)
                 _ = RenderSelectedPageAsync();
@@ -6593,7 +6595,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         if (edit is ProjectAnnotationEdit annotationEdit)
         {
             _undo.Pop();
-            ApplyProjectAnnotationSnapshot(annotationEdit.Before);
+            ApplyProjectAnnotationSnapshot(annotationEdit.Before, annotationEdit.After);
             _redo.Push(edit);
             SetCurrentEditState(edit.BeforeStateId);
             StatusMessage = $"元に戻す: {edit.Description}";
@@ -6621,7 +6623,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         if (edit is ProjectAnnotationEdit annotationEdit)
         {
             _redo.Pop();
-            ApplyProjectAnnotationSnapshot(annotationEdit.After);
+            ApplyProjectAnnotationSnapshot(annotationEdit.After, annotationEdit.Before);
             _undo.Push(edit);
             SetCurrentEditState(edit.AfterStateId);
             StatusMessage = $"やり直す: {edit.Description}";

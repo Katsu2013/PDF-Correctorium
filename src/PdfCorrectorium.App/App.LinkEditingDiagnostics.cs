@@ -116,16 +116,103 @@ public partial class App
                 "Whole-document inspection runs in a separate resource-limited native worker.");
 
             var coordinateReads = 0;
+            var coordinateGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             vm.DocumentMetadataScanOverride = async (path, sequence, token, coordinatesOnly) =>
             {
                 if (coordinatesOnly) Interlocked.Increment(ref coordinateReads);
+                await coordinateGate.Task.WaitAsync(token);
                 var result = await PdfSourceLinkService.ReadAsync(path, sequence, token, coordinatesOnly);
                 Check(!coordinatesOnly || result.Links.Count == 0, "Initialized projects skip annotation/action re-import.");
                 return result;
             };
-            await vm.LoadProjectForDiagnosticsAsync(progressiveProject);
+            await vm.OpenDocumentPathAsync(progressiveProject);
+            Check(vm.ProjectForDiagnostics!.InternalLinks.Count == 3 && vm.CurrentPageLinkCount == 0 &&
+                !vm.CanEditDocument && vm.IsDocumentMetadataLoading,
+                "Saved links are not prematurely drawn with missing crop/rotation metadata.");
+            coordinateGate.SetResult();
+            await vm.EnsureDocumentMetadataAsync();
             Check(coordinateReads == 1 && vm.ProjectForDiagnostics!.InternalLinks.Count == 3,
                 "Opening a saved project reuses its imported link data.");
+
+            vm.DocumentMetadataScanOverride = null;
+            var progressiveFixture = Path.Combine(directory, "page-priority.pdf");
+            await new PdfExportService().ExportAsync(blank, progressiveFixture, project with
+            {
+                TextDecorations = [],
+                InternalLinks = project.InternalLinks.Append(new PdfInternalLink
+                {
+                    SourcePageId = pages[2].Id, SourceBounds = rectangle,
+                    DestinationPageId = pages[0].Id, Description = "late page link",
+                }).ToArray(),
+            });
+            var laterPagesGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var laterPagesStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var batches = new List<int[]>();
+            PdfSourceLinkService.Session? progressiveSession = null;
+            vm.DocumentPageScanOverride = async (path, sequence, physicalPages, token, coordinatesOnly) =>
+            {
+                batches.Add(physicalPages.ToArray());
+                progressiveSession ??= await PdfSourceLinkService.CreateSessionAsync(path, sequence, token);
+                if (physicalPages.Any(number => number != 1))
+                {
+                    laterPagesStarted.TrySetResult();
+                    await laterPagesGate.Task.WaitAsync(token);
+                }
+                return await progressiveSession.ReadPagesAsync(physicalPages, coordinatesOnly);
+            };
+            await vm.LoadPdfPreviewForDiagnosticsAsync(progressiveFixture);
+            await laterPagesStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            vm.IsLinkOverlayVisible = true;
+            vm.ActivateLinkEditMode();
+            await LayoutAsync();
+            Check(batches[0].SequenceEqual(new[] { 1 }) && vm.IsDocumentMetadataLoading && vm.CanEditDocument &&
+                vm.CurrentPageLinkCount == 2, "Visible page links appear and are editable before remaining pages finish.");
+            Check(((ItemsControl)window.FindName("LinkAreaOverlayLayer")).Items.Count == 2 &&
+                vm.IsLinkOverlayDisplayed && vm.CanHitLinkAreas, "Ready-page link frames are actually populated in the editor during background discovery.");
+            Snapshot("00-ready-page-links");
+            var earlyLink = vm.LinkListItems.Single(item => item.Link.ExternalUri is null);
+            vm.SelectedLinkArea = earlyLink;
+            var changedLink = await vm.CreateLinkAreaAsync(new Rect(60, 80, 180, 30), 2, null, "early edit", null);
+            Check(changedLink?.Id == earlyLink.Id && changedLink.IsModified,
+                "A ready source link can be edited without awaiting offscreen pages.");
+            var earlyWeb = vm.LinkListItems.Single(item => item.Link.ExternalUri is not null);
+            vm.SelectedLinkArea = earlyWeb;
+            vm.DeleteSelectedInternalLink();
+            Check(!vm.ProjectForDiagnostics!.InternalLinks.Single(link => link.Id == earlyWeb.Id).IsEnabled,
+                "Deleting an early imported link records its source tombstone.");
+            var priorityProject = Path.Combine(directory, "page-priority.pdfocrproj");
+            var prioritySave = vm.SaveProjectForDiagnosticsAsync(priorityProject, ProjectPdfStorageMode.Relative);
+            Check(!prioritySave.IsCompleted && !File.Exists(priorityProject), "Saving still waits for all offscreen links.");
+            var stableFrame = vm.LinkAreaItems.First();
+            laterPagesGate.SetResult();
+            await prioritySave;
+            Check(ReferenceEquals(stableFrame, vm.LinkAreaItems.First()),
+                "Finishing offscreen discovery does not replace active frames during an interaction.");
+            var completed = vm.ProjectForDiagnostics!;
+            var lateLink = completed.InternalLinks.Single(link => link.Description == "late page link");
+            Check(completed.InternalLinks.Single(link => link.Id == earlyLink.Id).Description == "early edit" &&
+                !completed.InternalLinks.Single(link => link.Id == earlyWeb.Id).IsEnabled &&
+                completed.InternalLinks.Count == 3 && completed.SourceLinksInitialized,
+                "Later imports preserve early edits/deletions without duplicates.");
+            vm.UndoCommand.Execute(null);
+            Check(vm.ProjectForDiagnostics!.InternalLinks.Any(link => link.Id == lateLink.Id) &&
+                vm.ProjectForDiagnostics.InternalLinks.Single(link => link.Id == earlyWeb.Id).IsEnabled,
+                "Undo restores the edited operation without losing later-page discoveries.");
+            vm.RedoCommand.Execute(null);
+            Check(vm.ProjectForDiagnostics!.InternalLinks.Any(link => link.Id == lateLink.Id) &&
+                !vm.ProjectForDiagnostics.InternalLinks.Single(link => link.Id == earlyWeb.Id).IsEnabled,
+                "Redo keeps later-page links and restores the source deletion.");
+            var priorityOutput = Path.Combine(directory, "page-priority-output.pdf");
+            await new PdfExportService().ExportAsync(progressiveFixture, priorityOutput, vm.ProjectForDiagnostics!);
+            var outputScan = await PdfSourceLinkService.ReadAsync(priorityOutput, vm.ProjectForDiagnostics!.PageSequence, CancellationToken.None);
+            Check(outputScan.Links.Count == 2 && outputScan.Links.Any(link => link.Description == "early edit") &&
+                outputScan.Links.Any(link => link.Description == "late page link"),
+                "Export includes offscreen links, edited visible links and no deleted source annotation.");
+            var subset = await progressiveSession!.ReadPagesAsync([1], coordinatesOnly: false);
+            Check(subset.PageCoordinates.Count == 1 && subset.Links.Any(link => link.DestinationPageId != Guid.Empty),
+                "A page-only scan resolves destinations outside its batch using the shared page index.");
+            vm.DocumentPageScanOverride = null;
+            await RunLinkPagePriorityChecksAsync(vm, directory, Check);
 
             var obsoleteGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -385,6 +472,71 @@ public partial class App
             }
             _diagnostics?.Write("link-editing-test.failed", error.ToString()); Shutdown(1);
         }
+    }
+
+    private static async Task RunLinkPagePriorityChecksAsync(MainWindowViewModel vm, string directory, Action<bool, string> check)
+    {
+        var blank = Path.Combine(directory, "priority-20-blank.pdf");
+        await BlankPdfService.CreateAsync(blank, 20, 595, 842);
+        var pages = Enumerable.Range(1, 20).Select(number => new ProjectPageReference
+            { PageId = Guid.NewGuid(), SourcePageNumber = number }).ToArray();
+        var bounds = new PdfRectangle(new PdfPoint(36, 650), new PdfSize(120, 22));
+        var fixture = Path.Combine(directory, "priority-20.pdf");
+        await new PdfExportService().ExportAsync(blank, fixture, new PdfCorrectoriumProject
+        {
+            SourcePdf = await new ProjectPackageService().CreateSourceReferenceAsync(blank, directory),
+            PageSequence = pages,
+            InternalLinks =
+            [
+                new() { SourcePageId = pages[0].PageId, SourceBounds = bounds, DestinationPageId = pages[19].PageId,
+                    DestinationViewType = "/XYZ", DestinationViewParameters = [42, 700, 1.25],
+                    DestinationPosition = new PdfPoint(42, 700), DestinationZoomPercent = 125 },
+                new() { SourcePageId = pages[19].PageId, SourceBounds = bounds, DestinationPageId = pages[0].PageId },
+            ],
+        });
+        var backgroundStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backgroundGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var afterPriorityStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var batches = new List<int[]>();
+        PdfSourceLinkService.Session? session = null;
+        vm.DocumentPageScanOverride = async (path, sequence, physicalPages, token, coordinatesOnly) =>
+        {
+            batches.Add(physicalPages.ToArray());
+            session ??= await PdfSourceLinkService.CreateSessionAsync(path, sequence, token);
+            if (batches.Count == 2)
+            {
+                backgroundStarted.TrySetResult();
+                await backgroundGate.Task.WaitAsync(token);
+            }
+            if (batches.Count == 4)
+            {
+                afterPriorityStarted.TrySetResult();
+                await completionGate.Task.WaitAsync(token);
+            }
+            return await session.ReadPagesAsync(physicalPages, coordinatesOnly);
+        };
+        await vm.LoadPdfPreviewForDiagnosticsAsync(fixture);
+        await backgroundStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        var navigationApplied = false;
+        void ObserveNavigation(PdfInternalLink link) => navigationApplied = vm.GetLinkDestinationPreviewBounds(link) is not null;
+        vm.LinkNavigationRequested += ObserveNavigation;
+        vm.SelectedLinkArea = vm.LinkListItems.Single();
+        var navigation = vm.NavigateSelectedInternalLinkAsync();
+        check(!vm.CanEditDocument && vm.IsDocumentMetadataLoading && !navigation.IsCompleted && !navigationApplied,
+            "An unscanned destination page cannot edit or apply XYZ navigation using fallback coordinates.");
+        backgroundGate.SetResult();
+        await afterPriorityStarted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        check(await navigation && navigationApplied, "Internal XYZ navigation awaits only the destination page, not all background metadata.");
+        vm.LinkNavigationRequested -= ObserveNavigation;
+        check(batches[2][0] == 20 && vm.CanEditDocument && vm.IsDocumentMetadataLoading && vm.CurrentPageLinkCount == 1,
+            $"A newly selected distant page is prioritized before remaining background pages and becomes editable. Batch={string.Join(',', batches[2])}; selected={vm.SelectedPage?.PageNumber}; ready={vm.CanEditDocument}; loading={vm.IsDocumentMetadataLoading}; frames={vm.CurrentPageLinkCount}; links={vm.ProjectForDiagnostics!.InternalLinks.Count}.");
+        completionGate.SetResult();
+        await vm.EnsureDocumentMetadataAsync();
+        check(batches.SelectMany(batch => batch).Distinct().Count() == 20 &&
+            batches.SelectMany(batch => batch).Count() == 20 && vm.ProjectForDiagnostics!.InternalLinks.Count == 2,
+            "Each physical page is scanned once, with no duplicate annotation import.");
+        vm.DocumentPageScanOverride = null;
     }
 
     private static async Task CreateLinkDiagnosticFixtureAsync(string source, string destination, string directory, bool rotateAndCrop = false)

@@ -635,12 +635,13 @@ public sealed class PdfBookmarkService
                 updateObjects[$"obj:{infoReference}"] = new JsonObject { ["value"] = infoValue };
             }
 
-            if (internalLinks is { Count: > 0 } && projectPages is { Count: > 0 })
+            if (internalLinks is { Count: > 0 } &&
+                (projectPages is { Count: > 0 } || pageSequence is { Count: > 0 }))
             {
                 nextObjectId = await WriteInternalLinkObjectsAsync(
                     qpdfInputPath,
                     internalLinks,
-                    projectPages,
+                    projectPages ?? [],
                     pageReferences,
                     updateObjects,
                     nextObjectId,
