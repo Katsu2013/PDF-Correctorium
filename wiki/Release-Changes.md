@@ -1,7 +1,7 @@
 # dev.199からの更新
 
 <!-- FINAL-LOCAL-VERIFICATION -->
-最終のローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。コミット・署名・外部公開はまだ行っていません。詳しい結果は上記／下記の累積リリース文書を参照してください。
+ローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。実際の配布状況と添付ファイルはGitHub Releasesで確認してください。署名・審査済みの正式版とは区別します。
 
 
 現行ソースは1.0.0-dev.274。前回公開dev.199からの累積変更は、[リリース文書](../docs/releases/v1.0.0-dev.274.md)を参照してください。GitHubで実際に取得できる配布物は[Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認してください。

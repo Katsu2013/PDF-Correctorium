@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Katsu2013/PDF-Correctorium/releases"><img src="https://img.shields.io/badge/Release-v1.0.0--dev.199-blue.svg?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/Katsu2013/PDF-Correctorium/releases"><img src="https://img.shields.io/github/v/release/Katsu2013/PDF-Correctorium?include_prereleases&style=flat-square&label=Release" alt="Version"></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(64bit)-0078D6.svg?style=flat-square&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/License-Apache%202.0-green.svg?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Type-Portable%20(No%20Install)-orange.svg?style=flat-square" alt="Portable">
@@ -26,7 +26,7 @@
 
 | 配布ファイル | 対応OS | 形式 | ダウンロードリンク |
 | :--- | :--- | :--- | :--- |
-| **PDF Correctorium (最新ポータブル版)** | Windows 10 / 11 (64bit) | ZIPアーカイブ (容量はリリースページに記載) | 👉 **[⬇️ 最新版をダウンロード (.zip)](https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip)** |
+| **PDF Correctorium (最新ポータブル版)** | Windows 10 / 11 (64bit) | ZIPアーカイブ (容量はリリースページに記載) | 👉 **[⬇️ 最新版をダウンロード (.zip)](https://github.com/Katsu2013/PDF-Correctorium/releases)** |
 
 ### 🔰 3ステップで使えるクイックスタート
 1. 上記リンクから ZIP ファイルをダウンロードします。
@@ -125,7 +125,7 @@
 ## dev.199からの主な追加機能
 
 <!-- FINAL-LOCAL-VERIFICATION -->
-最終のローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。コミット・署名・外部公開はまだ行っていません。詳しい結果は上記／下記の累積リリース文書を参照してください。
+ローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。配布状況と添付ファイルはGitHub Releasesで確認してください。未署名の開発版であり、署名・審査済みの正式版とは区別します。
 
 
 - 選択行RapidOCR再認識と資料別OCR辞書、類似語・文字密度の校正。[操作](wiki/RapidOCR.md)
@@ -134,13 +134,13 @@
 - ライト／ダーク／OS追従、独立パネルと左右収納、ツールバー表示の保存。
 - TXT／CSV作業データと完成PNG／JPEG、自己完結型.NET 10配布。[出力](wiki/Data-Exports.md)
 
-[累積変更・互換性・制約と検証](docs/releases/v1.0.0-dev.274.md)。この節は次回公開候補のソースを説明します。未OCRページ／PDF全体の新規認識、署名済みMSIX・Store実公開は未完了です。Wiki原稿はリポジトリ内で更新しており、GitHub Wikiへの別途公開は行っていません。
+[累積変更・互換性・制約と検証](docs/releases/v1.0.0-dev.274.md)。この節はdev.274の開発版ソースを説明します。未OCRページ／PDF全体の新規認識、署名済みMSIX・Store実公開は未完了です。Wiki原稿はリポジトリ内で更新しており、GitHub Wikiへの別途公開は行っていません。
 
 ## 🗺️ 開発ロードマップと現在のバージョン
 
 本プロジェクトは、**「日常業務で高価な市販ソフトの代わりに使える、実用的なオープンソースPDF総合エディタ」** の実現を目指して継続的に開発されています。
 
-- **現在のリポジトリSnapshot**: `v1.0.0-dev.274`（次回公開候補。公開状況はReleases参照）
+- **現在のリポジトリSnapshot**: `v1.0.0-dev.274`（現行開発版ソース。公開状況はReleases参照）
 - **今回の比較元となる公開版**: `v1.0.0-dev.199`
 
 [前回公開dev.199からの累積変更](docs/releases/v1.0.0-dev.274.md)：RapidOCRによる行の再認識、共通OCR辞書・品質分析、リンク編集と一括処理、読み上げ・段落・読み方、テーマとドッキング改善、.NET同梱と安全な配布基盤をまとめています。署名・正式公開は別途準備が必要です。
@@ -336,7 +336,7 @@ GitHubで直接配布するMSIXは、SignPath FoundationのOSS向け署名を採
 **PDF Correctorium** is a free, portable Windows application for comprehensive PDF editing, secure irreversible redaction, bookmark/metadata management, and precision invisible OCR text proofreading.
 
 <p align="center">
-  <a href="https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip"><strong>⬇️ Download Latest Portable Release (v1.0.0-dev.199 .zip)</strong></a>
+  <a href="https://github.com/Katsu2013/PDF-Correctorium/releases"><strong>⬇️ Download Latest Portable Release (v1.0.0-dev.199 .zip)</strong></a>
 </p>
 
 ### Key Highlights

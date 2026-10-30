@@ -2,6 +2,8 @@
 
 ## Current repository snapshot: v1.0.0-dev.274
 
+The user has approved committing this snapshot and publishing an unsigned GitHub prerelease. Public distribution status and actual asset hashes are recorded on GitHub Releases; the following pre-commit verification history is retained as dated evidence. Signing, Store/MSIX publication and independent approval are separate.
+
 - Pre-commit preparation authorized: no commit, push, tag or publication. Cumulative release notes compare the latest public dev.199. Manuals, roadmap, canonical design and exported design PDF are synchronized with current implemented and deferred scope.
 - Verification tools retain the successful dev.272 evidence, and broaden the fresh packaged application checks across OCR, dictionaries, links, paragraphs, speech, properties, settings, updates, docking and exports. Fix upstream-byte Git attributes and normalize own source LF so staging does not silently change certified inputs or locked vendor hashes. Include Git attributes/ignore rules in the source fingerprint.
 - PDF generation derives all version and compatibility values from source, wraps CJK code by measured width, omits maintenance comments/decorative emoji and fails on missing/blank diagrams.
