@@ -28,6 +28,8 @@ public partial class App
             }
 
             var viewModel = (MainWindowViewModel)window.DataContext;
+            Check(window.Title.Contains(PdfCorrectorium.Core.ApplicationBuildInfo.Version, StringComparison.Ordinal),
+                "The actual window title displays the current application revision.");
             var basePdf = Path.Combine(directory, "base-two-pages.pdf");
             var insertedPdf = Path.Combine(directory, "inserted-two-pages.pdf");
             WriteDocumentUiTestPdf(basePdf);
@@ -35,6 +37,29 @@ public partial class App
 
             // OCR編集 → ページ並べ替え → Undo/Redo の順序と、OCRモデル参照の復元を検証します。
             await viewModel.LoadPdfForDiagnosticsAsync(basePdf);
+            var originalProject = viewModel.ProjectForDiagnostics!;
+            var packages = new PdfCorrectorium.ProjectFormat.ProjectPackageService();
+            var badProjects = new[]
+            {
+                originalProject with { SourcePdf = originalProject.SourcePdf with { PageCount = 3 } },
+                originalProject with
+                {
+                    SourcePdf = originalProject.SourcePdf with { PageCount = null },
+                    Pages = [],
+                    PageSequence = [new() { SourcePageNumber = 3 }],
+                },
+            };
+            for (var index = 0; index < badProjects.Length; index++)
+            {
+                var path = Path.Combine(directory, $"physical-mismatch-{index}.pdfocrproj");
+                await packages.SaveAsync(path, badProjects[index]);
+                var rejected = false;
+                try { await viewModel.LoadProjectForDiagnosticsAsync(path); }
+                catch (InvalidDataException) { rejected = true; }
+                Check(rejected, "Project loading rejects a recorded page count or reference outside the physical PDF: " + index);
+                Check(ReferenceEquals(originalProject, viewModel.ProjectForDiagnostics) && viewModel.PageItems.Count == 2,
+                    "Physical page mismatches preserve the active project and page list: " + index);
+            }
             Check(PdfNativeWorkerClient.Shared.WorkerProcessId is int workerProcessId && workerProcessId != Environment.ProcessId,
                 "PDF preview is rendered by a reusable isolated native worker process.");
             Check(PdfNativeWorkerClient.Shared.WorkerHasResourceJob,

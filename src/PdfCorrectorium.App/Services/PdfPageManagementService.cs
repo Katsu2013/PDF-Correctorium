@@ -26,12 +26,15 @@ public sealed class PdfPageManagementService
         CancellationToken cancellationToken = default)
     {
         if (sources.Count == 0) throw new ArgumentException("少なくとも1つのページ入力が必要です。", nameof(sources));
+        primaryPdfPath = Path.GetFullPath(primaryPdfPath);
+        outputPath = Path.GetFullPath(outputPath);
         if (!File.Exists(primaryPdfPath)) throw new FileNotFoundException("元PDFが見つかりません。", primaryPdfPath);
         var arguments = new List<string> { primaryPdfPath, "--pages" };
         foreach (var source in sources)
         {
-            if (!File.Exists(source.PdfPath)) throw new FileNotFoundException("ページ入力PDFが見つかりません。", source.PdfPath);
-            arguments.Add(source.PdfPath);
+            var sourcePath = Path.GetFullPath(source.PdfPath);
+            if (!File.Exists(sourcePath)) throw new FileNotFoundException("ページ入力PDFが見つかりません。", sourcePath);
+            arguments.Add(sourcePath);
             arguments.Add(source.PageRange);
         }
         arguments.Add("--");
@@ -47,6 +50,8 @@ public sealed class PdfPageManagementService
         string outputPath,
         CancellationToken cancellationToken = default)
     {
+        sourcePdfPath = Path.GetFullPath(sourcePdfPath);
+        outputPath = Path.GetFullPath(outputPath);
         if (!File.Exists(sourcePdfPath)) throw new FileNotFoundException("回転元PDFが見つかりません。", sourcePdfPath);
         if (pageNumbers.Count == 0) throw new ArgumentException("回転するページが選択されていません。", nameof(pageNumbers));
         if (clockwiseDegrees is not (90 or -90)) throw new ArgumentOutOfRangeException(nameof(clockwiseDegrees));
@@ -69,6 +74,8 @@ public sealed class PdfPageManagementService
         string outputPath,
         CancellationToken cancellationToken = default)
     {
+        sourcePdfPath = Path.GetFullPath(sourcePdfPath);
+        outputPath = Path.GetFullPath(outputPath);
         if (sequence.Count == 0) throw new ArgumentException("少なくとも1ページが必要です。", nameof(sequence));
         if (!File.Exists(sourcePdfPath)) throw new FileNotFoundException("元PDFが見つかりません。", sourcePdfPath);
         var arguments = new List<string>
@@ -113,14 +120,7 @@ public sealed class PdfPageManagementService
 
     private static string ResolveQpdfPath()
     {
-        var candidates = new[]
-        {
-            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "qpdf", "bin", "qpdf.exe")),
-        };
-        return candidates.FirstOrDefault(File.Exists)
+        return QpdfExecutableResolver.Resolve()
             ?? throw new FileNotFoundException("ページ操作に必要なqpdf.exeが見つかりません。配布フォルダーへqpdfを同梱してください。");
     }
 }

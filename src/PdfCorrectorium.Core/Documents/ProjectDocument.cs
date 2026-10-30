@@ -65,6 +65,8 @@ public sealed record PdfSourceLinkAnnotation
 /// <summary>一つの編集対象に、複数行分の独立したクリック範囲を持てるPDFリンクです。</summary>
 public sealed record PdfInternalLink
 {
+    /// <summary>枠の移動・サイズ変更・削除を防ぎます。リンク先の編集は可能です。</summary>
+    public bool IsGeometryLocked { get; init; }
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid SourcePageId { get; init; }
     public Guid? SourceRegionId { get; init; }
@@ -209,6 +211,9 @@ public enum ProjectEditorPageLayout { SinglePage, FacingPages }
 /// <summary>プロジェクト内で使用する編集画面のスクロール方式です。</summary>
 public enum ProjectEditorPageFlow { PageByPage, Continuous }
 
+/// <summary>保存する編集モード。値は既存の画面上の選択順と対応し、追加時も変更しません。</summary>
+public enum ProjectEditingMode { OcrEditing = 0, ReadingOrder = 1, Review = 2, Redaction = 3, LinkEditing = 4 }
+
 /// <summary>
 /// 利用者が文書の初期表示とは異なる編集表示を明示的に選んだ場合だけ保存する上書きです。
 /// </summary>
@@ -292,6 +297,11 @@ public sealed record PdfBookmark
 /// </remarks>
 public sealed record PdfCorrectoriumProject
 {
+    /// <summary>全ページで共用する読み方。同じ表記の行指定が優先します。</summary>
+    public IReadOnlyList<WordReading> WordReadings { get; init; } = [];
+    public PdfCorrectorium.Core.Analysis.OcrLexicon OcrLexicon { get; init; } = new();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public PdfCorrectorium.Core.Analysis.OcrWordCountsCache? OcrWordCountsCache { get; init; }
     /// <summary>プロジェクトを一意に識別するIDです。</summary>
     public Guid ProjectId { get; init; } = Guid.NewGuid();
     /// <summary>画面タイトルと既定保存名に使用するプロジェクト名です。</summary>
@@ -306,6 +316,8 @@ public sealed record PdfCorrectoriumProject
     /// 編集画面で利用者が明示的に選んだ表示状態です。nullの場合は<see cref="ViewerSettings"/>に従います。
     /// </summary>
     public ProjectEditorViewState? EditorViewState { get; init; }
+    /// <summary>通常保存時の編集モード。旧プロジェクトのnullはアプリの初期値に従います。</summary>
+    public ProjectEditingMode? EditingMode { get; init; }
     /// <summary>PDF出力時に使用する仕様バージョンです。既定では編集内容に応じて自動決定します。</summary>
     public PdfOutputVersion OutputPdfVersion { get; init; } = PdfOutputVersion.Automatic;
     /// <summary>

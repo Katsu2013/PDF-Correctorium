@@ -10,13 +10,15 @@ namespace PdfCorrectorium.App.Controls;
 /// Draws all text cells of one OCR region without a WPF control tree per character.
 /// Hit testing and editing remain owned by the containing region and its handles.
 /// </summary>
-public sealed class OcrCharacterLayer : FrameworkElement
+public sealed partial class OcrCharacterLayer : FrameworkElement
 {
     public static readonly DependencyProperty CellsProperty = Register<IReadOnlyList<CharacterOverlayCell>?>(nameof(Cells), null);
     public static readonly DependencyProperty TextBrushProperty = Register<Brush>(nameof(TextBrush), Brushes.Black);
     public static readonly DependencyProperty IsCharacterEditModeProperty = Register(nameof(IsCharacterEditMode), false);
     public static readonly DependencyProperty IsRegionSelectedProperty = Register(nameof(IsRegionSelected), false);
     public static readonly DependencyProperty ShowUnselectedBordersProperty = Register(nameof(ShowUnselectedBorders), false);
+    public static readonly DependencyProperty ShowFramesProperty = Register(nameof(ShowFrames), true);
+    public static readonly DependencyProperty FrameOpacityProperty = Register(nameof(FrameOpacity), 1d);
     public static readonly DependencyProperty CellBorderThicknessProperty = Register(nameof(CellBorderThickness), new Thickness(1));
     public static readonly DependencyProperty RowBorderThicknessProperty = Register(nameof(RowBorderThickness), new Thickness(1.25));
     public static readonly DependencyProperty SelectedBorderThicknessProperty = Register(nameof(SelectedBorderThickness), new Thickness(1.8));
@@ -30,6 +32,8 @@ public sealed class OcrCharacterLayer : FrameworkElement
     public bool IsCharacterEditMode { get => (bool)GetValue(IsCharacterEditModeProperty); set => SetValue(IsCharacterEditModeProperty, value); }
     public bool IsRegionSelected { get => (bool)GetValue(IsRegionSelectedProperty); set => SetValue(IsRegionSelectedProperty, value); }
     public bool ShowUnselectedBorders { get => (bool)GetValue(ShowUnselectedBordersProperty); set => SetValue(ShowUnselectedBordersProperty, value); }
+    public bool ShowFrames { get => (bool)GetValue(ShowFramesProperty); set => SetValue(ShowFramesProperty, value); }
+    public double FrameOpacity { get => (double)GetValue(FrameOpacityProperty); set => SetValue(FrameOpacityProperty, value); }
     public Thickness CellBorderThickness { get => (Thickness)GetValue(CellBorderThicknessProperty); set => SetValue(CellBorderThicknessProperty, value); }
     public Thickness RowBorderThickness { get => (Thickness)GetValue(RowBorderThicknessProperty); set => SetValue(RowBorderThicknessProperty, value); }
     public Thickness SelectedBorderThickness { get => (Thickness)GetValue(SelectedBorderThicknessProperty); set => SetValue(SelectedBorderThicknessProperty, value); }
@@ -57,7 +61,9 @@ public sealed class OcrCharacterLayer : FrameworkElement
     private static readonly Brush LockedStroke = ColorBrush("#E0286DA8");
     private static readonly Brush SelectedLockedFill = ColorBrush("#70FFD54F");
     private static readonly Brush SelectedLockedStroke = ColorBrush("#FFD84315");
-    private static readonly Brush SearchFill = ColorBrush("#70FFF1F2");
+    // Navigation feedback is not editing chrome. Keep the marker visible even when
+    // frames are hidden or their opacity is zero; never change text alpha/geometry.
+    private static readonly Brush SearchMarker = ColorBrush("#66FFD54F");
     private static readonly Brush SearchStroke = ColorBrush("#FFFF0000");
     private static readonly Brush SearchText = ColorBrush("#FFD50000");
 
@@ -81,6 +87,8 @@ public sealed class OcrCharacterLayer : FrameworkElement
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
+        LastDrawnRubyCount = 0;
+        _rubyHitAreas.Clear();
         if (Cells is not { Count: > 0 } cells) return;
         var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         var culture = Language.GetSpecificCulture();
@@ -88,6 +96,7 @@ public sealed class OcrCharacterLayer : FrameworkElement
             !Equals(_cachedCulture, culture) || _cachedPixelsPerDip != pixelsPerDip)
         {
             _glyphs.Clear();
+            _rubyGlyphs?.Clear();
             _cachedFont = FontFamily;
             _cachedBrush = TextBrush;
             _cachedCulture = culture;
@@ -108,9 +117,10 @@ public sealed class OcrCharacterLayer : FrameworkElement
             if (cell.IsSelected) (fill, stroke, thickness) = (SelectedFill, SelectedStroke, SelectedBorderThickness);
             if (cell.IsLocked) (fill, stroke, thickness) = (LockedFill, LockedStroke, LockedBorderThickness);
             if (cell.IsSelected && cell.IsLocked) (fill, stroke, thickness) = (SelectedLockedFill, SelectedLockedStroke, SelectedLockedBorderThickness);
-            if (cell.IsSearchMatch) (fill, stroke, thickness) = (SearchFill, SearchStroke, SelectedBorderThickness);
+            if (cell.IsSearchMatch) (fill, stroke, thickness) = (null, SearchStroke, SelectedBorderThickness);
 
             var bounds = new Rect(cell.Left, cell.Top, cell.Width, cell.Height);
+            if (cell.IsSearchMatch) drawingContext.DrawRectangle(SearchMarker, null, bounds);
             var left = Math.Min(thickness.Left, cell.Width / 2);
             var right = Math.Min(thickness.Right, cell.Width / 2);
             var top = Math.Min(thickness.Top, cell.Height / 2);
@@ -118,13 +128,20 @@ public sealed class OcrCharacterLayer : FrameworkElement
             var inner = new Rect(bounds.Left + left, bounds.Top + top,
                 Math.Max(0, bounds.Width - left - right), Math.Max(0, bounds.Height - top - bottom));
             // Draw disjoint border strips so translucent strokes are not doubled at corners.
-            if (fill is not null) drawingContext.DrawRectangle(fill, null, inner);
-            if (stroke is not null)
+            // Keep glyph geometry/cache identical when chrome changes. Opacity must never
+            // be applied to this whole element: that would also fade the red OCR text.
+            if (ShowFrames && FrameOpacity > 0)
             {
-                drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, bounds.Top, bounds.Width, top));
-                drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, bounds.Bottom - bottom, bounds.Width, bottom));
-                drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, inner.Top, left, inner.Height));
-                drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Right - right, inner.Top, right, inner.Height));
+                drawingContext.PushOpacity(double.IsFinite(FrameOpacity) ? Math.Clamp(FrameOpacity, 0, 1) : 0.45);
+                if (fill is not null) drawingContext.DrawRectangle(fill, null, inner);
+                if (stroke is not null)
+                {
+                    drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, bounds.Top, bounds.Width, top));
+                    drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, bounds.Bottom - bottom, bounds.Width, bottom));
+                    drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Left, inner.Top, left, inner.Height));
+                    drawingContext.DrawRectangle(stroke, null, new Rect(bounds.Right - right, inner.Top, right, inner.Height));
+                }
+                drawingContext.Pop();
             }
 
             var width = Math.Max(0, inner.Width - 2);
@@ -147,5 +164,6 @@ public sealed class OcrCharacterLayer : FrameworkElement
             drawingContext.DrawText(text, new Point());
             drawingContext.Pop();
         }
+        DrawReadings(drawingContext, cells, culture, pixelsPerDip);
     }
 }

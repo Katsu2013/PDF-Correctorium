@@ -261,9 +261,7 @@ internal static class PdfSourceLinkService
     internal static bool TryReference(JsonNode? node, out string reference)
     {
         reference = ReadString(node) ?? string.Empty;
-        var parts = reference.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 3 && parts[2] == "R" &&
-            int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _);
+        return PdfObjectReference.IsValid(reference);
     }
 
     internal static string? ReadString(JsonNode? node) => node is JsonValue value &&

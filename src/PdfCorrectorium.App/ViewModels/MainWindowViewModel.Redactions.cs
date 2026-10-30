@@ -187,6 +187,7 @@ public sealed partial class MainWindowViewModel
                 }
             }
             DeleteSelectedRedactionCommand.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(CanRepeatRedaction));
         }
     }
 

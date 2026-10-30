@@ -1,4 +1,4 @@
-<Window x:Class="PdfCorrectorium.App.BatchCharacterAdjustmentProgressWindow"
+<Window xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" x:Class="PdfCorrectorium.App.BatchCharacterAdjustmentProgressWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="前処理付き一括自動調整" Width="520" SizeToContent="Height"
@@ -22,13 +22,13 @@
                      AutomationProperties.Name="一括自動調整の進捗" />
         <Grid Grid.Row="3" Margin="0,6,0,0">
             <TextBlock x:Name="PageProgressTextBlock" HorizontalAlignment="Left"
-                       Foreground="#52606D" Text="0 / 0 ページ" />
+                       Foreground="{DynamicResource SecondaryTextBrush}" Text="0 / 0 ページ" />
             <TextBlock x:Name="PercentTextBlock" HorizontalAlignment="Right"
                        FontWeight="SemiBold" Text="0%" />
         </Grid>
-        <Grid Grid.Row="4" Margin="0,18,0,0">
+        <Grid x:Name="DialogFooter" Grid.Row="4" Margin="0,18,0,0">
             <TextBlock x:Name="DetailTextBlock" VerticalAlignment="Center"
-                       Foreground="#52606D" Text="調整済み 0 行" />
+                       Foreground="{DynamicResource SecondaryTextBrush}" Text="調整済み 0 行" />
             <Button x:Name="CancelButton" HorizontalAlignment="Right"
  Content="中止(_S)" Click="CancelButton_OnClick"  MinWidth="100" AutomationProperties.AccessKey="Alt+S"/>
         </Grid>

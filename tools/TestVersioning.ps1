@@ -72,6 +72,51 @@ try {
     Check 'Unchanged build inputs have a stable SHA-256 fingerprint.' {
         if ($fingerprintA -notmatch '^[A-F0-9]{64}$' -or $fingerprintA -cne $fingerprintB) { throw 'Unstable input fingerprint.' }
     }
+    $runtimeScript = Join-Path $PSScriptRoot 'AssertRuntimeConfiguration.ps1'
+    $runtimeFixture = Join-Path $OutputDirectory 'runtimeconfig.json'
+    $goodRuntime = '{"runtimeOptions":{"tfm":"net10.0","frameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.0"},{"name":"Microsoft.WindowsDesktop.App","version":"10.0.0"}]}}'
+    Check 'Runtime configuration accepts the intended desktop runtime.' {
+        $goodRuntime | Set-Content -LiteralPath $runtimeFixture -Encoding utf8
+        $actual = & $runtimeScript -Path $runtimeFixture -TargetFramework 'net10.0-windows7.0'
+        if ($actual.RequiredFrameworks.Count -ne 2) { throw 'Missing runtime requirements.' }
+    }
+    foreach ($test in @('old-tfm','old-desktop','missing-desktop','duplicate-framework','major-roll-forward','invalid-json','missing-options')) {
+        Check ('Runtime configuration rejects ' + $test + '.') {
+            $config = $goodRuntime | ConvertFrom-Json
+            switch ($test) {
+                'old-tfm' { $config.runtimeOptions.tfm = 'net8.0' }
+                'old-desktop' { $config.runtimeOptions.frameworks[1].version = '8.0.0' }
+                'missing-desktop' { $config.runtimeOptions.frameworks = @($config.runtimeOptions.frameworks[0]) }
+                'duplicate-framework' { $config.runtimeOptions.frameworks[1].name = 'Microsoft.NETCore.App' }
+                'major-roll-forward' { $config.runtimeOptions | Add-Member -NotePropertyName rollForward -NotePropertyValue LatestMajor }
+                'missing-options' { $config = [pscustomobject]@{ unrelated = $true } }
+            }
+            if ($test -eq 'invalid-json') { '{broken' | Set-Content -LiteralPath $runtimeFixture -Encoding utf8 }
+            else { $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeFixture -Encoding utf8 }
+            MustFail { & $runtimeScript -Path $runtimeFixture -TargetFramework 'net10.0-windows7.0' } 'runtimeconfig'
+        }
+    }
+    $selfContainedRuntime = '{"runtimeOptions":{"tfm":"net10.0","includedFrameworks":[{"name":"Microsoft.NETCore.App","version":"10.0.14"},{"name":"Microsoft.WindowsDesktop.App","version":"10.0.14"}]}}'
+    Check 'Self-contained runtime requirements are included, never shared.' {
+        $selfContainedRuntime | Set-Content -LiteralPath $runtimeFixture -Encoding utf8
+        $actual = & $runtimeScript -Path $runtimeFixture -TargetFramework 'net10.0-windows7.0' -DeploymentMode SelfContained -BundledRuntimeVersion '10.0.14'
+        if ($actual.IncludedFrameworks.Count -ne 2 -or $actual.RequiredFrameworks.Count -ne 0) { throw 'Incorrect self-contained runtime model.' }
+    }
+    foreach ($test in @('shared-as-contained','contained-as-shared','mixed-mode','wrong-included-patch','missing-included-desktop')) {
+        Check ('Runtime configuration rejects ' + $test + '.') {
+            $config = $selfContainedRuntime | ConvertFrom-Json
+            $mode = 'SelfContained'
+            switch ($test) {
+                'shared-as-contained' { $config = $goodRuntime | ConvertFrom-Json }
+                'contained-as-shared' { $mode = 'FrameworkDependent' }
+                'mixed-mode' { $config.runtimeOptions | Add-Member -NotePropertyName frameworks -NotePropertyValue @(($goodRuntime|ConvertFrom-Json).runtimeOptions.frameworks) }
+                'wrong-included-patch' { $config.runtimeOptions.includedFrameworks[1].version='10.0.13' }
+                'missing-included-desktop' { $config.runtimeOptions.includedFrameworks=@($config.runtimeOptions.includedFrameworks[0]) }
+            }
+            $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runtimeFixture -Encoding utf8
+            MustFail { & $runtimeScript -Path $runtimeFixture -TargetFramework 'net10.0-windows7.0' -DeploymentMode $mode -BundledRuntimeVersion '10.0.14' } 'runtimeconfig'
+        }
+    }
     if ($PublishDirectory) {
         Check 'Published binaries and the embedded Windows manifest match the current revision.' {
             $verified = & (Join-Path $PSScriptRoot 'GetBuildVersion.ps1') -PublishDirectory $PublishDirectory

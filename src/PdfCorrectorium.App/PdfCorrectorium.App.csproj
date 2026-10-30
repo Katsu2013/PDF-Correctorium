@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows7.0</TargetFramework>
-    <TargetPlatformMoniker>Windows,Version=7.0</TargetPlatformMoniker>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.19041.57</WindowsSdkPackageVersion>
     <TargetPlatformDisplayName>Windows</TargetPlatformDisplayName>
     <TargetPlatformSdkPath>$(MSBuildProgramFiles32)\Windows Kits\10\</TargetPlatformSdkPath>
     <Nullable>enable</Nullable>
@@ -22,14 +22,28 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The official qpdf archive already carries the licensed MSVC runtime.
+         ONNX/Skia/PDFium also need these beside their root native binaries on a
+         clean Windows installation. Keep the original tool-local copies too. -->
+    <Content Include="..\..\tools\qpdf\bin\msvcp*.dll;..\..\tools\qpdf\bin\vcruntime*.dll;..\..\tools\qpdf\bin\concrt*.dll"
+             Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\DotNet\**\*"
+             Link="licenses\DotNet\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\PdfCorrectorium.Core\PdfCorrectorium.Core.csproj" />
     <ProjectReference Include="..\PdfCorrectorium.ProjectFormat\PdfCorrectorium.ProjectFormat.csproj" />
     <ProjectReference Include="..\PdfCorrectorium.Infrastructure\PdfCorrectorium.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="bblanchon.PDFium.Win32" Version="154.0.8035" />
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="158.0.8125" />
     <PackageReference Include="Dirkster.AvalonDock" Version="4.74.1" />
+    <!-- Recognition only: no default Latin detector/classifier/model copies. -->
+    <PackageReference Include="RapidOcrNet" Version="4.2.0" ExcludeAssets="build;buildTransitive;contentFiles" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\licenses\WindowsSDK\**\*" Link="licenses\WindowsSDK\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -54,8 +68,17 @@
              Link="Icons\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" />
     <None Update="portable.marker" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\RapidOCR\*" Link="components\rapidocr\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\RapidOCR\**\*" Link="licenses\RapidOCR\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\licenses\AvalonDock\LICENSE"
              Link="licenses\AvalonDock\LICENSE"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\PDFium\**\*" Link="licenses\PDFium\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\MaterialSymbols\LICENSE"
+             Link="licenses\MaterialSymbols\LICENSE"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\MaterialSymbols\NOTICE.md"
+             Link="licenses\MaterialSymbols\NOTICE.md"
              CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Fonts\NotoSansJP.ttf"
              Link="components\fonts\NotoSansJP.ttf"
@@ -72,6 +95,23 @@
           CopyToOutputDirectory="PreserveNewest"
           Condition="Exists('..\..\tools\qpdf\licenses')" />
   </ItemGroup>
+
+  <!-- The portable build pins the .NET runtime globally. The Windows projection is
+       a separate framework pack and must retain its own independently pinned version. -->
+  <Target Name="PinWindowsSdkProjectionVersion" BeforeTargets="ProcessFrameworkReferences">
+    <ItemGroup>
+      <FrameworkReference Include="Microsoft.Windows.SDK.NET.Ref" RuntimeFrameworkVersion="$(WindowsSdkPackageVersion)"
+                          IsImplicitlyDefined="true" Pack="false" PrivateAssets="All" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="FilterOcrNativeAssets" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <_UnusedOcrNative Include="@(RuntimeTargetsCopyLocalItems)"
+        Condition="('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntime' Or $([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)').StartsWith('SkiaSharp.'))) And (!$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.DestinationSubPath)').StartsWith('runtimes\win-x64\')) Or '%(RuntimeTargetsCopyLocalItems.Extension)' != '.dll')" />
+      <RuntimeTargetsCopyLocalItems Remove="@(_UnusedOcrNative)" />
+    </ItemGroup>
+  </Target>
 
   <Target Name="PrepareVersionedApplicationManifest"
           BeforeTargets="_SetEmbeddedWin32ManifestProperties;_SetExternalWin32ManifestProperties"

@@ -6,3 +6,10 @@
 *.exe binary
 *.pdf binary
 *.zip binary
+*.nupkg binary
+
+# Preserve the exact upstream bytes verified by DEPENDENCIES.lock.json.
+licenses/** -text
+tools/qpdf/** -text
+src/PdfCorrectorium.App/Assets/Fonts/** -text
+src/PdfCorrectorium.App/Assets/RapidOCR/** -text

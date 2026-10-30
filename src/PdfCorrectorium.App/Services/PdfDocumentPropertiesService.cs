@@ -242,12 +242,14 @@ internal static class PdfDocumentPropertiesService
         CancellationToken cancellationToken)
     {
         var fonts = new Dictionary<string, PdfFontPropertyInfo>(StringComparer.OrdinalIgnoreCase);
+        var usageComplete = true;
         for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var page = NativeMethods.FPDF_LoadPage(document, pageIndex);
             if (page == IntPtr.Zero)
             {
+                usageComplete = false;
                 continue;
             }
 
@@ -257,7 +259,7 @@ internal static class PdfDocumentPropertiesService
                 for (var objectIndex = 0; objectIndex < objectCount; objectIndex++)
                 {
                     var pageObject = NativeMethods.FPDFPage_GetObject(page, objectIndex);
-                    CollectFonts(pageObject, fonts);
+                    CollectFonts(pageObject, fonts, ref usageComplete);
                 }
             }
             finally
@@ -267,6 +269,8 @@ internal static class PdfDocumentPropertiesService
         }
 
         return fonts.Values
+            .Select(font => usageComplete ? font : new PdfFontPropertyInfo { Name = font.Name, FamilyName = font.FamilyName,
+                TypeText = font.TypeText, EncodingText = font.EncodingText, EmbeddedText = font.EmbeddedText, IsInvisibleOnly = false })
             .OrderBy(font => font.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
@@ -274,10 +278,11 @@ internal static class PdfDocumentPropertiesService
     /// <summary>ページオブジェクトと、その配下のフォームからフォントを収集します。</summary>
     private static void CollectFonts(
         IntPtr pageObject,
-        IDictionary<string, PdfFontPropertyInfo> fonts)
+        IDictionary<string, PdfFontPropertyInfo> fonts, ref bool usageComplete)
     {
         if (pageObject == IntPtr.Zero)
         {
+            usageComplete = false;
             return;
         }
 
@@ -287,6 +292,7 @@ internal static class PdfDocumentPropertiesService
             var font = NativeMethods.FPDFTextObj_GetFont(pageObject);
             if (font == IntPtr.Zero)
             {
+                usageComplete = false;
                 return;
             }
 
@@ -296,13 +302,19 @@ internal static class PdfDocumentPropertiesService
                 ? (string.IsNullOrWhiteSpace(familyName) ? "不明なフォント" : familyName)
                 : baseName;
             var key = $"{displayName}\u001f{familyName}";
-            if (!fonts.ContainsKey(key))
+            // Only render mode 3 is confirmed non-painting text. Clipping mode 7,
+            // unknown modes and visible/invisible mixed use remain conservative.
+            var invisible = NativeMethods.FPDFTextObj_GetTextRenderMode(pageObject) == 3;
+            var embedded = NativeMethods.FPDFFont_GetIsEmbedded(font) != 0;
+            fonts.TryGetValue(key, out var previous);
+            if (previous is null || previous.IsInvisibleOnly && !invisible || previous.EmbeddedText != "いいえ" && !embedded)
             {
                 fonts[key] = new PdfFontPropertyInfo
                 {
                     Name = displayName,
                     FamilyName = string.IsNullOrWhiteSpace(familyName) ? "不明" : familyName,
-                    EmbeddedText = NativeMethods.FPDFFont_GetIsEmbedded(font) != 0 ? "はい" : "いいえ",
+                    EmbeddedText = !embedded || previous?.EmbeddedText == "いいえ" ? "いいえ" : "はい",
+                    IsInvisibleOnly = invisible && (previous is null || previous.IsInvisibleOnly),
                 };
             }
 
@@ -318,7 +330,7 @@ internal static class PdfDocumentPropertiesService
         var childCount = NativeMethods.FPDFFormObj_CountObjects(pageObject);
         for (var childIndex = 0; childIndex < childCount; childIndex++)
         {
-            CollectFonts(NativeMethods.FPDFFormObj_GetObject(pageObject, childIndex), fonts);
+            CollectFonts(NativeMethods.FPDFFormObj_GetObject(pageObject, childIndex), fonts, ref usageComplete);
         }
     }
 
@@ -489,6 +501,9 @@ internal static class PdfDocumentPropertiesService
         internal static extern IntPtr FPDFTextObj_GetFont(IntPtr textObject);
 
         [DllImport(PdfiumLibrary, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int FPDFTextObj_GetTextRenderMode(IntPtr textObject);
+
+        [DllImport(PdfiumLibrary, CallingConvention = CallingConvention.Cdecl)]
         internal static extern nuint FPDFFont_GetBaseFontName(IntPtr font, IntPtr buffer, nuint length);
 
         [DllImport(PdfiumLibrary, CallingConvention = CallingConvention.Cdecl)]
@@ -557,4 +572,6 @@ public sealed class PdfFontPropertyInfo
     public string TypeText { get; init; } = "不明";
     public string EncodingText { get; init; } = "不明";
     public string EmbeddedText { get; init; } = "不明";
+    /// <summary>All verified uses of this font paint no glyphs (PDF text render mode 3). Unknown usage is false.</summary>
+    public bool IsInvisibleOnly { get; init; }
 }

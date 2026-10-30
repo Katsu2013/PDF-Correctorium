@@ -331,12 +331,12 @@ public partial class App
         }
     }
 
-    private static void WritePersistenceTextPdf(string path)
+    private static void WritePersistenceTextPdf(string path, string visibleText = "VISIBLE TEXT")
     {
         var content =
             "q 300 0 0 400 0 0 cm /Im1 Do Q\n" +
             "0.82 0.90 0.96 rg 20 20 260 360 re f\n" +
-            "0 0 0 rg BT /F1 18 Tf 0 Tr 25 340 Td (VISIBLE TEXT) Tj ET\n" +
+            $"0 0 0 rg BT /F1 18 Tf 0 Tr 25 340 Td ({visibleText}) Tj ET\n" +
             "BT /F1 18 Tf 3 Tr 25 300 Td (ABCDEF) Tj ET\n";
         const string imageData = "EEF2F7>";
         string[] objects = [

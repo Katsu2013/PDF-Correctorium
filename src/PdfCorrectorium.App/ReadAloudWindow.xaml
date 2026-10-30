@@ -1,0 +1,6 @@
+<Window x:Class="PdfCorrectorium.App.ReadAloudWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="読み上げ" Width="500" SizeToContent="Height" MaxHeight="400"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Loaded="Window_OnLoaded" Closed="Window_OnClosed" />

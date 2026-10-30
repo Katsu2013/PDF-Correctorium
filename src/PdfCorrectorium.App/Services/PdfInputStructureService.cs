@@ -20,6 +20,7 @@ internal static class PdfInputStructureService
 
     internal static async Task<Features> ReadAsync(string pdfPath, CancellationToken cancellationToken)
     {
+        pdfPath = Path.GetFullPath(pdfPath);
         var qpdfPath = PdfBookmarkService.ResolveQpdfPath() ??
             throw new FileNotFoundException("PDF構造の検査に必要なqpdf.exeが見つかりません。");
         var summary = await RunAsync(qpdfPath,
@@ -50,7 +51,7 @@ internal static class PdfInputStructureService
         var catalogReference = trailerValue.GetProperty("/Root").GetString() ??
             throw new InvalidDataException("PDFカタログを特定できません。");
         var parts = catalogReference.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 3 || parts[2] != "R")
+        if (!PdfObjectReference.IsValid(catalogReference))
             throw new InvalidDataException("PDFカタログ参照が不正です。");
         var catalog = await RunAsync(qpdfPath,
             ["--json-output=2", $"--json-object={parts[0]},{parts[1]}", pdfPath, "-"], cancellationToken);
@@ -85,7 +86,7 @@ internal static class PdfInputStructureService
         if (value.ValueKind != JsonValueKind.String) return value;
         var reference = value.GetString() ?? string.Empty;
         var parts = reference.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 3 || parts[2] != "R") return value;
+        if (!PdfObjectReference.IsValid(reference)) return value;
         var objectJson = await RunAsync(qpdfPath,
             ["--json-output=2", $"--json-object={parts[0]},{parts[1]}", pdfPath, "-"], cancellationToken);
         using var document = JsonDocument.Parse(objectJson);

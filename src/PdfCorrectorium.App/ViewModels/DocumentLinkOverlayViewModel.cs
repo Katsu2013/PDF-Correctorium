@@ -19,8 +19,9 @@ public sealed class DocumentLinkOverlayViewModel(PdfInternalLink link, System.Wi
     public int SourcePageNumber => sourcePageNumber;
     public bool IsExternal => !string.IsNullOrWhiteSpace(link.ExternalUri);
     public bool IsEditable => link.UnsupportedAction is null;
+    public bool CanDelete => IsEditable && !link.IsGeometryLocked;
     public string DestinationSummary => destinationSummary;
-    public string ToolTip => $"{destinationSummary}\n{Description}";
+    public string ToolTip => $"{destinationSummary}\n{Description}{(link.IsGeometryLocked ? "\nロック中（移動・サイズ変更・削除不可）" : "")}";
     private bool _isSelected;
     public bool IsSelected
     {

@@ -18,6 +18,13 @@ public sealed partial class MainWindowViewModel
     public ObservableCollection<PdfInputIssue> InputPdfIssues { get; } = [];
     public int InputPdfIssueCount => InputPdfIssues.Count;
     public bool HasInputPdfIssues => InputPdfIssues.Count > 0;
+    // Font notices belong in properties. Other warnings/errors remain visible
+    // globally even while a different editing property tab is selected.
+    public int GlobalInputPdfIssueCount => InputPdfIssues.Count(issue => issue.Code != "fonts.not_embedded" ||
+        issue.Severity is PdfInputIssueSeverity.Critical or PdfInputIssueSeverity.Blocking);
+    public bool HasGlobalInputPdfIssues => GlobalInputPdfIssueCount > 0;
+    public string GlobalInputPdfIssueSummary => LocalizationService.IsEnglish
+        ? $"Input PDF notices: {GlobalInputPdfIssueCount}" : $"入力PDFの注意事項: {GlobalInputPdfIssueCount}件";
     public string InputPdfIssueSummary => LocalizationService.IsEnglish
         ? InputPdfIssues.Count == 0 ? "No input PDF notices." : $"Input PDF notices: {InputPdfIssues.Count}"
         : InputPdfIssues.Count == 0 ? "入力PDFに注意事項はありません。" : $"入力PDFの注意事項: {InputPdfIssues.Count}件";
@@ -34,8 +41,12 @@ public sealed partial class MainWindowViewModel
             // ListBox two-way SelectedItem binding can reject a secondary area and clear selection.
             if (value is not null) value = LinkListItems.FirstOrDefault(item => item.Id == value.Id) ?? value;
             if (!Set(ref _selectedLinkArea, value)) return;
-            foreach (var item in LinkAreaItems) item.IsSelected = item.Id == value?.Id;
-            foreach (var item in LinkListItems) item.IsSelected = item.Id == value?.Id;
+            if (!_updatingLinkSelection)
+            {
+                _selectedLinkIds.Clear();
+                if (value is not null) _selectedLinkIds.Add(value.Id);
+            }
+            foreach (var item in LinkAreaItems.Concat(LinkListItems)) item.IsSelected = _selectedLinkIds.Contains(item.Id);
             NotifyLinkSelection();
             OnPropertyChanged(nameof(HasSelectedLinkArea));
             OnPropertyChanged(nameof(CanEditLinkSelection));
@@ -55,6 +66,9 @@ public sealed partial class MainWindowViewModel
             OnPropertyChanged(nameof(InputPdfIssueCount));
             OnPropertyChanged(nameof(HasInputPdfIssues));
             OnPropertyChanged(nameof(InputPdfIssueSummary));
+            OnPropertyChanged(nameof(GlobalInputPdfIssueCount));
+            OnPropertyChanged(nameof(HasGlobalInputPdfIssues));
+            OnPropertyChanged(nameof(GlobalInputPdfIssueSummary));
         };
     }
 
@@ -100,22 +114,25 @@ public sealed partial class MainWindowViewModel
 
     public ProjectTargetReference GetCurrentCommentTarget()
     {
-        SynchronizeProjectPages();
-        var page = _project?.Pages.FirstOrDefault(item => item.PageNumber == SelectedPage?.PageNumber);
-        if (SelectedOverlay is { IsDeleted: false } region && page is not null)
+        // Page sequence IDs are stable even when other pages have not been materialized.
+        // Inspecting a property tab must not synchronize the entire document.
+        var pageId = SelectedPage is { } selected && _project is { } project &&
+                     selected.PageNumber > 0 && selected.PageNumber <= project.PageSequence.Count
+            ? (Guid?)project.PageSequence[selected.PageNumber - 1].PageId : null;
+        if (SelectedOverlay is { IsDeleted: false } region && pageId is not null)
         {
             return new ProjectTargetReference
             {
                 Kind = ProjectTargetKind.OcrRegion,
-                PageId = page.Id,
+                PageId = pageId,
                 ObjectId = region.Id,
                 CharacterStart = GetContiguousCharacterSelection(region)?.Start,
                 CharacterLength = GetContiguousCharacterSelection(region)?.Length,
             };
         }
-        return page is null
+        return pageId is null
             ? new ProjectTargetReference { Kind = ProjectTargetKind.Document }
-            : new ProjectTargetReference { Kind = ProjectTargetKind.Page, PageId = page.Id };
+            : new ProjectTargetReference { Kind = ProjectTargetKind.Page, PageId = pageId };
     }
 
     public IReadOnlyList<ProjectComment> GetComments() => _project?.Comments ?? [];
@@ -211,10 +228,10 @@ public sealed partial class MainWindowViewModel
         var link = (existing ?? new PdfInternalLink()) with
         {
             SourcePageId = sourcePage.Id,
-            SourceBounds = textAreas is null && existing?.SourceAreas.Count > 1
+            SourceBounds = existing?.IsGeometryLocked == true || textAreas is null && existing?.SourceAreas.Count > 1
                 ? existing.SourceBounds
                 : LinkFromPreview(NormalizePreviewBounds(previewBounds), metrics, SelectedPage.PageNumber),
-            SourceAreas = textAreas is not null
+            SourceAreas = existing?.IsGeometryLocked == true ? existing.SourceAreas : textAreas is not null
                 ? textAreas.Select(area => LinkFromPreview(area, metrics, SelectedPage.PageNumber)).ToArray()
                 : existing?.SourceAreas ?? [],
             DestinationPageId = destinationPage?.PageId ?? Guid.Empty,
@@ -241,12 +258,16 @@ public sealed partial class MainWindowViewModel
     public void DeleteSelectedInternalLink()
     {
         if (!CanEditDocument || _project is null || FindSelectedInternalLink() is not { UnsupportedAction: null } link) return;
+        var selected = SelectedLinks().ToArray();
+        if (selected.Length == 0) selected = [link];
+        if (selected.Any(item => item.IsGeometryLocked))
+        { StatusMessage = "ロック中のリンクは削除できません。ロックを解除してください。"; return; }
+        var ids = selected.Where(item => item.UnsupportedAction is null).Select(item => item.Id).ToHashSet();
         var before = CaptureProjectAnnotationSnapshot();
         _project = _project with
         {
-            InternalLinks = link.SourceAnnotationReference is null
-                ? _project.InternalLinks.Where(item => item.Id != link.Id).ToArray()
-                : _project.InternalLinks.Select(item => item.Id == link.Id
+            InternalLinks = _project.InternalLinks.Where(item => !ids.Contains(item.Id) || item.SourceAnnotationReference is not null)
+                .Select(item => ids.Contains(item.Id)
                     ? item with { IsEnabled = false, IsModified = true }
                     : item).ToArray(),
         };
@@ -342,6 +363,7 @@ public sealed partial class MainWindowViewModel
     private void RefreshLinkAreaItems(Guid? selectId = null)
     {
         var previousId = selectId ?? SelectedLinkArea?.Id;
+        var previousSelection = _selectedLinkIds.ToArray();
         LinkAreaItems.Clear();
         LinkListItems.Clear();
         LinkOverlayVersion++;
@@ -357,7 +379,13 @@ public sealed partial class MainWindowViewModel
         foreach (var item in LinkAreaItems.DistinctBy(item => item.Id)) LinkListItems.Add(item);
         OnPropertyChanged(nameof(CurrentPageLinkCount));
         OnPropertyChanged(nameof(PropertiesPaneSummary));
-        SelectedLinkArea = LinkAreaItems.FirstOrDefault(item => item.Id == previousId);
+        _selectedLinkIds.Clear();
+        _selectedLinkIds.AddRange(previousSelection.Where(id => LinkListItems.Any(item => item.Id == id)));
+        _updatingLinkSelection = true;
+        try { SelectedLinkArea = LinkAreaItems.FirstOrDefault(item => item.Id == previousId); }
+        finally { _updatingLinkSelection = false; }
+        if (_selectedLinkIds.Count == 0 && SelectedLinkArea is { } selected) _selectedLinkIds.Add(selected.Id);
+        RefreshLinkSelectionFlags();
     }
 
     private static IReadOnlyList<double?> UpdatedDestinationParameters(PdfInternalLink? link, double? zoom)
@@ -386,7 +414,7 @@ public sealed partial class MainWindowViewModel
 
     private ProjectAnnotationSnapshot CaptureProjectAnnotationSnapshot() => new(
         _project?.Comments.ToArray() ?? [], _project?.Tags.ToArray() ?? [], _project?.InternalLinks.ToArray() ?? [],
-        _project?.Redactions.ToArray() ?? []);
+        _project?.Redactions.ToArray() ?? [], _project?.WordReadings ?? []);
 
     private void ApplyProjectAnnotationSnapshot(ProjectAnnotationSnapshot snapshot, ProjectAnnotationSnapshot counterpart)
     {
@@ -398,7 +426,9 @@ public sealed partial class MainWindowViewModel
             // Restore only IDs changed by this operation, not unrelated links discovered later.
             InternalLinks = RestoreLinkChanges(_project.InternalLinks, snapshot.InternalLinks, counterpart.InternalLinks),
             Redactions = snapshot.Redactions.ToArray(),
+            WordReadings = snapshot.WordReadings,
         };
+        if (!snapshot.WordReadings.SequenceEqual(counterpart.WordReadings)) RefreshCommonWordReadings();
         RefreshRedactionItems();
         RefreshProjectFeatureState();
     }
@@ -420,7 +450,8 @@ public sealed partial class MainWindowViewModel
         var after = CaptureProjectAnnotationSnapshot();
         if (before == after ||
             (before.Comments.SequenceEqual(after.Comments) && before.Tags.SequenceEqual(after.Tags) &&
-             before.InternalLinks.SequenceEqual(after.InternalLinks) && before.Redactions.SequenceEqual(after.Redactions))) return;
+             before.InternalLinks.SequenceEqual(after.InternalLinks) && before.Redactions.SequenceEqual(after.Redactions) &&
+             before.WordReadings.SequenceEqual(after.WordReadings))) return;
         RecordHistory(new ProjectAnnotationEdit(before, after, description));
         RefreshProjectFeatureState();
     }

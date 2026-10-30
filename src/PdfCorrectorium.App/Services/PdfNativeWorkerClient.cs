@@ -1,3 +1,4 @@
+using PdfCorrectorium.Core.IO;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -7,12 +8,21 @@ using System.Windows.Media.Imaging;
 namespace PdfCorrectorium.App.Services;
 
 /// <summary>PDFiumを画面プロセスから隔離した、再利用可能な長寿命ワーカーへ委譲します。</summary>
-internal sealed class PdfNativeWorkerClient
+internal sealed class PdfNativeWorkerClient : IDisposable, IAsyncDisposable
 {
+    private readonly bool _reuseInputs;
+    private readonly bool _includeOcr;
+    private string? _ocrSourceIdentity;
+    private readonly Dictionary<string, string> _batchInputs = new(StringComparer.OrdinalIgnoreCase);
+    internal int InputStageCount { get; private set; }
+    internal PdfNativeWorkerClient(bool reuseInputs = false, bool includeOcr = false)
+    { _reuseInputs = reuseInputs; _includeOcr = includeOcr; }
+    public void Dispose() => Shutdown();
+    public ValueTask DisposeAsync() => new(Task.Run(Shutdown));
     public const string WorkerOption = "--pdf-native-worker";
     private const int MaximumProtocolCharacters = 64 * 1024;
     private const long MaximumResultJsonBytes = 256L * 1024 * 1024;
-    private const long MaximumPreviewBytes = 512L * 1024 * 1024;
+    private const long MaximumPreviewBytes = 64L * 1024 * 1024;
     /// <summary>Current-page editing and explicit user operations use this worker.</summary>
     public static PdfNativeWorkerClient Shared { get; } = new();
     /// <summary>
@@ -22,6 +32,7 @@ internal sealed class PdfNativeWorkerClient
     public static PdfNativeWorkerClient Background { get; } = new();
     /// <summary>Whole-document font/property inspection never queues ahead of page or thumbnail rendering.</summary>
     public static PdfNativeWorkerClient Inspection { get; } = new();
+    internal static PdfNativeWorkerClient Ocr { get; } = new(reuseInputs: true, includeOcr: true);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly StringBuilder _standardError = new();
@@ -29,10 +40,10 @@ internal sealed class PdfNativeWorkerClient
     private Process? _process;
     private StreamWriter? _input;
     private StreamReader? _output;
-    private WindowsProcessJob? _job;
+    private WindowsSandboxProcess? _sandbox;
 
     internal int? WorkerProcessId => _process is { HasExited: false } process ? process.Id : null;
-    internal bool WorkerHasResourceJob => _job is not null && WorkerProcessId is not null;
+    internal bool WorkerHasResourceJob => _sandbox is { MemoryLimitBytes: > 0 } && WorkerProcessId is not null;
 
     public async Task<PdfPreviewResult> RenderPageAsync(
         string pdfPath,
@@ -49,6 +60,42 @@ internal sealed class PdfNativeWorkerClient
             var image = LoadFrozenBitmap(Path.Combine(directory, "preview.png"));
             return new PdfPreviewResult(image, metadata.PageCount, metadata.PageNumber, metadata.PageWidthPoints,
                 metadata.PageHeightPoints, metadata.TextRegions, metadata.SelectableCharacters);
+        }
+        finally { ReleaseOperationDirectory(directory); }
+    }
+
+    internal async Task<BitmapSource> RenderImagePageAsync(string pdfPath, int pageNumber, int dpi, CancellationToken token)
+    {
+        if (!_reuseInputs) throw new InvalidOperationException("Image export requires an operation-scoped worker.");
+        if (dpi is < 72 or > 300) throw new ArgumentOutOfRangeException(nameof(dpi));
+        var directory = RegisterOperationDirectory();
+        try
+        {
+            await ExecuteAsync(new WorkerRequest(Guid.NewGuid().ToString("N"), "render-image", Path.GetFullPath(pdfPath),
+                directory, pageNumber, dpi), TimeSpan.FromMinutes(2), token);
+            return LoadFrozenBitmap(Path.Combine(directory, "preview.png"), forImageExport: true);
+        }
+        finally { ReleaseOperationDirectory(directory); }
+    }
+
+    internal async Task<string[]> ReadOcrWordsAsync(string path, int page, CancellationToken token)
+    {
+        var directory = RegisterOperationDirectory();
+        try
+        {
+            await ExecuteAsync(new WorkerRequest(Guid.NewGuid().ToString("N"), "ocr-words", Path.GetFullPath(path), directory, page), TimeSpan.FromMinutes(2), token);
+            return await ReadJsonAsync<string[]>(Path.Combine(directory, "result.json"), token);
+        }
+        finally { ReleaseOperationDirectory(directory); }
+    }
+
+    internal async Task<PdfPreviewService.SpeechPage> ReadSpeechPageAsync(string path, int page, CancellationToken token)
+    {
+        var directory = RegisterOperationDirectory();
+        try
+        {
+            await ExecuteAsync(new WorkerRequest(Guid.NewGuid().ToString("N"), "speech-text", Path.GetFullPath(path), directory, page), TimeSpan.FromMinutes(2), token);
+            return await ReadJsonAsync<PdfPreviewService.SpeechPage>(Path.Combine(directory, "result.json"), token);
         }
         finally { ReleaseOperationDirectory(directory); }
     }
@@ -82,18 +129,58 @@ internal sealed class PdfNativeWorkerClient
         finally { ReleaseOperationDirectory(directory); }
     }
 
+    internal async Task<RapidLineResult> RecognizeLineAsync(string pdfPath, int page, OcrLineCrop crop, CancellationToken token)
+    {
+        if (!_includeOcr) throw new InvalidOperationException("Recognition requires the OCR worker.");
+        var directory = RegisterOperationDirectory();
+        try
+        {
+            await ExecuteAsync(new(Guid.NewGuid().ToString("N"), "recognize-line", Path.GetFullPath(pdfPath), directory,
+                page, Crop: crop), TimeSpan.FromSeconds(90), token);
+            var recognition = await ReadJsonAsync<RapidLineRecognition>(Path.Combine(directory, "result.json"), token);
+            return new(recognition, LoadFrozenBitmap(Path.Combine(directory, "preview.png")));
+        }
+        finally { ReleaseOperationDirectory(directory); }
+    }
+
     private async Task ExecuteAsync(WorkerRequest request, TimeSpan timeout, CancellationToken cancellationToken)
     {
         // PDFiumはネイティブ状態を共有するため、1つのワーカーに要求を直列送信する。
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_includeOcr)
+            {
+                var info = new FileInfo(request.PdfPath);
+                var identity = $"{info.FullName}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+                // A persistent OCR session retains just one source PDF, never an ever-growing batch cache.
+                if (_ocrSourceIdentity != identity) { StopWorker(); _ocrSourceIdentity = identity; }
+            }
             EnsureWorker();
+            var sandbox = _sandbox ?? throw new InvalidOperationException("PDF worker sandbox is missing.");
+            var stagedDirectory = Path.Combine(sandbox.WorkDirectory, request.Id);
+            Directory.CreateDirectory(stagedDirectory);
+            string stagedPdf;
+            if (_reuseInputs)
+            {
+                if (!_batchInputs.TryGetValue(request.PdfPath, out stagedPdf!))
+                {
+                    stagedPdf = sandbox.StageInput(request.PdfPath, $"batch-input-{_batchInputs.Count}.pdf");
+                    _batchInputs.Add(request.PdfPath, stagedPdf);
+                    InputStageCount++;
+                }
+            }
+            else
+            {
+                stagedPdf = Path.Combine(stagedDirectory, "input.pdf");
+                File.Copy(request.PdfPath, stagedPdf, false);
+            }
+            var stagedRequest = request with { PdfPath = stagedPdf, OutputDirectory = stagedDirectory };
             using var timeoutSource = new CancellationTokenSource(timeout);
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
             try
             {
-                await _input!.WriteLineAsync(JsonSerializer.Serialize(request, JsonOptions).AsMemory(), linkedSource.Token)
+                await _input!.WriteLineAsync(JsonSerializer.Serialize(stagedRequest, JsonOptions).AsMemory(), linkedSource.Token)
                     .ConfigureAwait(false);
                 await _input.FlushAsync(linkedSource.Token).ConfigureAwait(false);
                 var line = await ReadLineWithLimitAsync(_output!, MaximumProtocolCharacters, linkedSource.Token)
@@ -106,6 +193,10 @@ internal sealed class PdfNativeWorkerClient
                     throw new InvalidDataException("PDF処理ワーカーの応答順序が一致しません。");
                 if (!response.Success)
                     throw new InvalidDataException(response.Error ?? "PDF処理ワーカーが失敗しました。");
+                sandbox.CopyOutput(Path.Combine(stagedDirectory, "result.json"), Path.Combine(request.OutputDirectory, "result.json"), MaximumResultJsonBytes);
+                if (request.Operation is "render" or "render-image" or "recognize-line")
+                    sandbox.CopyOutput(Path.Combine(stagedDirectory, "preview.png"), Path.Combine(request.OutputDirectory, "preview.png"), MaximumPreviewBytes);
+                TryDeleteDirectory(stagedDirectory);
             }
             catch (OperationCanceledException)
             {
@@ -130,37 +221,17 @@ internal sealed class PdfNativeWorkerClient
         // 前回の異常終了後も同じ標準入出力ストリームを再利用しないよう、常に新しいプロセスを作る。
         StopWorker();
         lock (_standardError) _standardError.Clear();
-        var startInfo = new ProcessStartInfo(ResolveExecutablePath())
+        var sandbox = new WindowsSandboxProcess();
+        try
         {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        startInfo.ArgumentList.Add(WorkerOption);
-        _process = Process.Start(startInfo) ?? throw new InvalidOperationException("PDF処理ワーカーを起動できませんでした。");
-        try { _job = WindowsProcessJob.Attach(_process); }
-        catch
-        {
-            ExternalProcessRunner.TryTerminate(_process);
-            _process.Dispose();
-            _process = null;
-            throw;
+            var executable = sandbox.StageApplication(ResolveExecutablePath(), includeOcr: _includeOcr);
+            sandbox.Start(executable, [WorkerOption]);
+            _sandbox = sandbox; _process = sandbox.Process;
+            _input = sandbox.StandardInput; _output = sandbox.StandardOutput;
+            _ = CaptureErrorAsync(sandbox.StandardError, sandbox.Process);
         }
-        _process.ErrorDataReceived += (_, eventArgs) =>
-        {
-            if (string.IsNullOrWhiteSpace(eventArgs.Data)) return;
-            lock (_standardError)
-            {
-                if (_standardError.Length < 32768) _standardError.AppendLine(eventArgs.Data);
-            }
-        };
-        _process.BeginErrorReadLine();
-        _input = _process.StandardInput;
-        _input.AutoFlush = true;
-        _output = _process.StandardOutput;
+        catch { sandbox.Dispose(); throw; }
+
     }
 
     public void Shutdown()
@@ -177,15 +248,16 @@ internal sealed class PdfNativeWorkerClient
 
     private void StopWorker(bool graceful = false)
     {
+        _batchInputs.Clear();
         var process = _process;
-        var job = _job;
+        var sandbox = _sandbox;
         _process = null;
-        _job = null;
+        _sandbox = null;
         _input = null;
         _output = null;
         if (process is null)
         {
-            job?.Dispose();
+            sandbox?.Dispose();
             return;
         }
         try { process.StandardInput.Close(); } catch { }
@@ -197,8 +269,26 @@ internal sealed class PdfNativeWorkerClient
         }
         catch (InvalidOperationException) { }
         catch (System.ComponentModel.Win32Exception) { }
-        process.Dispose();
-        job?.Dispose();
+        sandbox?.Dispose();
+    }
+
+    private async Task CaptureErrorAsync(StreamReader reader, Process process)
+    {
+        try
+        {
+            var buffer = new char[1024]; int count;
+            while ((count = await reader.ReadAsync(buffer)) > 0)
+            {
+                lock (_standardError)
+                {
+                    if (_standardError.Length > 32768 - count)
+                    { ExternalProcessRunner.TryTerminate(process); return; }
+                    _standardError.Append(buffer, 0, count);
+                }
+            }
+        }
+        catch (IOException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private string DescribeWorkerExit(string message)
@@ -213,6 +303,7 @@ internal sealed class PdfNativeWorkerClient
     /// <remarks>出力先を専用一時領域に限定し、画像・JSONの成果物サイズも制限します。</remarks>
     internal static async Task<int> RunServerAsync(CancellationToken cancellationToken = default)
     {
+        using var recognizer = new RapidLineRecognizer();
         string? line;
         while ((line = await ReadLineWithLimitAsync(Console.In, MaximumProtocolCharacters, cancellationToken)) is not null)
         {
@@ -226,10 +317,22 @@ internal sealed class PdfNativeWorkerClient
                 Directory.CreateDirectory(outputDirectory);
                 switch (request.Operation)
                 {
-                    case "render":
+                    case "recognize-line":
                         {
-                            var result = PdfPreviewService.RenderPageInProcess(
-                                request.PdfPath, request.PageNumber, request.TargetWidth, cancellationToken);
+                            var result = recognizer.Recognize(request.PdfPath, request.PageNumber,
+                                request.Crop ?? throw new InvalidDataException("Missing OCR crop."), cancellationToken);
+                            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(result.Image));
+                            await using (var stream = new LengthLimitedWriteStream(new FileStream(
+                                Path.Combine(outputDirectory, "preview.png"), FileMode.CreateNew), MaximumPreviewBytes)) encoder.Save(stream);
+                            await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"), result.Recognition, cancellationToken);
+                            break;
+                        }
+                    case "render":
+                    case "render-image":
+                        {
+                            var result = request.Operation == "render-image"
+                                ? PdfPreviewService.RenderImagePageInProcess(request.PdfPath, request.PageNumber, request.TargetWidth, cancellationToken)
+                                : PdfPreviewService.RenderPageInProcess(request.PdfPath, request.PageNumber, request.TargetWidth, cancellationToken);
                             var encoder = new PngBitmapEncoder();
                             encoder.Frames.Add(BitmapFrame.Create(result.Image));
                             await using (var stream = new LengthLimitedWriteStream(
@@ -242,6 +345,14 @@ internal sealed class PdfNativeWorkerClient
                                     result.PageHeightPoints, result.TextRegions, result.SelectableCharacters), cancellationToken);
                             break;
                         }
+                    case "ocr-words":
+                        await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
+                            PdfPreviewService.ReadOcrWordsInProcess(request.PdfPath, request.PageNumber, cancellationToken), cancellationToken);
+                        break;
+                    case "speech-text":
+                        await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
+                            PdfPreviewService.ReadSpeechPageInProcess(request.PdfPath, request.PageNumber, cancellationToken), cancellationToken);
+                        break;
                     case "characters":
                         await WriteJsonAsync(Path.Combine(outputDirectory, "result.json"),
                             PdfPreviewService.ReadCharacterBoxesInProcess(request.PdfPath, request.PageNumber, cancellationToken),
@@ -272,6 +383,9 @@ internal sealed class PdfNativeWorkerClient
     {
         EnsureFileSize(path, MaximumResultJsonBytes, "JSON結果");
         await using var stream = File.OpenRead(path);
+        await new JsonInputBudget { MaximumTokens = 16_000_000, MaximumObjects = 1_000_000,
+            MaximumTotalStringCharacters = 64L * 1024 * 1024 }.ValidateAsync(stream, cancellationToken);
+        stream.Position = 0;
         return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken)
             ?? throw new InvalidDataException("PDF処理ワーカーの結果が空です。");
     }
@@ -284,11 +398,20 @@ internal sealed class PdfNativeWorkerClient
         await JsonSerializer.SerializeAsync(stream, value, JsonOptions, cancellationToken);
     }
 
-    private static BitmapSource LoadFrozenBitmap(string path)
+    private static BitmapSource LoadFrozenBitmap(string path, bool forImageExport = false)
     {
         EnsureFileSize(path, MaximumPreviewBytes, "プレビュー画像");
         using var stream = File.OpenRead(path);
         var image = new BitmapImage();
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.OnDemand);
+        var maximumWidth = forImageExport ? 8192 : 2400;
+        var maximumHeight = forImageExport ? 8192 : 3200;
+        var maximumPixels = forImageExport ? 20_000_000 : 7_680_000;
+        if (decoder is not PngBitmapDecoder || decoder.Frames.Count != 1 || decoder.Frames[0].PixelWidth < 1 || decoder.Frames[0].PixelWidth > maximumWidth ||
+            decoder.Frames[0].PixelHeight < 1 || decoder.Frames[0].PixelHeight > maximumHeight ||
+            (long)decoder.Frames[0].PixelWidth * decoder.Frames[0].PixelHeight > maximumPixels)
+            throw new InvalidDataException("PDF worker preview dimensions exceed the display budget.");
+        stream.Position = 0;
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
         image.StreamSource = stream;
@@ -307,8 +430,9 @@ internal sealed class PdfNativeWorkerClient
         return directory;
     }
 
-    private static string GetWorkerRoot() =>
-        Path.GetFullPath(Path.Combine(Path.GetTempPath(), "PdfCorrectorium", "native-workers"));
+    private static string GetWorkerRoot() => WindowsSandboxProcess.IsAppContainer
+        ? Path.GetFullPath(Environment.GetEnvironmentVariable("PDFCORRECTORIUM_WORKER_ROOT") ?? throw new InvalidOperationException("Worker directory is missing."))
+        : Path.GetFullPath(Path.Combine(Path.GetTempPath(), "PdfCorrectorium", "native-workers"));
 
     /// <summary>ワーカー成果物の出力先が専用一時領域の配下にあることを検証します。</summary>
     private static string EnsureWorkerOutputDirectory(string path)
@@ -407,7 +531,8 @@ internal sealed class PdfNativeWorkerClient
         string PdfPath,
         string OutputDirectory,
         int PageNumber = 0,
-        int TargetWidth = 0);
+        int TargetWidth = 0,
+        OcrLineCrop? Crop = null);
     private sealed record WorkerResponse(string Id, bool Success, string? Error = null);
     private sealed record PreviewMetadata(
         int PageCount,

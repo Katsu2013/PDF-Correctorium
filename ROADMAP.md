@@ -1,5 +1,11 @@
 # PDF Correctorium 開発ロードマップ (Development Roadmap)
 
+<!-- CURRENT-RELEASE-SNAPSHOT -->
+## 現行仕様（v1.0.0-dev.274・コミット前確認）
+
+現行ソースは1.0.0-dev.274。前回公開dev.199からの累積変更と残余範囲は、[リリース文書](docs/releases/v1.0.0-dev.274.md)を参照する。選択行RapidOCR、資料別OCR辞書、読み上げ・段落・読み方・確認ルビ、テーマ、リンク整列・ロック、一括墨消し、TXT／CSV／完成画像は実装済み。未OCR範囲・ページ／PDF全体の新規認識、標準注釈、汎用本文・画像編集、暗号化、画像透かし等は引き続き未実装。署名済みMSIX・Store公開・実更新試験は準備段階。
+<!-- END-CURRENT-RELEASE-SNAPSHOT -->
+
 [日本語](#japanese) | [English](#english)
 
 <a id="japanese"></a>
@@ -26,7 +32,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 
 ### 1. 一般的な市販・単機能デスクトップツールとの比較
 
-| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium (v1.0.0-dev.196)** |
+| 機能・項目 | 一般的な高額商用ソフト | 一般的な有料買い切りソフト | 一般的な単機能無料ツール | **PDF Correctorium（現行ソース）** |
 | :--- | :---: | :---: | :---: | :---: |
 | **ライセンス・費用** | 高額サブスク（年間数万円） | 有料（買い切り/更新） | 無料 (OSS等) | **完全無料 (Apache 2.0)** |
 | **導入形態・ポータブル性** | 要インストール | 要インストール | 要インストール（一部例外あり） | **完全ポータブル（解凍のみ・USB動作可）** |
@@ -40,7 +46,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 | **標準PDF注釈（ハイライト/印鑑/メモ）** | ◎ | ◎ | ✕〜△ | **✕ 未対応（計画中）** |
 | **ページの分割・抽出** | ◎ | ◎ | ◎ | **◎（プリセット抽出・3方式の分割）** |
 | **パスワード保護・暗号化設定** | ◎ | ◎ | ◎ | **✕ 未対応（計画中）** |
-| **アプリ単体でのOCR文字認識** | ◎（標準内蔵） | ◯〜◎（標準内蔵またはアドオン） | ✕ | **△ 単体実行不可（外部NDLOCR連携のみ / 計画中）** |
+| **アプリ単体でのOCR文字認識** | ◎（標準内蔵） | ◯〜◎（標準内蔵またはアドオン） | ✕ | **△ 選択横書き行のRapidOCR再認識。ページ／全体OCRは未実装** |
 
 ### 2. Web上のオンライン編集ツールとの比較
 
@@ -48,7 +54,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 | :--- | :--- | :--- |
 | **利用の手軽さ・対応端末** | **◎ ブラウザのみで即利用可能**。スマホ・タブレット・Mac・Linux問わず動作 | **△ Windows専用**のデスクトップアプリ。ダウンロードが必要 |
 | **情報セキュリティ・プライバシー** | ⚠️ ファイルを外部サーバーへアップロードするため、機密情報・個人情報の流出リスクがある | **🛡️ 完全ローカル処理**。PC内で完結するため、社外秘・契約書も安全に処理 |
-| **ファイル容量・回数制限** | ⚠️ 「100MBまで」「1日3回まで」等の制限や、有料会員への誘導がある | **⚡ 容量・回数の制限なし**。大きなPDFでも制限なく何度でも利用可能 |
+| **ファイル容量・回数制限** | ⚠️ 「100MBまで」「1日3回まで」等の制限や、有料会員への誘導がある | **回数・期限・利用料の制限なし**。入力・メモリ等の処理上限あり |
 | **ネットワーク依存** | ⚠️ 通信環境が必須。巨大ファイルのアップロード・ダウンロードに時間がかかる | **🌐 完全オフライン動作**。ネットのない環境や隔離されたセキュア環境でも快適に動作 |
 | **画質の劣化** | ⚠️ サーバー側で自動圧縮され、写真や図面が劣化することがある | **💎 画質をそのまま維持**。写真やイラストを再圧縮せずきれいなまま保持 |
 
@@ -59,7 +65,24 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 日常業務で市販ソフトの代わりに使える総合エディタを目指し、以下の機能拡張を計画・検討しています。  
 *※各機能の実装順序やリリース時期は、利用ニーズやフィードバック等を踏まえて柔軟に決定・対応していく方針です。*
 
-### 現在の実装機能 (v1.0.0-dev.199)
+### 正式リリース前の追加要望（2026-10-27、dev.253で実装）
+
+- ライト／ダーク／Windowsに合わせる自動テーマ。既存の操作寸法とドッキング配置を保ち、共通配色へ統合する。
+- Windows標準音声エンジンによる読み上げ。修正後のOCR、読み順、読み仮名を利用し、必要ページだけを遅延取得する。
+
+利用者回答で、PDF紙面は元の色を保ち、読み上げは選択部分／現在ページ／現在ページから最後までの3範囲に確定し、実装した。[影響範囲・確定仕様](docs/Themes-And-Read-Aloud-Plan.md)と[検証・配布記録](docs/releases/v1.0.0-dev.253.md)を参照。Store等の正式公開には、登録・署名・実導入／更新試験などの条件が残る。
+
+### dev.206で実装した追加要望（2026-10-02）
+
+- リンク枠の位置揃え・サイズ合わせ・ロック
+- 目次等の末尾整数からのページリンク候補作成とプレビュー・確認適用
+- 同一範囲の複数ページ適用／文字列検索による墨消し一括処理（両方）
+- 設定による初期編集モードの変更とプロジェクトへの保存・復元（編集モードのみ。新規PDFは設定の初期値、プロジェクトは保存モードを優先）
+- ツールバー右クリックのチェック付き項目による、ボタン単位の表示／非表示（アプリ全体の共通設定として保存）
+
+利用者回答で仕様を確定して実装しました。ロック中の削除は禁止、編集モードのみの変更は未保存扱いにしません。[確定仕様・操作方法・制限](docs/Next-Implementation-Plan.md) と [dev.206検証ノート](docs/releases/v1.0.0-dev.206.md) を参照してください。コマンド検索とショートカット専用プリセットは保留です。既存のページ表示状態保存は変更しません。
+
+### 公開済みdev.199の実装機能（比較元の履歴）
 * [x] **画質無劣化のページ編集**: ドラッグ＆ドロップでの並べ替え、90度回転、不要ページ削除、別PDFからのページ差し込み
 * [x] **復元できない安全な墨消し**: PDF描画命令からの文字コード消去（ベクター保持）＋任意形状の高精細画像化＋出力後自動検証
 * [x] **しおり（目次）・文書情報編集**: 階層しおりの作成、文書プロパティ、初期表示設定（見開き・連続スクロール）
@@ -97,7 +120,8 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 * [ ] **画像・回転透かし**: 画像の配置、文字の角度指定
 
 #### 🔍 アプリ内蔵OCRによるワンクリック検索可能PDF化
-* [ ] **軽量・高精度OCRエンジンの内蔵**: Tesseract や NDLOCR-Lite 等のエンジンを同梱
+* [x] **選択行の再認識**: 日本語モデル付きRapidOCRを同梱
+* [ ] **未OCR領域・ページ／PDF全体の認識**: 縦書き・混在検出、モデルと読み順、結果確認を含む追加実装
 * [ ] **ワンクリック検索可能PDF化**: スキャン画像PDFを読み込み、1クリックで透明テキストレイヤーを生成
 * [ ] **自動傾き補正・ノイズ除去**: スキャン画像の傾きを自動検知して水平補正
 
@@ -116,7 +140,7 @@ However, users face significant challenges:
 2. **Cloud Privacy Risks**: Uploading contracts, financial records, personal data, and confidential business documents to third-party servers presents security and compliance concerns.
 3. **Arbitrary Limitations**: File size ceilings, daily usage quotas, and watermarking on free tiers.
 
-PDF Correctorium provides a **100% free (Apache 2.0), fully offline (local privacy), portable, non-destructive** solution for desktop users.
+PDF Correctorium provides a **free (Apache 2.0), locally processed, portable, non-destructive** solution for desktop users.
 
 ---
 
@@ -126,7 +150,7 @@ PDF Correctorium is actively under development. To become a viable daily replace
 
 ### 1. vs Commercial & Basic Desktop Software
 
-| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium (v1.0.0-dev.196)** |
+| Feature / Aspect | Expensive Commercial Suites | Paid Desktop Editors | Basic Free Tools | **PDF Correctorium（現行ソース）** |
 | :--- | :---: | :---: | :---: | :---: |
 | **License & Pricing** | Expensive subscription (annual) | Paid (one-time or maintenance) | Free (OSS / freeware) | **100% Free (Apache 2.0)** |
 | **Portability** | Requires installation | Requires installation | Mostly requires installation | **Fully portable (extract & run, USB ready)** |
@@ -147,8 +171,8 @@ PDF Correctorium is actively under development. To become a viable daily replace
 | Comparison Aspect | Web-Based Online Tools | **PDF Correctorium** |
 | :--- | :--- | :--- |
 | **Accessibility & Platform** | **◎ Zero install, runs in any browser** on Windows, Mac, Linux, and mobile | **△ Windows desktop application only**, requires downloading |
-| **Data Privacy & Security** | ⚠️ Uploads documents to external third-party cloud servers (privacy risk) | **🛡️ 100% Local Execution**. Documents never leave your PC |
-| **Quotas & Limitations** | ⚠️ Daily caps, file size ceilings (e.g. 100MB), queues, or paywalls | **⚡ Unlimited Usage**. No size caps, page count ceilings, or artificial delays |
+| **Data Privacy & Security** | ⚠️ Uploads documents to external third-party cloud servers (privacy risk) | **Local document processing**. No PDF/OCR upload; user-requested web links and update checks may connect |
+| **Quotas & Limitations** | ⚠️ Daily caps, file size ceilings (e.g. 100MB), queues, or paywalls | **No paid quotas or expiry**. Input, page-count, memory and timeout safety limits still apply |
 | **Network Dependency** | ⚠️ High-speed internet required; upload/download latency for large files | **🌐 Fully Offline**. Operates immediately in air-gapped or secure environments |
 | **Image Compression** | ⚠️ Frequently recompresses files, reducing image/drawing sharpness | **💎 Lossless Quality**. Existing raster and vector streams are preserved |
 
@@ -158,6 +182,16 @@ PDF Correctorium is actively under development. To become a viable daily replace
 
 The project plans to explore and implement the following feature areas to evolve into a practical everyday PDF editor.  
 *Note: Implementation sequence and release schedules will be adapted flexibly based on technical feasibility and user needs.*
+
+### Implemented Requests (dev.206, 2026-10-02)
+
+Implemented rectangle-link alignment/size matching and geometry locks (including deletion);
+reviewed automatic page-link candidates; repeated-range and literal-search batch redaction;
+configurable initial editor modes and project-restored modes; and app-wide per-item toolbar
+visibility. Mode-only changes do not dirty projects; ordinary saves record the mode.
+Existing page-view restoration is unchanged. Command search and shortcut-only presets remain
+on hold. See [confirmed specifications and limitations](docs/Next-Implementation-Plan.md)
+and [verification notes](docs/releases/v1.0.0-dev.206.md) (Japanese).
 
 ### Current Features (v1.0.0-dev.196)
 * [x] **Lossless Page Editing**: Reorder, 90-degree rotate, delete, and merge pages without image degradation.

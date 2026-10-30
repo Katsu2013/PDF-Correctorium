@@ -1,11 +1,11 @@
-<Window x:Class="PdfCorrectorium.App.BatchCharacterAdjustmentWindow"
+<Window xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" x:Class="PdfCorrectorium.App.BatchCharacterAdjustmentWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="前処理付き一括自動調整" Width="680" Height="780"
         MinWidth="580" MinHeight="650" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         ResizeMode="CanResizeWithGrip" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" KeyboardNavigation.TabNavigation="Cycle">
     <DockPanel Margin="20" KeyboardNavigation.TabNavigation="Local">
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+        <StackPanel x:Name="DialogFooter" DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,20,0,0" KeyboardNavigation.TabIndex="9000" KeyboardNavigation.TabNavigation="Local">
             <Button Content="キャンセル" IsCancel="True" Width="100" Margin="3,3,8,3" />
             <Button x:Name="ExecuteButton" Content="対象ページを実行(_E)" IsDefault="True"
@@ -37,17 +37,17 @@
                                  TextChanged="PageSpecificationTextBox_OnTextChanged"
                                  ToolTip="例: 1,3,5-10" kb:KeyboardAccess.Key="N" AutomationProperties.Name="PageSpecificationTextBox" AutomationProperties.AccessKey="Alt+N"/>
                         <TextBlock Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
-                                   Foreground="#52606D" Text="例: 1,3,5-10" />
+                                   Foreground="{DynamicResource SecondaryTextBrush}" Text="例: 1,3,5-10" />
                     </Grid>
                     <RadioButton x:Name="AllPagesRadioButton" Content="全ページ(_A)"
                                  Margin="0,5,0,3" GroupName="TargetPages"
                                  Checked="TargetMode_OnChanged" AutomationProperties.AccessKey="Alt+A"/>
                     <TextBlock x:Name="TargetSummaryTextBlock" Margin="0,9,0,0"
-                               Foreground="#52606D" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" />
                 </StackPanel>
             </GroupBox>
 
-            <Border Background="#F4F7FA" BorderBrush="#D7DEE7" BorderThickness="1" Padding="14">
+            <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="14">
                 <StackPanel>
                     <TextBlock Text="前処理（必要な項目だけ選択してください）"
                                FontWeight="SemiBold" Margin="0,0,0,10" />
@@ -76,9 +76,9 @@
 
             <TextBlock Margin="0,14,0,0" TextWrapping="Wrap"
                        Text="処理順: 行の高さを統一 → 行頭・行末へ認識余白を追加 → 特定文字の行端を拡張 → ページ画像から全体の文字送りを自動調整" />
-            <TextBlock Margin="0,7,0,0" Foreground="#52606D" TextWrapping="Wrap"
+            <TextBlock Margin="0,7,0,0" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"
                        Text="固定済みの領域と文字は変更しません。すべての変更は1回の［元に戻す］で取り消せます。" />
-            <TextBlock Margin="0,7,0,0" Foreground="#8A5A00" TextWrapping="Wrap"
+            <TextBlock Margin="0,7,0,0" Foreground="{DynamicResource WarningTextBrush}" TextWrapping="Wrap"
                        Text="対象ページを画像解析するため、ページ数によっては時間がかかります。処理中は編集操作を一時停止します。" />
         </StackPanel>
         </ScrollViewer>

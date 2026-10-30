@@ -13,6 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
+using PdfCorrectorium.App.Resources;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
@@ -32,19 +33,16 @@ public partial class App
         {
             if (args.Length <= index + 1) throw new ArgumentException("A new keyboard-test output directory is required.");
             output = Path.GetFullPath(args[index + 1]);
-            if (Directory.Exists(output)) throw new IOException("Use a new output directory.");
+            if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output)
+                .Any(path => Path.GetFileName(path) != ".appstate")) throw new IOException("Use a new output directory.");
             Directory.CreateDirectory(output);
             void Check(bool value, string message)
             {
                 if (!value) throw new InvalidOperationException(message);
                 checks.Add("PASS: " + message);
             }
-            var paths = new ApplicationPaths(StorageMode.Portable, Path.Combine(output, "config"),
-                Path.Combine(output, "logs"), Path.Combine(output, "cache"), Path.Combine(output, "work"));
-            ApplicationPathResolver.EnsureDirectories(paths);
-            var vm = new MainWindowViewModel(new ProjectPackageService(), new PdfPreviewService(), new PdfExportService(),
-                new NdlOcrCompanionService(), new DiagnosticLog(paths.LogDirectory), paths, () => { });
-            main.DataContext = vm;
+            // Use the actual view model already wired to the four docked contents.
+            var vm = (MainWindowViewModel)main.DataContext;
             main.ClosePromptOverride = () => MessageBoxResult.No;
             vm.ErrorDialogOverride = (message, error) => throw new InvalidOperationException(message, error);
             var settings = new ApplicationSettingsWindow(new ApplicationSettings(), "Portable", Path.Combine(output, "settings.json"));
@@ -66,6 +64,7 @@ public partial class App
                 new RecoveryProjectsWindow([new RecoveryProjectCandidate(Path.Combine(output, "recovery.pdfocrproj"), "復旧テスト", DateTime.Now, 1024)]),
                 new ProjectCommentsWindow(new ProjectTargetReference { Kind = ProjectTargetKind.Document }, [], []),
                 projectSaveOptions,
+                new PageTextDecorationsWindow(4, []),
             ]);
             Check(projectSaveOptions.SelectedMode == ProjectPdfStorageMode.Embedded &&
                   projectSaveOptions.EmbeddedModeRadioButton.IsChecked == true,
@@ -86,12 +85,14 @@ public partial class App
             void Snapshot(Window host, string name)
             {
                 var root = (FrameworkElement)host.Content;
-                var bitmap = new RenderTargetBitmap((int)host.Width, (int)host.Height, 96, 96, PixelFormats.Pbgra32);
+                var width = Math.Max(1, (int)Math.Ceiling(root.ActualWidth));
+                var height = Math.Max(1, (int)Math.Ceiling(root.ActualHeight));
+                var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
                 var visual = new DrawingVisual();
                 using (var drawing = visual.RenderOpen())
                 {
-                    drawing.DrawRectangle(host.Background ?? Brushes.White, null, new Rect(0, 0, host.Width, host.Height));
-                    drawing.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, host.Width, host.Height));
+                    drawing.DrawRectangle(host.Background ?? Brushes.White, null, new Rect(0, 0, width, height));
+                    drawing.DrawRectangle(new VisualBrush(root), null, new Rect(0, 0, width, height));
                 }
                 bitmap.Render(visual);
                 var encoder = new PngBitmapEncoder();
@@ -113,8 +114,31 @@ public partial class App
                     {
                         if (tabs.Length > 0) tabs[0].SelectedIndex = tab;
                         await Layout(host);
+                        if (host != main) CheckDialogFooterIcons(host, Check);
                         CheckSemanticMnemonics(host, Check);
                         var elements = KeyboardElements(host).OfType<FrameworkElement>().ToArray();
+                        foreach (var button in elements.OfType<ButtonBase>().Where(b =>
+                            ActionIcon.GetKey(b).Length > 0 && IsKeyboardBranchActive(b) && b.ActualWidth > 0))
+                        {
+                            var icon = IconVisuals(button).OfType<ActionIcon>().Single();
+                            if (ActionIcon.GetIconOnly(button))
+                            {
+                                var control = (Button)button;
+                                var name = new System.Windows.Automation.Peers.ButtonAutomationPeer(control).GetName();
+                                Check(button.ContentTemplate == host.FindResource("ActionIconOnlyTemplate") &&
+                                    button.ActualWidth == 32 && button.ActualHeight == 32 &&
+                                    icon.ActualWidth == 18 && icon.ActualHeight == 18 && !IconVisuals(button).OfType<AccessText>().Any() &&
+                                    name.Contains(LocalizationService.StripMnemonic((string)button.Content), StringComparison.Ordinal) &&
+                                    KeyboardAccess.GetKey(button) is { Length: 1 } && button.ToolTip?.ToString()?.Contains("Alt+", StringComparison.Ordinal) == true,
+                                    $"{host.GetType().Name}/{language}/{tab}: icon-only action retains size, accessible name, tooltip and mnemonic: {button.Content}");
+                                continue;
+                            }
+                            var caption = IconVisuals(button).OfType<AccessText>().Single();
+                            Check(button.ContentTemplate == host.FindResource("ActionIconLabelTemplate") &&
+                                icon.ActualWidth == 18 && icon.ActualHeight == 18 &&
+                                caption.ActualWidth > 0 && caption.ActualHeight + .5 >= caption.DesiredSize.Height,
+                                $"{host.GetType().Name}/{language}/{tab}: icon and caption fit: {button.Content}");
+                        }
                         foreach (var label in elements.OfType<Label>().Where(l => l.Content is string text && text.Contains("(_")))
                             Check(label.Target is Control or UIElement && ReferenceEquals(Window.GetWindow(label.Target), host), $"{host.GetType().Name}/{language}/{tab}: label target {label.Content} resolves in its window.");
                         var keys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -136,7 +160,7 @@ public partial class App
                         }
                         Check(elements.OfType<Button>().Where(b => b.IsCancel || b.Content is "OK" or "キャンセル" or "Cancel")
                             .All(b => KeyboardAccess.GetKey(b) is null && !(b.Content as string ?? "").Contains("(_")), host.GetType().Name + " OK/Cancel do not receive mnemonics.");
-                        if (host == settings || host is DocumentPropertiesWindow or ProjectSaveOptionsWindow || host == search)
+                        if (host != main)
                             Snapshot(host, host.GetType().Name + "-" + language + "-" + tab);
                     }
                 }
@@ -216,7 +240,7 @@ public partial class App
             keyboardRegion!.Text = "Keyboard test";
             vm.SetOverlaySelection([keyboardRegion], keyboardRegion);
             foreach (var language in new[] { "ja-JP", "en-US" })
-                foreach (var mode in new[] { 0, 1, 2 })
+                foreach (var mode in new[] { 0, 1, 2, 4 })
                     foreach (var unit in new[] { 0, 1, 2 })
                     {
                         LocalizationService.SetLanguage(language);
@@ -236,6 +260,8 @@ public partial class App
             // Windows menu mode in the user's foreground application. Hidden-window tests
             // cannot certify the complete physical Alt+F -> O/S/A interaction.
             var toolbar = (ToolBar)main.FindName("MainToolbarPanel");
+            main.AvalonNavigation!.IsSelected = true;
+            await Layout(main);
             toolbar.Items.OfType<Button>().First(b => b.IsEnabled).Focus();
             main.MoveKeyboardPane(false);
             Check(((FrameworkElement)main.FindName("NavigationDockPane")).IsKeyboardFocusWithin, "F6 moves from the toolbar to the page pane.");
@@ -329,7 +355,8 @@ public partial class App
     private static void CheckActiveMainMnemonics(MainWindow main, Action<bool, string> check)
     {
         var keys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-        foreach (var element in KeyboardElements(main).OfType<FrameworkElement>().Where(IsKeyboardBranchActive))
+        foreach (var element in KeyboardElements(main).OfType<FrameworkElement>()
+                     .Where(element => element.IsVisible && IsKeyboardBranchActive(element)))
         {
             if (element is MenuItem menu && ItemsControl.ItemsControlFromItemContainer(menu) is not Menu) continue;
             var key = MnemonicOf(element);

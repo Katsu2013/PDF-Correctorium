@@ -1,3 +1,4 @@
+using PdfCorrectorium.Core.IO;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -16,7 +17,7 @@ namespace PdfCorrectorium.App.Services;
 /// PDF内部のアウトライン操作にはqpdfを使用します。PDFへ適用する際は一時ファイルを生成し、
 /// qpdfの処理が成功した場合だけ対象PDFを置き換えます。
 /// </remarks>
-public sealed class PdfBookmarkService
+public sealed partial class PdfBookmarkService
 {
     private const string CurrentBookmarkFormat = "PdfCorrectoriumBookmarks";
     private const string LegacyBookmarkFormat = "PdfOcrEditorBookmarks";
@@ -30,6 +31,9 @@ public sealed class PdfBookmarkService
     public int MaximumBookmarkDepth { get; init; } = 256;
     /// <summary>しおりタイトル1件の最大文字数です。</summary>
     public int MaximumTitleCharacters { get; init; } = 32_768;
+    public int MaximumImportNodes { get; init; } = 1_000_000;
+    public int MaximumImportStructureDepth { get; init; } = 512;
+    public long MaximumTotalImportCharacters { get; init; } = 16L * 1024 * 1024;
     /// <summary>qpdf 1回の処理期限です。</summary>
     public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromMinutes(5);
     /// <summary>qpdfの標準出力・標準エラーそれぞれの最大文字数です。</summary>
@@ -280,9 +284,12 @@ public sealed class PdfBookmarkService
     /// <param name="cancellationToken">処理の取り消しを通知するトークン。</param>
     /// <returns>読み込んだルート階層のしおり一覧。</returns>
     /// <exception cref="InvalidDataException">形式名またはバージョンが未対応の場合。</exception>
-    public async Task<IReadOnlyList<PdfBookmark>> ImportAsync(
+    public Task<IReadOnlyList<PdfBookmark>> ImportAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.Run(() => ImportCoreAsync(path, cancellationToken), cancellationToken);
+
+    private async Task<IReadOnlyList<PdfBookmark>> ImportCoreAsync(
         string path,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
         EnsureImportFileWithinLimits(path);
         var extension = Path.GetExtension(path);
@@ -292,15 +299,25 @@ public sealed class PdfBookmarkService
             return await ImportXmlAsync(path, cancellationToken);
 
         await using var stream = File.OpenRead(path);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        if (document.RootElement.ValueKind == JsonValueKind.Array)
+        if (stream.Length > MaximumImportBytes) throw new InvalidDataException("しおりファイルが大きすぎます。");
+        await new JsonInputBudget
         {
-            var result = JsonSerializer.Deserialize<IReadOnlyList<PdfBookmark>>(document.RootElement.GetRawText(), JsonOptions) ?? [];
-            ValidateBookmarks(result);
-            return result;
+            MaximumTokens = MaximumImportNodes, MaximumDepth = Math.Min(64, MaximumImportStructureDepth),
+            MaximumObjects = MaximumBookmarkCount + 1, MaximumArrayItems = MaximumBookmarkCount,
+            MaximumStringCharacters = Math.Max(32_768, MaximumTitleCharacters), MaximumTotalStringCharacters = MaximumTotalImportCharacters,
+            StringLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["title"] = MaximumTitleCharacters },
+        }.ValidateAsync(stream, cancellationToken);
+        stream.Position = 0;
+        int first;
+        using (var peek = new StreamReader(stream, Encoding.UTF8, true, 1024, leaveOpen: true))
+            do { first = peek.Read(); } while (first >= 0 && char.IsWhiteSpace((char)first));
+        stream.Position = 0;
+        if (first == '[')
+        {
+            var result = await JsonSerializer.DeserializeAsync<IReadOnlyList<PdfBookmark>>(stream, JsonOptions, cancellationToken) ?? [];
+            ValidateBookmarks(result); return result;
         }
-
-        var file = JsonSerializer.Deserialize<BookmarkFile>(document.RootElement.GetRawText(), JsonOptions)
+        var file = await JsonSerializer.DeserializeAsync<BookmarkFile>(stream, JsonOptions, cancellationToken)
                    ?? throw new InvalidDataException("しおりファイルが空です。");
         var supportedFormat =
             string.Equals(file.Format, CurrentBookmarkFormat, StringComparison.Ordinal) ||
@@ -341,7 +358,33 @@ public sealed class PdfBookmarkService
         string path,
         CancellationToken cancellationToken)
     {
-        var lines = await File.ReadAllLinesAsync(path, cancellationToken);
+        await using var input = File.OpenRead(path);
+        if (input.Length > MaximumImportBytes) throw new InvalidDataException("しおりファイルが大きすぎます。");
+        using var textReader = new StreamReader(input, Encoding.UTF8, true);
+        var lines = new List<string>();
+        var line = new StringBuilder(); var totalCharacters = 0L; var lineCount = 0;
+        var buffer = new char[4096]; int read;
+        while ((read = await textReader.ReadAsync(buffer.AsMemory(), cancellationToken)) != 0)
+        {
+            totalCharacters += read;
+            if (totalCharacters > MaximumTotalImportCharacters) throw new InvalidDataException("しおり文字総量が上限を超えています。");
+            foreach (var c in buffer.AsSpan(0, read))
+            {
+                if (c == '\n')
+                {
+                    if (++lineCount > MaximumImportNodes) throw new InvalidDataException("しおり行数が上限を超えています。");
+                    lines.Add(line.ToString().TrimEnd('\r')); line.Clear();
+                    if (lines.Count > MaximumBookmarkCount) throw new InvalidDataException("しおり行数が上限を超えています。");
+                }
+                else
+                {
+                    if (line.Length >= MaximumTitleCharacters + MaximumBookmarkDepth + 32)
+                        throw new InvalidDataException("しおり行が長すぎます。");
+                    line.Append(c);
+                }
+            }
+        }
+        if (line.Length > 0) lines.Add(line.ToString().TrimEnd('\r'));
         var roots = new List<BookmarkBuilder>();
         var latestAtDepth = new List<BookmarkBuilder>();
         var count = 0;
@@ -406,13 +449,50 @@ public sealed class PdfBookmarkService
         CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(path);
-        using var reader = XmlReader.Create(stream, new XmlReaderSettings
+        if (stream.Length > MaximumImportBytes) throw new InvalidDataException("しおりファイルが大きすぎます。");
+        var settings = new XmlReaderSettings
         {
-            Async = true,
-            DtdProcessing = DtdProcessing.Prohibit,
-            XmlResolver = null,
-            MaxCharactersInDocument = MaximumImportBytes,
-        });
+            Async = true, DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+            MaxCharactersInDocument = Math.Min(MaximumImportBytes, MaximumTotalImportCharacters),
+            CloseInput = false,
+        };
+        using (var scan = XmlReader.Create(stream, settings))
+        {
+            var nodes = 0; var bookmarks = 0; var characters = 0L;
+            var chunk = new char[4096];
+            while (await scan.ReadAsync())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (++nodes > MaximumImportNodes || scan.Depth >= MaximumImportStructureDepth)
+                    throw new InvalidDataException("しおりXMLの構造量が上限を超えています。");
+                if (scan.NodeType == XmlNodeType.Element)
+                {
+                    if ((scan.LocalName.Equals("bookmark", StringComparison.OrdinalIgnoreCase) ||
+                         scan.LocalName.Equals("outline", StringComparison.OrdinalIgnoreCase) ||
+                         scan.LocalName.Equals("item", StringComparison.OrdinalIgnoreCase)) && ++bookmarks > MaximumBookmarkCount)
+                        throw new InvalidDataException("しおり数が上限を超えています。");
+                    nodes = checked(nodes + scan.AttributeCount);
+                    if (nodes > MaximumImportNodes) throw new InvalidDataException("しおりXMLの属性数が上限を超えています。");
+                    while (scan.MoveToNextAttribute())
+                        await CountValue();
+                    scan.MoveToElement();
+                }
+                else if (scan.HasValue) await CountValue();
+            }
+            async Task CountValue()
+            {
+                var valueCharacters = 0; int count;
+                while ((count = await scan.ReadValueChunkAsync(chunk, 0, chunk.Length)) > 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    valueCharacters += count; characters += count;
+                    if (valueCharacters > MaximumTitleCharacters || characters > MaximumTotalImportCharacters)
+                        throw new InvalidDataException("しおりXMLの文字量が上限を超えています。");
+                }
+            }
+        }
+        stream.Position = 0;
+        using var reader = XmlReader.Create(stream, settings);
         var document = await XDocument.LoadAsync(reader, LoadOptions.None, cancellationToken);
         var root = document.Root ?? throw new InvalidDataException("しおりXMLにルート要素がありません。");
         var rootElements = IsBookmarkElement(root)
@@ -515,7 +595,8 @@ public sealed class PdfBookmarkService
         IReadOnlyList<PdfInternalLink>? internalLinks,
         IReadOnlyList<OcrPage>? projectPages,
         CancellationToken cancellationToken = default,
-        IReadOnlyList<ProjectPageReference>? pageSequence = null)
+        IReadOnlyList<ProjectPageReference>? pageSequence = null,
+        bool removeDocumentStructure = false, PdfReadingPlan? pronunciationPlan = null)
     {
         var fullPath = Path.GetFullPath(pdfPath);
         var operationDirectory = Path.Combine(
@@ -649,6 +730,15 @@ public sealed class PdfBookmarkService
                     pageSequence);
             }
 
+            if (removeDocumentStructure)
+            {
+                catalogValue.Remove("/StructTreeRoot");
+                catalogValue.Remove("/MarkInfo");
+                catalogValue.Remove("/SpiderInfo");
+            }
+            if (pronunciationPlan is { ReadingCount: > 0 })
+                nextObjectId = await WriteReadingStructureAsync(qpdfInputPath, pronunciationPlan, pageReferences,
+                    catalogValue, updateObjects, nextObjectId, removeDocumentStructure, cancellationToken);
             updateObjects[$"obj:{rootReference}"] = new JsonObject { ["value"] = catalogValue };
             var update = new JsonObject
             {
@@ -674,6 +764,18 @@ public sealed class PdfBookmarkService
             await RunQpdfAsync(outputArguments, cancellationToken);
             if (!File.Exists(outputPath))
                 throw new InvalidDataException("qpdfがしおり更新後のPDFを生成しませんでした。");
+            if (removeDocumentStructure && pronunciationPlan is not { ReadingCount: > 0 })
+            {
+                var verifiedTrailer = JsonNode.Parse(await RunQpdfForTextAsync(
+                    ["--json-output=2", "--json-object=trailer", outputPath, "-"], cancellationToken))!;
+                var verifiedRoot = verifiedTrailer["qpdf"]![1]!["trailer"]!["value"]!["/Root"]!.GetValue<string>();
+                var (verifiedNumber, verifiedGeneration) = ParseReference(verifiedRoot);
+                var verifiedCatalog = JsonNode.Parse(await RunQpdfForTextAsync(
+                    ["--json-output=2", $"--json-object={verifiedNumber},{verifiedGeneration}", outputPath, "-"], cancellationToken))!;
+                var verifiedValue = verifiedCatalog["qpdf"]![1]![$"obj:{verifiedRoot}"]!["value"]!.AsObject();
+                if (verifiedValue.ContainsKey("/StructTreeRoot") || verifiedValue.ContainsKey("/MarkInfo") || verifiedValue.ContainsKey("/SpiderInfo"))
+                    throw new InvalidDataException("墨消し後の文書構造に機密情報が残る可能性があるため、出力を中止しました。");
+            }
             File.Copy(outputPath, fullPath, true);
         }
         finally
@@ -714,7 +816,13 @@ public sealed class PdfBookmarkService
             for (var index = 0; index < pageSequence.Count; index++)
                 pagesById.TryAdd(pageSequence[index].PageId,
                     new OcrPage { Id = pageSequence[index].PageId, PageNumber = index + 1 });
-        foreach (var sourceGroup in links.Where(link => link.IsEnabled || link.IsModified).GroupBy(link => link.SourcePageId))
+        // Imported, unchanged annotations already exist in the output. Inspect only
+        // pages that actually add, replace or remove a link; large OCR books may
+        // contain hundreds of untouched link pages.
+        var changes = links.GroupBy(link => link.SourcePageId)
+            .Where(group => group.Any(link => link.IsModified ||
+                link.IsEnabled && link.SourceAnnotationReference is null && link.UnsupportedAction is null)).ToArray();
+        foreach (var sourceGroup in changes)
         {
             if (!pagesById.TryGetValue(sourceGroup.Key, out var sourcePage) ||
                 !pageReferences.TryGetValue(sourcePage.PageNumber, out var sourcePageReference)) continue;
@@ -763,7 +871,7 @@ public sealed class PdfBookmarkService
             foreach (var link in sourceGroup.Where(link => link.IsEnabled && link.UnsupportedAction is null &&
                          (link.SourceAnnotationReference is null || link.IsModified)))
             {
-                if (link.SourceRegionId is { } regionId && sourcePage.TextRegions.FirstOrDefault(region => region.Id == regionId) is { IsDeleted: true }) continue;
+                if (!link.IsGeometryLocked && link.SourceRegionId is { } regionId && sourcePage.TextRegions.FirstOrDefault(region => region.Id == regionId) is { IsDeleted: true }) continue;
                 var bounds = link.SourceBounds ?? sourcePage.TextRegions.FirstOrDefault(region => region.Id == link.SourceRegionId)?.EditedGeometry.LocalBounds;
                 var areas = link.SourceAreas.Count > 0 ? link.SourceAreas :
                     bounds is { IsValid: true } sourceRectangle ? new[] { sourceRectangle } : [];
@@ -936,27 +1044,10 @@ public sealed class PdfBookmarkService
     }
 
     /// <summary>
-    /// 環境変数、配布フォルダー、開発時の配置先の順にqpdf実行ファイルを探索します。
+    /// 配布フォルダーを優先する共通ポリシーでqpdf実行ファイルを探索します。
     /// </summary>
     /// <returns>見つかったqpdfの絶対パス。利用できない場合は<see langword="null"/>。</returns>
-    public static string? ResolveQpdfPath()
-    {
-        var configured = Environment.GetEnvironmentVariable("PDFOCR_QPDF_PATH");
-        var candidates = new[]
-        {
-            configured,
-            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "qpdf", "bin", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "qpdf", "bin", "qpdf.exe")),
-        };
-        foreach (var candidate in candidates)
-            if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
-                return Path.GetFullPath(candidate);
-        return null;
-    }
-
+    public static string? ResolveQpdfPath() => QpdfExecutableResolver.Resolve();
     private static IReadOnlyList<PdfBookmark> ReadOutlineArray(JsonElement outlines)
     {
         var result = new List<PdfBookmark>();
@@ -1054,12 +1145,15 @@ public sealed class PdfBookmarkService
         return output;
     }
 
+    internal Action<IReadOnlyList<string>>? QpdfInvocationObserver { get; init; }
+
     private async Task<(string Output, string Error)> RunQpdfAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
         var qpdfPath = ResolveQpdfPath() ??
                        throw new FileNotFoundException("しおり処理に必要なqpdf.exeが見つかりません。");
+        QpdfInvocationObserver?.Invoke(arguments);
         var result = await ExternalProcessRunner.RunAsync(
             qpdfPath, arguments, OperationTimeout, cancellationToken, MaximumQpdfOutputCharacters);
         if (result.ExitCode != 0)
@@ -1072,7 +1166,7 @@ public sealed class PdfBookmarkService
     private void EnsureImportFileWithinLimits(string path)
     {
         if (MaximumImportBytes <= 0 || MaximumBookmarkCount <= 0 || MaximumBookmarkDepth <= 0 ||
-            MaximumTitleCharacters <= 0)
+            MaximumTitleCharacters <= 0 || MaximumImportNodes <= 0 || MaximumImportStructureDepth <= 0 || MaximumTotalImportCharacters <= 0)
             throw new InvalidOperationException("しおり取込上限は正の値で指定してください。");
         var length = new FileInfo(path).Length;
         if (length > MaximumImportBytes)

@@ -24,7 +24,9 @@ public partial class App
         {
             if (arguments.Length <= optionIndex + 1) throw new ArgumentException("A new diagnostics directory is required.");
             directory = Path.GetFullPath(arguments[optionIndex + 1]);
-            if (Directory.Exists(directory)) throw new IOException("Use a new diagnostics directory.");
+            if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory)
+                    .Any(path => Path.GetFileName(path) != ".appstate"))
+                throw new IOException("Use a new diagnostics directory.");
             Directory.CreateDirectory(directory);
             var checks = new List<string>();
             void Check(bool condition, string message)
@@ -170,6 +172,54 @@ public partial class App
             }
             Check(VisualTreeHelper.GetChildrenCount(styled) == 0 && !styled.IsHitTestVisible,
                 "Character rendering has no child controls and does not intercept editing input.");
+            styled.ShowFrames = false;
+            var hiddenImage = Render(styled, 720, 70);
+            SaveImage(hiddenImage, "text-only");
+            var hiddenPixels = new byte[styledPixels.Length];
+            hiddenImage.CopyPixels(hiddenPixels, 720 * 4, 0);
+            Check(hiddenPixels[(int)(styled.Cells[1].Left + styled.Cells[1].Width / 2) * 4 + 3] == 0 &&
+                  hiddenPixels.Any(value => value > 0), "Hiding frames removes ordinary cell chrome, not OCR text or navigation feedback.");
+            var markerPixel = (int)(styled.Cells[4].Left + styled.Cells[4].Width / 2) * 4;
+            Check(Math.Abs(hiddenPixels[markerPixel + 3] - 102) <= 1 &&
+                  hiddenPixels[markerPixel + 2] > hiddenPixels[markerPixel],
+                "The exact matched cell retains its translucent yellow marker without a frame.");
+            styled.FrameOpacity = 0.2;
+            var faintText = Render(styled, 720, 70);
+            var faintPixels = new byte[hiddenPixels.Length];
+            faintText.CopyPixels(faintPixels, 720 * 4, 0);
+            Check(faintPixels.SequenceEqual(hiddenPixels), "Changing frame opacity does not move or fade text glyphs.");
+            styled.ShowFrames = true;
+            styled.FrameOpacity = 0;
+            Render(styled, 720, 70).CopyPixels(faintPixels, 720 * 4, 0);
+            Check(faintPixels.SequenceEqual(hiddenPixels), "Zero frame opacity still preserves the identical keyword marker and text.");
+            styled.FrameOpacity = 0.2;
+            styled.ShowFrames = true;
+            var faintFrame = Render(styled, 720, 70);
+            faintFrame.CopyPixels(faintPixels, 720 * 4, 0);
+            Check(Math.Abs(faintPixels[(int)(styled.Cells[1].Left + styled.Cells[1].Width / 2) * 4 + 3] - 51) <= 1,
+                "Frame opacity scales selected borders independently to the requested alpha.");
+            // The writing-direction setter swaps width/height to preserve the text axis.
+            var verticalMarkerRegion = Region("縦😀書", 180, 36);
+            verticalMarkerRegion.IsVertical = true;
+            var verticalSnapshot = verticalMarkerRegion.Capture();
+            verticalMarkerRegion.SetSearchHighlightByTextOffset(1, 2);
+            var verticalMarkerLayer = DrawingLayer(verticalMarkerRegion);
+            verticalMarkerLayer.ShowFrames = false;
+            verticalMarkerLayer.FrameOpacity = 0;
+            var verticalMarkerImage = Render(verticalMarkerLayer, 36, 180);
+            SaveImage(verticalMarkerImage, "vertical-keyword-marker");
+            var verticalPixels = new byte[36 * 180 * 4];
+            verticalMarkerImage.CopyPixels(verticalPixels, 36 * 4, 0);
+            var verticalCell = verticalMarkerLayer.Cells!.Single(cell => cell.IsSearchMatch);
+            Check(verticalCell.Text == "😀" && verticalPixels[((int)(verticalCell.Top + verticalCell.Height / 2) * 36) * 4 + 3] == 102 &&
+                  verticalPixels[3] == 0,
+                "Vertical Unicode matches mark only the exact text element, not adjacent cells.");
+            verticalMarkerRegion.ClearSearchHighlight();
+            verticalMarkerLayer.Cells = verticalMarkerRegion.CharacterCells;
+            Render(verticalMarkerLayer, 36, 180).CopyPixels(verticalPixels, 36 * 4, 0);
+            Check(verticalPixels[((int)(verticalCell.Top + verticalCell.Height / 2) * 36) * 4 + 3] == 0 &&
+                  verticalMarkerRegion.Capture() == verticalSnapshot,
+                "Clearing a match removes its marker without changing project/Undo data.");
 
             object MeasurePage(bool legacy)
             {
@@ -200,6 +250,12 @@ public partial class App
 
             var viewModel = (MainWindowViewModel)window.DataContext;
             window.ClosePromptOverride = () => MessageBoxResult.No;
+            // Native docking content enters the visual tree only after Loaded.
+            // Use an isolated off-screen window, not detached template containers.
+            window.ShowActivated = false; window.ShowInTaskbar = false;
+            window.Left = -10000; window.Top = -10000;
+            window.Show();
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             viewModel.ErrorDialogOverride = (message, exception) => throw new InvalidOperationException(message, exception);
             var pdfPath = Path.Combine(directory, "blank.pdf");
             WriteDocumentUiTestPdf(pdfPath);
@@ -255,6 +311,35 @@ public partial class App
                 Check(layer.IsCharacterEditMode && layer.CellBorderThickness == viewModel.CharacterCellBorderThickness && ResizeCount(secondContainer) == 0,
                     $"Character mode at {zoom}% keeps scale-aware borders without region resize handles.");
             }
+            var liveLayer = Descendants(secondContainer).OfType<OcrCharacterLayer>().Single();
+            var liveCells = second.CharacterCells;
+            var textBrush = liveLayer.TextBrush;
+            var dirty = viewModel.HasUnsavedChanges;
+            viewModel.ShowOcrFrames = false;
+            await LayoutAsync();
+            var body = Descendants(secondContainer).OfType<Border>().Single(border => border.Name == "RegionBody");
+            Check(!liveLayer.ShowFrames && body.Opacity == 0 && body.InputHitTest(new Point(5, 5)) is not null &&
+                  ReferenceEquals(liveCells, second.CharacterCells) && ReferenceEquals(textBrush, liveLayer.TextBrush) &&
+                  viewModel.HasUnsavedChanges == dirty,
+                "Text-only editor preserves hit testing, cell/glyph bindings and project dirty state without reloading.");
+            Check(Descendants(secondContainer).OfType<Canvas>().Single(canvas => canvas.Name == "CharacterAdvanceHandles").Visibility == Visibility.Collapsed,
+                "Hidden frames leave no invisible character handles to intercept the page.");
+            SaveImage(Render(content, 1400, 850), "editor-text-only");
+            viewModel.ZoomPercent = 100;
+            second.SetSearchHighlightByTextOffset(1, 1);
+            await LayoutAsync();
+            Check(!liveLayer.ShowFrames && string.Concat(liveLayer.Cells!.Where(cell => cell.IsSearchMatch).Select(cell => cell.Text)) == "の" &&
+                  viewModel.HasUnsavedChanges == dirty,
+                "The live text-only editor receives keyword-only navigation feedback without changing dirty state.");
+            SaveImage(Render(content, 1400, 850), "editor-keyword-marker");
+            second.ClearSearchHighlight();
+            await LayoutAsync();
+            Check(liveLayer.Cells!.All(cell => !cell.IsSearchMatch), "Clearing the live match removes its navigation marker.");
+            viewModel.EditUnitIndex = (int)OcrEditUnit.Line;
+            await LayoutAsync();
+            Check(Descendants(secondContainer).OfType<Thumb>().All(thumb => !thumb.IsVisible),
+                "Text-only line mode also hides resize and rotation handles.");
+            viewModel.ShowOcrFrames = true;
             viewModel.EditUnitIndex = (int)OcrEditUnit.Line;
             viewModel.ZoomPercent = 100;
             viewModel.EditorModeIndex = 1;

@@ -117,19 +117,21 @@ public partial class MainWindow : Window
     // displaying a modal dialog. Normal application runs leave this unset.
     internal Func<MessageBoxResult>? ClosePromptOverride { get; set; }
 
-    public MainWindow(bool useAvalonDockDiagnosticLayout = false, string? diagnosticDirectory = null)
+    public MainWindow(bool useAvalonDockDiagnosticLayout = false, string? diagnosticDirectory = null,
+        ApplicationPaths? applicationPaths = null)
     {
         _useAvalonDockDiagnosticLayout = useAvalonDockDiagnosticLayout;
-        var paths = diagnosticDirectory is null
+        var paths = applicationPaths ?? (diagnosticDirectory is null
             ? ApplicationPathResolver.Resolve(AppContext.BaseDirectory)
             : new ApplicationPaths(StorageMode.Portable,
                 Path.Combine(diagnosticDirectory, ".appstate", "config"),
                 Path.Combine(diagnosticDirectory, ".appstate", "logs"),
                 Path.Combine(diagnosticDirectory, ".appstate", "cache"),
-                Path.Combine(diagnosticDirectory, ".appstate", "workspaces"));
+                Path.Combine(diagnosticDirectory, ".appstate", "workspaces")));
         ApplicationPathResolver.EnsureDirectories(paths);
         var startupSettings = new ApplicationSettingsService(paths).Load();
         LocalizationService.SetLanguage(startupSettings.UiLanguage);
+        ApplicationThemeService.Apply(startupSettings.Theme);
 
         InitializeComponent();
         Title = ApplicationBuildInfo.WindowTitle;
@@ -147,6 +149,7 @@ public partial class MainWindow : Window
             paths,
             Close);
         InitializeWorkspaceDocking();
+        InitializeToolbarCustomization();
         _lastZoomFactor = ViewModel.ZoomFactor;
         ViewModel.CommitPendingInputs = CommitPendingEditorBindings;
         PreviewKeyDown += (_, _) => ViewModel.NotifyUserActivity();
@@ -166,8 +169,10 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _autoSaveTimer.Stop();
+            DetachAvalonPaneVisibilityEvents();
             ReleaseContinuousPageView();
         };
+        InitializeDistributionUpdates();
         LocalizationService.Apply(this);
     }
 
@@ -617,6 +622,7 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (TryFocusOcrDetail(e)) { e.Handled = true; return; }
         if (HandleLinkEditingKey(e)) return;
         if (TryExecuteConfiguredShortcut(e))
         {
@@ -740,7 +746,7 @@ public partial class MainWindow : Window
     internal void MoveKeyboardPane(bool reverse)
     {
         FrameworkElement[] panes = [MainToolbarPanel, NavigationDockPane, BookmarkDockPane,
-            OverlayCanvas, KeyboardPropertiesPane, StatusZoomComboBox];
+            OverlayCanvas, ..PropertyPaneViews, StatusZoomComboBox];
         var index = Array.FindIndex(panes, pane => pane.IsKeyboardFocusWithin);
         if (index < 0 && reverse) index = 0;
         for (var step = 1; step <= panes.Length; step++)
@@ -1002,6 +1008,7 @@ public partial class MainWindow : Window
         var dialog = new ProjectCommentsWindow(ViewModel.GetCurrentCommentTarget(), ViewModel.GetComments(), ViewModel.GetTags()) { Owner = this };
         if (dialog.ShowDialog() == true)
             ViewModel.ApplyCommentsAndTags(dialog.ResultComments, dialog.ResultTags);
+        RefreshCommentOverview();
     }
 
     private async void InternalLinkEdit_OnClick(object sender, RoutedEventArgs e)
@@ -1074,7 +1081,7 @@ public partial class MainWindow : Window
 
     /// <summary>障害調査に使用するログ保存先をエクスプローラーで開きます。</summary>
     private void OpenLogFolderMenuItem_OnClick(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("explorer.exe", _applicationPaths.LogDirectory) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_applicationPaths.LogDirectory}\"") { UseShellExecute = true });
 
     /// <summary>アプリケーション名と実行バージョンを表示します。</summary>
     private void AboutMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -1144,6 +1151,7 @@ public partial class MainWindow : Window
         {
             LocalizationService.SetLanguage(dialog.ResultSettings.UiLanguage);
             LocalizationService.Apply(this);
+            RefreshPropertyPaneLocalization();
             ViewModel.RefreshLocalization();
         }
         return cleared;
@@ -1546,6 +1554,7 @@ public partial class MainWindow : Window
     private void PreviewPageHost_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!ViewModel.CanEditDocument) return;
+        if (e.ClickCount == 2 && TryOpenRubyEditor(e)) { e.Handled = true; return; }
         if (ViewModel.IsLinkEditMode)
         {
             if (ViewModel.LinkInputModeIndex > 0)
@@ -1776,6 +1785,8 @@ public partial class MainWindow : Window
                 item.IsEnabled = ViewModel.SplitRegionAtSelectedCharacterCommand.CanExecute(null);
             else if (Equals(item.Tag, "MergeOcrRegions"))
                 item.IsEnabled = ViewModel.MergeSelectedRegionsCommand.CanExecute(null);
+            else if (Equals(item.Tag, "WordReading"))
+                item.IsEnabled = ViewModel.CanEditWordReadings;
         }
     }
 
@@ -2459,11 +2470,18 @@ public partial class MainWindow : Window
             CancelLinkTransform();
             CancelPointerRectangle();
         }
+        if (e.PropertyName == nameof(MainWindowViewModel.EditorMode)) ActivateModePropertyPane();
+        if (e.PropertyName is nameof(MainWindowViewModel.SelectedOverlay) or nameof(MainWindowViewModel.SelectedPage) or
+            nameof(MainWindowViewModel.HasUnsavedChanges) or nameof(MainWindowViewModel.CommentCount) or
+            nameof(MainWindowViewModel.SelectedCharacterText))
+            RefreshCommentOverview();
         if (e.PropertyName is nameof(MainWindowViewModel.IsLinkOverlayDisplayed) or nameof(MainWindowViewModel.CanHitLinkAreas) or
             nameof(MainWindowViewModel.LinkOverlayVersion) or nameof(MainWindowViewModel.PreviousPreviewImage) or nameof(MainWindowViewModel.NextPreviewImage))
             Dispatcher.BeginInvoke(RefreshPassiveLinkOverlays, DispatcherPriority.Loaded);
         if (e.PropertyName == nameof(MainWindowViewModel.CurrentApplicationSettings))
         {
+            ApplicationThemeService.Apply(ViewModel.CurrentApplicationSettings.Theme);
+            ApplyToolbarVisibility();
             if (!_updatingAvalonSettings && HasChangedDockingSettings(ViewModel.CurrentApplicationSettings))
                 SynchronizeWorkspaceDocking();
             return;
@@ -2543,6 +2561,7 @@ public partial class MainWindow : Window
         }
         if (ViewModel.IsPdfExporting)
         {
+            CancelPendingUpdate();
             e.Cancel = true;
             _closingAfterDisplaySettingsFlush = false;
             MessageBox.Show(
@@ -2564,6 +2583,7 @@ public partial class MainWindow : Window
         }
         if (_closePromptActive)
         {
+            CancelPendingUpdate();
             e.Cancel = true;
             _closingAfterDisplaySettingsFlush = false;
             return;
@@ -2580,6 +2600,7 @@ public partial class MainWindow : Window
                 MessageBoxResult.Yes);
             if (choice == MessageBoxResult.Cancel)
             {
+                CancelPendingUpdate();
                 e.Cancel = true;
                 _closingAfterDisplaySettingsFlush = false;
                 return;
@@ -2601,6 +2622,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             if (!await ViewModel.SaveBeforeCloseAsync())
             {
+                CancelPendingUpdate();
                 _closingAfterDisplaySettingsFlush = false;
                 return;
             }

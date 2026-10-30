@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Data;
 using PdfCorrectorium.App.Services;
 using PdfCorrectorium.App.ViewModels;
 using PdfCorrectorium.Core.Analysis;
@@ -14,7 +16,10 @@ public partial class OcrQualityAnalysisWindow : Window
     /// <summary>分析対象文書と候補への移動・補正操作を提供します。</summary>
     private readonly MainWindowViewModel _viewModel;
     /// <summary>文字数の外れ値候補を画面表示用に保持します。</summary>
-    private readonly ObservableCollection<CharacterCountRow> _countRows = [];
+    private IReadOnlyList<CharacterCountRow> _countRows = new List<CharacterCountRow>();
+    private ICollectionView? _countView;
+    private bool _hasCountResults;
+    internal Action<string, Exception>? ErrorDialogOverride { get; set; }
     /// <summary>キーワード幅の外れ値候補を画面表示用に保持します。</summary>
     private readonly ObservableCollection<KeywordWidthRow> _keywordRows = [];
     /// <summary>ページ読込中の二重実行を防ぎます。</summary>
@@ -30,10 +35,15 @@ public partial class OcrQualityAnalysisWindow : Window
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = viewModel;
-        CountResultsGrid.ItemsSource = _countRows;
+        _countView = CollectionViewSource.GetDefaultView(_countRows);
+        _countView.Filter = IsCountRowVisible;
+        CountResultsGrid.ItemsSource = _countView;
         KeywordResultsGrid.ItemsSource = _keywordRows;
+        InitializeSimilarWords();
+        _viewModel.OcrPositionLocksChanged += OnOcrPositionLocksChanged;
         Closed += (_, _) =>
         {
+            _viewModel.OcrPositionLocksChanged -= OnOcrPositionLocksChanged;
             _analysisOperationId++;
             _operationCancellation?.Cancel();
         };
@@ -69,11 +79,28 @@ public partial class OcrQualityAnalysisWindow : Window
             var results = await _viewModel.AnalyzeOcrCharacterCountAnomaliesAsync(
                 new OcrCharacterCountAnalysisOptions(tolerance, minimumPeers, ratio),
                 progress, detailedProgress, _operationCancellation.Token);
-            _countRows.Clear();
-            foreach (var result in results) _countRows.Add(new CharacterCountRow(result));
-            CountStatusTextBlock.Text = results.Count == 0
-                ? LocalizationService.Translate("文字数の外れ値候補は見つかりませんでした。")
-                : string.Format(CultureInfo.CurrentCulture, LocalizationService.Translate("{0}件の候補が見つかりました。"), results.Count);
+            var sorting = _countView!.SortDescriptions.ToArray();
+            var columnSorting = CountResultsGrid.Columns.Select(column => (Column: column, Direction: column.SortDirection)).ToArray();
+            // Build off-view, then bind once. Observable additions while a filtered
+            // WPF view defers refresh can throw and also repeatedly refilter a large list.
+            _countRows = results.Select(result =>
+            {
+                var row = new CharacterCountRow(result);
+                row.UpdatePositionLock(_viewModel.IsOcrPositionLocked(result.RegionId, result.Sample.IsGeometryLocked));
+                return row;
+            }).ToList();
+            _countView = CollectionViewSource.GetDefaultView(_countRows);
+            // DataGrid clears sorting on ItemsSource replacement, so restore it
+            // after binding, not before. Display-only refreshes never replace it.
+            CountResultsGrid.ItemsSource = _countView;
+            using (_countView.DeferRefresh())
+            {
+                _countView.Filter = IsCountRowVisible;
+                foreach (var sort in sorting) _countView.SortDescriptions.Add(sort);
+            }
+            foreach (var (column, direction) in columnSorting) column.SortDirection = direction;
+            _hasCountResults = true;
+            RefreshCountSummary();
         }
         catch (OperationCanceledException)
         {
@@ -87,6 +114,35 @@ public partial class OcrQualityAnalysisWindow : Window
     }
 
     private async void AnalyzeKeywordButton_OnClick(object sender, RoutedEventArgs e) => await AnalyzeKeywordAsync();
+
+    private void ShowLockedCountCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        _countView?.Refresh();
+        if (_hasCountResults && !_isBusy) RefreshCountSummary();
+    }
+
+    private bool IsCountRowVisible(object item) => item is CharacterCountRow row &&
+        (ShowLockedCountCheckBox.IsChecked == true || !row.IsPositionLocked);
+
+    private void RefreshCountSummary()
+    {
+        var visible = _countView?.Cast<CharacterCountRow>().Count() ?? 0;
+        var hidden = _countRows.Count - visible;
+        CountStatusTextBlock.Text = LocalizationService.IsEnglish
+            ? $"{visible:N0} candidates shown; {hidden:N0} position/size-locked candidates hidden."
+            : $"表示{visible:N0}件・位置／サイズ固定で非表示{hidden:N0}件。";
+    }
+
+    private void OnOcrPositionLocksChanged(object? sender, EventArgs e)
+    {
+        // Only lock-changing history actions trigger this pass; dragging a line does not.
+        var changed = false;
+        foreach (var row in _countRows)
+            changed |= row.UpdatePositionLock(_viewModel.IsOcrPositionLocked(row.Source.RegionId, row.IsPositionLocked));
+        if (!changed) return;
+        _countView?.Refresh();
+        if (_hasCountResults && !_isBusy) RefreshCountSummary();
+    }
 
     private async Task AnalyzeKeywordAsync()
     {
@@ -147,7 +203,8 @@ public partial class OcrQualityAnalysisWindow : Window
 
     private async Task NavigateCountAsync()
     {
-        if (CountResultsGrid.SelectedItem is not CharacterCountRow row) return;
+        if (CountResultsGrid.SelectedItem is not CharacterCountRow row ||
+            row.IsPositionLocked && ShowLockedCountCheckBox.IsChecked != true) return;
         await _viewModel.NavigateToOcrQualityCandidateAsync(row.Source.PageNumber, row.Source.RegionId);
         Owner?.Activate();
     }
@@ -195,7 +252,9 @@ public partial class OcrQualityAnalysisWindow : Window
     {
         _isBusy = value;
         AnalyzeCountButton.IsEnabled = !value;
+        ShowLockedCountCheckBox.IsEnabled = !value;
         AnalyzeKeywordButton.IsEnabled = !value;
+        SetSimilarWordsBusy(value);
         CountProgressBar.Visibility = value && ReferenceEquals(activeProgressBar, CountProgressBar)
             ? Visibility.Visible : Visibility.Collapsed;
         KeywordProgressBar.Visibility = value && ReferenceEquals(activeProgressBar, KeywordProgressBar)
@@ -226,7 +285,9 @@ public partial class OcrQualityAnalysisWindow : Window
         _operationCancellation = null;
         _isBusy = false;
         AnalyzeCountButton.IsEnabled = true;
+        ShowLockedCountCheckBox.IsEnabled = true;
         AnalyzeKeywordButton.IsEnabled = true;
+        SetSimilarWordsBusy(false);
         CountProgressBar.Visibility = Visibility.Collapsed;
         KeywordProgressBar.Visibility = Visibility.Collapsed;
         CancelAnalysisButton.Visibility = Visibility.Collapsed;
@@ -247,23 +308,40 @@ public partial class OcrQualityAnalysisWindow : Window
         double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value) ||
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
-    private void ShowError(string message, Exception exception) =>
-        MessageBox.Show(this, $"{message}\n\n{exception.Message}", "PDF Correctorium", MessageBoxButton.OK, MessageBoxImage.Error);
+    private void ShowError(string message, Exception exception)
+    {
+        if (ErrorDialogOverride is { } handler) handler(message, exception);
+        else MessageBox.Show(this, $"{message}\n\n{exception.Message}", "PDF Correctorium", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
 
     private void CloseButton_OnClick(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>文字数外れ値の表示項目を提供します。</summary>
-    private sealed class CharacterCountRow(OcrCharacterCountAnomaly source)
+    private sealed class CharacterCountRow(OcrCharacterCountAnomaly source) : INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+        public bool IsPositionLocked { get; private set; } = source.Sample.IsGeometryLocked;
+        public bool UpdatePositionLock(bool value)
+        {
+            if (IsPositionLocked == value) return false;
+            IsPositionLocked = value;
+            PropertyChanged?.Invoke(this, new(nameof(IsPositionLocked)));
+            PropertyChanged?.Invoke(this, new(nameof(LockDisplay)));
+            PropertyChanged?.Invoke(this, new(nameof(FindingDisplay)));
+            return true;
+        }
         public OcrCharacterCountAnomaly Source { get; } = source;
         public int PageNumber => Source.PageNumber;
         public string KindDisplay => LocalizationService.Translate(Source.Kind == OcrCharacterCountAnomalyKind.TooFew ? "少なすぎる" : "多すぎる");
+        public string FindingDisplay => IsPositionLocked ? $"{KindDisplay} / {LocalizationService.Translate("固定済み")}" : KindDisplay;
         public int CharacterCount => Source.CharacterCount;
         public double ExpectedCharacterCount => Source.ExpectedCharacterCount;
+        public double DensityRatio => Source.CountRatio;
         public int PeerCount => Source.PeerCount;
         public double Width => Source.Width;
         public double Height => Source.Height;
         public string DirectionDisplay => LocalizationService.Translate(Source.IsVertical ? "縦書き" : "横書き");
+        public string LockDisplay => LocalizationService.Translate(IsPositionLocked ? "固定済み" : "なし");
         public string Text => Source.Text;
     }
 

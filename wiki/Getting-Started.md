@@ -1,5 +1,13 @@
 # クイックスタート・起動方法
 
+<!-- CURRENT-RELEASE-SNAPSHOT -->
+## 現行仕様（v1.0.0-dev.274・コミット前確認）
+
+このガイドの現行機能は1.0.0-dev.274のソースと検証候補を対象とする。実際の公開ファイルは[GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認する。前回公開dev.199のZIPは.NET 8 Desktop Runtime x64が必要。新しい自己完結型ZIPは.NET 10.0.14同梱で、別途ランタイム導入は不要。
+
+資料のPDF・プロジェクトはアプリのフォルダーとは別に保管し、更新は新しいフォルダーへ展開する。新しい形式1.14はdev.199で開けないので元プロジェクトを別名で残す。最初のページと表示リンクを優先し、背景確認中の進捗はステータスバーに示す。[dev.199からの変更](Release-Changes.md)。
+<!-- END-CURRENT-RELEASE-SNAPSHOT -->
+
 PDF Correctorium のダウンロードから起動、基本的な作業の流れを説明します。
 
 ---

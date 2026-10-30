@@ -1,6 +1,60 @@
 # 12-01 運用・配布
 
-## 現行開発状況（2026-09-29 / dev.196）
+<!-- CURRENT-RELEASE-SNAPSHOT -->
+## 現行仕様（v1.0.0-dev.274・コミット前確認）
+
+自己完結型win-x64に.NET 10.0.14を同梱する。build-info schema 2の全件一覧から新しい公開用ステージへコピーし、元の利用者設定・キャッシュを削除しない。未知ファイルや文書の混入、改変・欠落・再解析ポイントを拒否し、ZIPの全エントリを照合する。
+
+今回はコミット直前まで。コミット・push・タグ・公開はしない。正式公開のクリーンなGit記録・署名・独立レビュー等は別途必要。ZIP更新は手動、StoreはStore、直接MSIXはApp Installerへ委譲するが、署名・実導入／更新・Store掲載は未完了。[運用手順](../../../../docs/Distribution-Operations.md)。
+<!-- END-CURRENT-RELEASE-SNAPSHOT -->
+
+## dev.271の公開準備（再ビルド未実施）
+
+BuildPortableの全件一覧（build-info schema 2）を正本にNewReleaseStageで公開用フォルダーを作る。元のキャッシュ・設定・作業用PDFは削除せず、配布物へ混ぜない。完成ZIPを一覧と照合し、公開判定はクリーンなGit出所とロック済み依存版のレビューも検査する。診断とCIは同じ現行ソースから全7プロジェクトをビルドする構成へ揃える。署名・独立レビュー・実導入／更新の条件は残る。現時点はソース反映とスクリプト試験までで、新しい配布物の認証・公開は行っていない。[手順](../../../../docs/Distribution-Operations.md)、[方針と上限](../../../../docs/Local-Processing-And-Redaction-Scope.md)。
+
+## 当時の開発状況（dev.260）
+
+WindowsMediaの音声APIへ切り替え、0.5刻みの速度を設定できる。Microsoft.Windows.SDK.NET.Ref 10.0.19041.57と公式ライセンスを固定し、System.Speechを配布から外す。Windows APIターゲットは10.0.19041.0。自己完結型.NET 10.0.14、設定21、プロジェクト1.13／最小読込dev.257を維持する。配布先は `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.260-win-x64-20261028-235530`。契約72件、配布版7診断4,396項目と318資源の照合を通過した。[検証・配布](../../../../docs/releases/v1.0.0-dev.260.md)。
+
+## dev.259の配布記録
+
+読み上げ画面をコンパクトにし、最大化と下部の「閉じる」を削除した。形式1.13／最小読込dev.257、設定21は維持する。配布フォルダは `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.259-win-x64-20261028-225853`。Release、契約72件、配布版3診断3,950項目と最終版情報照合を通過した。新しいZIP／MSIXは作成していない。[検証・配布](../../../../docs/releases/v1.0.0-dev.259.md)。
+
+## dev.258の配布記録
+
+ヘッドホン形の読み上げ開始ボタンを追加した。形式1.13／最小読込dev.257、設定21を維持する。配布フォルダは `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.258-win-x64-20261028-222556`。Release、契約72件、配布版4診断4,221項目と最終版情報照合を通過した。今回は新しいZIP／MSIXラッパーを作成していない。詳細は[dev.258の記録](../../../../docs/releases/v1.0.0-dev.258.md)を参照する。
+
+## dev.257の配布記録
+
+配布用自己完結型ビルドは `outputs/PdfCorrectorium-Builds/PdfCorrectorium-v1.0.0-dev.257-win-x64-20261028-221217`。ZIPは `outputs/PdfCorrectorium-Distributions/PdfCorrectorium-v1.0.0-dev.257-win-x64-development-20261028-221332`。配布版7診断4,278項目と最終版情報照合を通過した。開発用MSIXは未署名で、公開・導入・更新認証は行っていない。
+
+読み上げの前後移動と手動段落を追加する。今回保存した形式1.13はdev.257以降で開く。旧形式1.0〜1.12は読める。設定21と依存資源は維持する。[操作・互換性](../../../../docs/Speech-Navigation-And-Paragraphs.md)、[検証・配布](../../../../docs/releases/v1.0.0-dev.257.md)。
+
+## 過去の開発状況（dev.256）
+
+読み上げ専用の段落連結と合成進捗による行マーカーを追加。ナレーター専用Nanami／Keitaは公式ローカルAPIを確認できず未対応。クラウド送信・非公開API・音声アダプターは追加していない。形式・依存資源は維持する。[仕様](../../../../docs/Read-Aloud-Paragraphs.md)、[検証・配布先](../../../../docs/releases/v1.0.0-dev.256.md)。
+
+## 過去の開発状況（dev.255）
+
+直接MSIXの埋込更新設定、実際の更新確認と保存・終了後の引き渡しを追加した。[運用・公開前条件](../../../../docs/Installer-Automatic-Updates.md)と[生成・検証記録](../../../../docs/releases/v1.0.0-dev.255.md)を参照する。Store登録・署名手段・配信先の準備と、署名付き実更新試験は未完了。ZIPへ自動置換を追加しない。
+
+## 過去の開発状況（dev.254）
+
+dev.254は文書なしの設定入口とダークメニュー・アイコン・灰色の境界を修正する。現在版・配布先・検証結果は[dev.254の記録](../../../../docs/releases/v1.0.0-dev.254.md)を参照する。形式・依存資源・署名／Storeの残条件は以下を維持する。
+
+## 過去の開発状況（dev.253）
+
+現在の版はDirectory.Build.propsを正本とする。dev.253はUIテーマとWindows標準音声による読み上げを備え、枠移動前後の墨消し対象除外も扱う。検証・配布場所は[dev.253の記録](../../../../docs/releases/v1.0.0-dev.253.md)へ集約する。プロジェクト形式1.12／最小読込dev.243／設定21を維持する。音声ライブラリとライセンスも依存ロックで照合し、声のモデル自体は同梱しない。自己完結型ZIPと未署名検証用MSIXの生成を、Store登録・署名・実導入／更新試験・正式公開と区別する。
+
+## 過去の開発状況（dev.209）
+
+製品版は`1.0.0-dev.209`、数値版は`1.0.0.209`、プロジェクト形式1.11、最小読込版dev.206、アプリ設定形式19。配布物・検証情報は[実装状況](../../../../IMPLEMENTATION_STATUS.md)と[dev.209ノート](../../../../docs/releases/v1.0.0-dev.209.md)を参照する。dev.208の文書最新化とは別にアプリ修正・回帰検証を行い、新しい出力先を使用する。旧認証済み配布フォルダーは変更しない。
+
+qpdfは`components/qpdf/`、日本語装飾フォントは`components/fonts/NotoSansJP.ttf`、PDFiumは.NET標準の`runtimes/`、AvalonDock本体はアプリ横、日本語リソースは`ja/`に置く。NDLOCR-liteエンジンは同梱しておらず、外部結果の読み込みと区別する。ライセンス・NOTICEを同梱する。今回の文書変更は依存ライブラリを追加・更新するものではない。
+
+PDF／プロジェクトのファイル引数起動、関連付け用アイコン、通常／ポータブル保存、同一元PDFの再選択、復旧候補・バックアップは既存の運用を維持する。設定の初期編集モード・ボタン表示とプロジェクトの保存モードを混同しない。設計PDFはMarkdownの発行スナップショットとして、版と発行日を明示して再生成する。
+
+## 以前の開発状況（2026-09-29 / dev.196）
 
 ポータブル版のqpdf本体と付属DLLは`components/qpdf/`へまとめる。AvalonDock本体はアプリと同じ階層、同梱する日本語リソースは`ja/`に維持する。PDFiumは.NETの標準配置である`runtimes/`に維持し、NDLOCR-liteは今回同梱しない。dev.196ではツールバーの重ね・切り離しを繰り返したときの残留行高と過大な浮動幅を補正する。製品版は`1.0.0-dev.196`、数値版は`1.0.0.196`。プロジェクト形式1.7と最小読込版dev.172は変更しない。検証と配布先は[実装状況](../../../../IMPLEMENTATION_STATUS.md)に記録する。
 
@@ -102,7 +156,7 @@ Windows 11 x64向けPortable配布物があり、`portable.marker`、PDFium、qp
 .\tools\BuildPortable.ps1
 ```
 
-出力先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-<version>-win-x64-<yyyyMMdd-HHmmss>`。版ラベルは共通ビルド設定の評価値から取得し、`IMPLEMENTATION_STATUS.md`の現行版とも一致を確認する。`-BuildLabel`には実際の版と異なる値を指定できない。依存復元が済んだオフライン環境では`-NoRestore`を使う。SDKの前提は[ビルド案内](../../../../README.md#build)を参照する。発行はframework-dependentであり、Portableは設定の配置方式を表す。対象環境には.NET 8 Desktop Runtimeが必要である。
+出力先は`outputs/PdfCorrectorium-Builds/PdfCorrectorium-<version>-win-x64-<yyyyMMdd-HHmmss>`。版ラベルは共通ビルド設定の評価値から取得し、`IMPLEMENTATION_STATUS.md`の現行版とも一致を確認する。`-BuildLabel`には実際の版と異なる値を指定できない。依存復元が済んだオフライン環境では`-NoRestore`を使う。dev.250から.NET 10.0.14同梱の自己完結型へ変更し、利用者の別途ランタイム導入を不要にする。Portableは設定の保存方式を表す。BuildPortableはdeploymentMode、runtimeIdentifier、includedFrameworksと同梱実ファイルも検査する。MSIX／ZIP生成、更新委譲、署名・Store登録の未完了条件は[配布手順](../../../../docs/Distribution-Operations.md)に従う。dev.248〜249は共有Desktop Runtimeが必要だった履歴版である。
 
 変更したアプリやビルド処理を渡す前に`Directory.Build.props`の`DevelopmentRevision`を進める。現行dev.179では製品版`1.0.0-dev.179`、全アセンブリ・ファイル版`1.0.0.179`となり、画面、保存マニフェスト、配布フォルダーに反映する。発行時は版番号・ビルド入力の指紋・出力バイナリーを検査して`build-info.json`を残す。プロジェクト形式1.7の`minimumApplicationVersion`は、この形式を導入したdev.172とする。`DEPENDENCIES.lock.json`と`tools/TestDependencyLock.ps1`により、PDFium、qpdfと付属DLLのSHA-256もリポジトリ内・配布先の双方で確認する。詳細は[必須の版管理ルール](../../../../VERSIONING.md)を参照する。同じソースの再検証ではリビジョンを維持できるが、配布フォルダーは毎回新しくする。
 

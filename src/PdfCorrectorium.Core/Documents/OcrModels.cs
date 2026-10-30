@@ -50,6 +50,9 @@ public sealed record OcrTextRegion
     public Guid PageId { get; init; }
     /// <summary>段落や親領域との包含関係を示すIDです。</summary>
     public Guid? ParentRegionId { get; init; }
+    /// <summary>段落の明示指定。nullは自動、空GUIDは行ごと、同じ非空GUIDは同じ段落です。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ParagraphGroupId { get; init; }
     /// <summary>OCR取込時点の文字列です。</summary>
     public string OriginalText { get; init; } = string.Empty;
     /// <summary>利用者が修正した文字列。意図的な空文字編集はHasEditedTextで区別します。</summary>

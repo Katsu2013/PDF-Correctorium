@@ -1,13 +1,13 @@
-<Window x:Class="PdfCorrectorium.App.PageTextDecorationsWindow"
+<Window xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" x:Class="PdfCorrectorium.App.PageTextDecorationsWindow"
         x:Name="WindowRoot"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ページ番号・ヘッダー／フッター・文字透かし" Width="850" Height="720"
         MinWidth="720" MinHeight="620" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
-    <Grid Margin="16" Background="White" KeyboardNavigation.TabNavigation="Cycle">
+    <Grid Margin="16" Background="{DynamicResource InputBrush}" KeyboardNavigation.TabNavigation="Cycle">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <TextBlock Grid.Row="0" Text="設定はプロジェクトに保存され、編集画面でプレビューし、PDF出力時に文字として埋め込みます。{page} はページ番号、{total} は総ページ数です。"
-                   TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,12" />
+                   TextWrapping="Wrap" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,0,12" />
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Grid Grid.Column="0">
@@ -16,12 +16,12 @@
                          SelectionChanged="DecorationsList_OnSelectionChanged"
                          AutomationProperties.Name="ページ装飾一覧" />
                 <UniformGrid Grid.Row="1" Columns="2" Margin="0,8,0,0">
-                    <Button Content="ページ番号を追加" Click="AddPageNumber_OnClick" Margin="0,0,3,3"/>
-                    <Button Content="ヘッダーを追加" Click="AddHeader_OnClick" Margin="3,0,0,3"/>
-                    <Button Content="フッターを追加" Click="AddFooter_OnClick" Margin="0,3,3,0"/>
-                    <Button Content="文字透かしを追加" Click="AddWatermark_OnClick" Margin="3,3,0,0"/>
+<Button icons:ActionIcon.Key="PageNumber" Content="ページ番号を追加" Click="AddPageNumber_OnClick" Margin="0,0,3,3"/>
+<Button icons:ActionIcon.Key="Header" Content="ヘッダーを追加" Click="AddHeader_OnClick" Margin="3,0,0,3"/>
+<Button icons:ActionIcon.Key="Footer" Content="フッターを追加" Click="AddFooter_OnClick" Margin="0,3,3,0"/>
+<Button icons:ActionIcon.Key="TextWatermark" Content="文字透かしを追加" Click="AddWatermark_OnClick" Margin="3,3,0,0"/>
                 </UniformGrid>
-                <Button Grid.Row="2" Content="選択項目を削除" Click="Remove_OnClick" Margin="0,8,0,0" />
+                <Button icons:ActionIcon.Key="Delete" Grid.Row="2" Content="選択項目を削除" Click="Remove_OnClick" Margin="0,8,0,0" />
             </Grid>
             <Grid Grid.Column="2">
               <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -53,7 +53,7 @@
                     <Label Grid.Row="6" Content="ページ番号の補正(_N)" Target="{Binding ElementName=OffsetBox}" />
                     <TextBox x:Name="OffsetBox" Grid.Row="6" Grid.Column="1" Text="{Binding OffsetText, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="例えば表紙を除いて2ページ目を1と表示する場合は -1" />
-                    <Button Grid.Row="7" Grid.ColumnSpan="2" Content="表紙を除き、2ページ目から1で始める(_B)" Click="SkipCover_OnClick" Margin="4,6,0,6" />
+<Button icons:ActionIcon.Key="PageNumber" Grid.Row="7" Grid.ColumnSpan="2" Content="表紙を除き、2ページ目から1で始める(_B)" Click="SkipCover_OnClick" Margin="4,6,0,6" />
                     <Label Grid.Row="8" Content="文字サイズ（pt）(_Z)" Target="{Binding ElementName=FontSizeBox}" />
                     <TextBox x:Name="FontSizeBox" Grid.Row="8" Grid.Column="1" Text="{Binding FontSizeText, UpdateSourceTrigger=PropertyChanged}" />
                     <Label Grid.Row="9" Content="文字色（#RRGGBB）(_C)" Target="{Binding ElementName=ColorBox}" />
@@ -72,11 +72,11 @@
                 </Grid>
             </ScrollViewer>
               <StackPanel Grid.Row="1" Margin="0,8,0,0">
-                <TextBlock Text="配置プレビュー（奇数・偶数の例。編集画面にも適用後に表示）" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,5" />
+                <TextBlock Text="配置プレビュー（奇数・偶数の例。編集画面にも適用後に表示）" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,0,5" />
                 <UniformGrid Columns="2">
                   <StackPanel Margin="0,0,5,0">
                     <TextBlock x:Name="OddPreviewLabel" Text="奇数ページ" Margin="0,0,0,3" />
-                    <Border BorderBrush="#AAB5C2" BorderThickness="1" Background="#F1F3F5" Padding="5">
+                    <Border BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="1" Background="{DynamicResource HoverBrush}" Padding="5">
                       <Canvas x:Name="OddPreviewCanvas" Width="160" Height="190" Background="White" ClipToBounds="True">
                         <TextBlock x:Name="OddPreviewText" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="145" />
                       </Canvas>
@@ -84,7 +84,7 @@
                   </StackPanel>
                   <StackPanel Margin="5,0,0,0">
                     <TextBlock x:Name="EvenPreviewLabel" Text="偶数ページ" Margin="0,0,0,3" />
-                    <Border BorderBrush="#AAB5C2" BorderThickness="1" Background="#F1F3F5" Padding="5">
+                    <Border BorderBrush="{DynamicResource StrongBorderBrush}" BorderThickness="1" Background="{DynamicResource HoverBrush}" Padding="5">
                       <Canvas x:Name="EvenPreviewCanvas" Width="160" Height="190" Background="White" ClipToBounds="True">
                         <TextBlock x:Name="EvenPreviewText" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="145" />
                       </Canvas>
@@ -94,7 +94,7 @@
               </StackPanel>
             </Grid>
         </Grid>
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <StackPanel x:Name="DialogFooter" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="キャンセル" IsCancel="True" MinWidth="104" />
             <Button Content="適用" IsDefault="True" MinWidth="104" Margin="8,0,0,0" Click="Apply_OnClick" />
         </StackPanel>

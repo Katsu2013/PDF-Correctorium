@@ -1,4 +1,4 @@
-<Window x:Class="PdfCorrectorium.App.RecoveryProjectsWindow"
+<Window xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" x:Class="PdfCorrectorium.App.RecoveryProjectsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="復旧できる作業があります" Width="650" Height="390" MinWidth="560" MinHeight="320"
@@ -8,7 +8,7 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock Text="前回までの未保存の作業が見つかりました。" FontSize="16" FontWeight="SemiBold"/>
             <TextBlock Text="復旧する作業を選んで開くか、不要な復旧データを削除できます。何もしない場合もデータは残ります。"
-                       TextWrapping="Wrap" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,5,0,0"/>
+                       TextWrapping="Wrap" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,5,0,0"/>
         </StackPanel>
         <ListBox x:Name="CandidateList" Grid.Row="1" ItemsSource="{Binding}" SelectionMode="Extended">
             <ListBox.ItemTemplate>
@@ -17,17 +17,17 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="{Binding ProjectName}" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,3,0,0"/>
+                            <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,3,0,0"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Margin="16,0,0,0" HorizontalAlignment="Right">
                             <TextBlock Text="{Binding LastWriteTime, StringFormat={}{0:g}}"/>
-                            <TextBlock Text="{Binding FileSize, StringFormat={}{0:N0} バイト}" Foreground="{StaticResource SecondaryTextBrush}" HorizontalAlignment="Right"/>
+                            <TextBlock Text="{Binding FileSize, StringFormat={}{0:N0} バイト}" Foreground="{DynamicResource SecondaryTextBrush}" HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
-        <Grid Grid.Row="2" Margin="0,14,0,0">
+        <Grid x:Name="DialogFooter" Grid.Row="2" Margin="0,14,0,0">
             <Button Content="選択した復旧データを削除(_D)" HorizontalAlignment="Left" Click="Delete_OnClick"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="後で" IsCancel="True" MinWidth="104"/>

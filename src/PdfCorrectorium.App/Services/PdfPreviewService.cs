@@ -218,6 +218,63 @@ public sealed class PdfPreviewService
         int pageNumber,
         int targetWidth,
         CancellationToken cancellationToken)
+        => RenderPageCore(pdfPath, pageNumber, targetWidth, cancellationToken, null);
+
+    /// <summary>Shared by rendering and text-only scans so cached OCR always uses display coordinates.</summary>
+    internal static (int Width, int Height) GetPreviewPixelSize(double widthPoints, double heightPoints, int targetWidth = 1200)
+    {
+        if (!double.IsFinite(widthPoints) || !double.IsFinite(heightPoints) || widthPoints <= 0 || heightPoints <= 0)
+            throw new InvalidDataException("PDF page size is invalid.");
+        var width = Math.Clamp(targetWidth, 96, 2400);
+        var height = (int)Math.Clamp(Math.Ceiling(width * heightPoints / widthPoints), 96d, 3200d);
+        return (width, height);
+    }
+
+    internal static PdfPreviewResult RenderImagePageInProcess(string pdfPath, int pageNumber, int dpi, CancellationToken token)
+    {
+        if (dpi is < 72 or > 300) throw new ArgumentOutOfRangeException(nameof(dpi));
+        return RenderPageCore(pdfPath, pageNumber, 0, token, dpi);
+    }
+
+    internal static string[] ReadOcrWordsInProcess(string pdfPath, int pageNumber, CancellationToken token) =>
+        ReadSpeechPageInProcess(pdfPath, pageNumber, token).Regions.Select(region => region.Text).ToArray();
+
+    internal sealed record SpeechPage(double WidthPoints, double HeightPoints, int PixelWidth, int PixelHeight,
+        IReadOnlyList<PdfTextOverlayRegion> Regions);
+
+    internal static SpeechPage ReadSpeechPageInProcess(string pdfPath, int pageNumber, CancellationToken token)
+    {
+        lock (PdfiumSynchronization.Gate)
+        {
+            token.ThrowIfCancellationRequested(); EnsureInitialized();
+            var path = Marshal.StringToCoTaskMemUTF8(pdfPath);
+            IntPtr document = IntPtr.Zero, page = IntPtr.Zero, text = IntPtr.Zero;
+            try
+            {
+                document = NativeMethods.FPDF_LoadDocument(path, IntPtr.Zero);
+                if (document == IntPtr.Zero) throw CreatePdfException("The PDF could not be opened");
+                if (pageNumber < 1 || pageNumber > NativeMethods.FPDF_GetPageCount(document)) throw new ArgumentOutOfRangeException(nameof(pageNumber));
+                page = NativeMethods.FPDF_LoadPage(document, pageNumber - 1);
+                if (page == IntPtr.Zero) throw CreatePdfException("The page could not be opened");
+                text = NativeMethods.FPDFText_LoadPage(page);
+                var width = NativeMethods.FPDF_GetPageWidthF(page); var height = NativeMethods.FPDF_GetPageHeightF(page);
+                var (pixelWidth, pixelHeight) = GetPreviewPixelSize(width, height, 96);
+                var regions = text == IntPtr.Zero ? [] : ExtractTextRegions(page, text, width, height, pixelWidth, pixelHeight);
+                token.ThrowIfCancellationRequested();
+                return new(width, height, pixelWidth, pixelHeight, regions);
+            }
+            finally
+            {
+                if (text != IntPtr.Zero) NativeMethods.FPDFText_ClosePage(text);
+                if (page != IntPtr.Zero) NativeMethods.FPDF_ClosePage(page);
+                if (document != IntPtr.Zero) NativeMethods.FPDF_CloseDocument(document);
+                Marshal.FreeCoTaskMem(path);
+            }
+        }
+    }
+
+    private static PdfPreviewResult RenderPageCore(string pdfPath, int pageNumber, int targetWidth,
+        CancellationToken cancellationToken, int? exportDpi)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pdfPath);
         if (!File.Exists(pdfPath)) throw new FileNotFoundException("The PDF file was not found.", pdfPath);
@@ -244,17 +301,24 @@ public sealed class PdfPreviewService
 
                 page = NativeMethods.FPDF_LoadPage(document, pageNumber - 1);
                 if (page == IntPtr.Zero) throw CreatePdfException($"Page {pageNumber} could not be loaded");
-                textPage = NativeMethods.FPDFText_LoadPage(page);
+                textPage = exportDpi is null ? NativeMethods.FPDFText_LoadPage(page) : IntPtr.Zero;
 
                 // widthPoints/heightPointsはPDF座標、pixelWidth/pixelHeightはWPFプレビュー座標の寸法です。
                 var widthPoints = NativeMethods.FPDF_GetPageWidthF(page);
                 var heightPoints = NativeMethods.FPDF_GetPageHeightF(page);
-                if (widthPoints <= 0 || heightPoints <= 0)
+                if (!double.IsFinite(widthPoints) || !double.IsFinite(heightPoints) || widthPoints <= 0 || heightPoints <= 0)
                     throw new InvalidDataException($"Page {pageNumber} has an invalid size.");
 
                 // アスペクト比を維持しつつ、過大な画像生成によるメモリ消費を上限値で抑えます。
-                var pixelWidth = Math.Clamp(targetWidth, 96, 2400);
-                var pixelHeight = Math.Clamp((int)Math.Ceiling(pixelWidth * heightPoints / widthPoints), 96, 3200);
+                var (pixelWidth, pixelHeight) = GetPreviewPixelSize(widthPoints, heightPoints, targetWidth);
+                if (exportDpi is { } dpi)
+                {
+                    var width = Math.Ceiling(widthPoints * dpi / 72d);
+                    var height = Math.Ceiling(heightPoints * dpi / 72d);
+                    if (width < 1 || height < 1 || width > 8192 || height > 8192 || width * height > 20_000_000)
+                        throw new InvalidDataException("指定DPIでの画像寸法が安全上限（8192px／2000万画素）を超えます。DPIを下げてください。");
+                    pixelWidth = (int)width; pixelHeight = (int)height;
+                }
                 bitmap = NativeMethods.FPDFBitmap_Create(pixelWidth, pixelHeight, 1);
                 if (bitmap == IntPtr.Zero) throw new InvalidOperationException("PDFium could not allocate the preview bitmap.");
 
@@ -278,8 +342,8 @@ public sealed class PdfPreviewService
                 var image = BitmapSource.Create(
                     pixelWidth,
                     pixelHeight,
-                    96,
-                    96,
+                    exportDpi ?? 96,
+                    exportDpi ?? 96,
                     PixelFormats.Bgra32,
                     null,
                     buffer,

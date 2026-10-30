@@ -26,7 +26,8 @@ public partial class App
         {
             if (args.Length <= index + 1) throw new ArgumentException("A new settings-test output directory is required.");
             output = Path.GetFullPath(args[index + 1]);
-            if (Directory.Exists(output)) throw new IOException("Use a new output directory.");
+            if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output)
+                .Any(path => Path.GetFileName(path) != ".appstate")) throw new IOException("Use a new output directory.");
             Directory.CreateDirectory(output);
             void Check(bool value, string message)
             {
@@ -40,7 +41,14 @@ public partial class App
             var original = new ApplicationSettings
             {
                 UiLanguage = "en-US",
+                DefaultEditingMode = PdfCorrectorium.Core.Documents.ProjectEditingMode.LinkEditing,
+                HiddenToolbarItems = ["main.save", "page.number"],
                 AutoSaveEnabled = false,
+                ShowOcrFrames = false,
+                ShowWordReadingRuby = false,
+                OcrFrameOpacity = 0.28,
+                SpeechRate = 2,
+                FineSpeechRate = 1.5,
                 PageListWidth = 300,
                 PropertiesPanelWidth = 410,
                 PageThumbnailSize = 183,
@@ -70,6 +78,28 @@ public partial class App
             var storedBefore = await File.ReadAllTextAsync(service.SettingsPath);
             await SettingsTransferService.ExportAsync(export, original);
             var imported = await SettingsTransferService.ImportAsync(export);
+            Check(new ApplicationSettingsService(paths).Load().EffectiveSpeechRate == 1.5 && imported.EffectiveSpeechRate == 1.5 && imported.SpeechRate == 2,
+                "Fractional speech speed survives save/reopen and export/import while keeping an integer legacy approximation.");
+            var speedReset = new ApplicationSettingsService(paths);
+            speedReset.Load();
+            await speedReset.SaveAsync(original with { FineSpeechRate = null, SpeechRate = 0 });
+            Check(new ApplicationSettingsService(paths).Load().EffectiveSpeechRate == 0,
+                "Resetting fractional speed clears it through the shared-settings merge instead of retaining the prior value.");
+            await speedReset.SaveAsync(original);
+            Check(JsonSerializer.Deserialize<ApplicationSettings>("{\"SpeechRate\":-2}")!.Normalize().EffectiveSpeechRate == -2 &&
+                  (new ApplicationSettings { FineSpeechRate = double.NaN, SpeechRate = 1 }).Normalize().EffectiveSpeechRate == 1 &&
+                  (new ApplicationSettings { FineSpeechRate = -1.25 }).Normalize().EffectiveSpeechRate == -1.5 &&
+                  (new ApplicationSettings { FineSpeechRate = 999 }).Normalize().EffectiveSpeechRate == 5,
+                "Legacy integer speeds migrate without loss; fractional values snap safely to half steps.");
+            Check(new ApplicationSettingsService(paths).Load() is { ShowOcrFrames: false, OcrFrameOpacity: 0.28, ShowWordReadingRuby: false } &&
+                  imported is { ShowOcrFrames: false, OcrFrameOpacity: 0.28, ShowWordReadingRuby: false },
+                "Frame visibility and independent opacity survive save/reopen and settings transfer.");
+            Check(JsonSerializer.Deserialize<ApplicationSettings>("{\"FormatVersion\":20}")!.Normalize() is
+                  { ShowOcrFrames: true, OcrFrameOpacity: 0.45, FormatVersion: 21, ShowWordReadingRuby: true } &&
+                  (new ApplicationSettings { OcrFrameOpacity = double.NaN }).Normalize().OcrFrameOpacity == 0.45 &&
+                  (new ApplicationSettings { OcrFrameOpacity = 8 }).Normalize().OcrFrameOpacity == 1 &&
+                  (new ApplicationSettings { OcrFrameOpacity = -1 }).Normalize().OcrFrameOpacity == 0,
+                "Older settings adopt translucent frames; nonfinite/out-of-range opacity is safely normalized.");
             Check(JsonSerializer.Serialize(imported) == JsonSerializer.Serialize(original.Normalize()), "All settings and presets round-trip, including hidden thumbnail size and unassigned shortcuts.");
             Check(imported.NavigationDockPosition == WorkspaceDockPosition.Right &&
                   imported.BookmarkDockPosition == WorkspaceDockPosition.Left &&
@@ -166,6 +196,9 @@ public partial class App
             await Reject("invalid-shortcut", n => n["settings"]!["previousCharacterShortcut"] = "invalid-key-name");
             await Reject("duplicate-shortcut", n => n["settings"]!["nextCharacterShortcut"] = original.PreviousCharacterShortcut);
             await Reject("null-presets", n => n["settings"]!["workspacePresets"] = null);
+            await Reject("unknown-editing-mode", n => n["settings"]!["defaultEditingMode"] = 999);
+            await Reject("null-toolbar-items", n => n["settings"]!["hiddenToolbarItems"] = null);
+            await Reject("invalid-toolbar-item", n => n["settings"]!["hiddenToolbarItems"] = new JsonArray(" "));
             await Reject("null-preset", n => n["settings"]!["workspacePresets"] = new JsonArray((JsonNode?)null));
             await Reject("empty-preset-name", n => n["settings"]!["workspacePresets"]![0]!["name"] = " ");
             await Reject("long-preset-name", n => n["settings"]!["workspacePresets"]![0]!["name"] = new string('A', 65));
@@ -224,13 +257,10 @@ public partial class App
                 mergedSettings.UiLanguage == LocalizationService.JapaneseLanguage,
                 "Stale application instances merge unrelated settings changes.");
 
-            var vm = new MainWindowViewModel(new ProjectPackageService(), new PdfPreviewService(), new PdfExportService(),
-                new NdlOcrCompanionService(), new DiagnosticLog(paths.LogDirectory), paths, () => { });
-            main.DataContext = vm;
-            // Mirror the constructor's subscription after replacing its VM with an isolated test VM.
-            vm.PropertyChanged += typeof(MainWindow).GetMethod("ViewModel_OnPropertyChanged",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .CreateDelegate<System.ComponentModel.PropertyChangedEventHandler>(main);
+            // A new isolated window wires every docked content to the same model.
+            // Replacing DataContext on an already constructed native layout is not a restart.
+            main = new MainWindow(applicationPaths: paths);
+            var vm = (MainWindowViewModel)main.DataContext;
             main.ClosePromptOverride = () => MessageBoxResult.No;
             vm.ErrorDialogOverride = (message, ex) => throw new InvalidOperationException(message, ex);
             Check(await vm.ApplyApplicationSettingsAsync(original), "Settings apply without a PDF loaded.");
@@ -258,6 +288,14 @@ public partial class App
                     ManagementMessageOverride = _ => { },
                 };
                 dialog.Show();
+                Check(((CheckBox)dialog.FindName("ShowOcrFramesCheckBox")).IsChecked == captured.ShowOcrFrames &&
+                      Math.Abs(((Slider)dialog.FindName("OcrFrameOpacitySlider")).Value - captured.OcrFrameOpacity) < 0.001,
+                    uiLanguage + ": Settings controls load independent OCR frame preferences.");
+                ((CheckBox)dialog.FindName("ShowOcrFramesCheckBox")).IsChecked = false;
+                ((Slider)dialog.FindName("OcrFrameOpacitySlider")).Value = 0.6;
+                Check(dialog.TryReadSettings(out var frameDraft) && !frameDraft.ShowOcrFrames && frameDraft.OcrFrameOpacity == 0.6 &&
+                      frameDraft.OcrOverlayOpacity == captured.OcrOverlayOpacity,
+                    uiLanguage + ": Editing frame settings does not change the red text opacity setting.");
                 ((TabControl)dialog.FindName("SettingsTabs")).SelectedItem = dialog.FindName("ManagementTab");
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 void Click(string name) => ((Button)dialog.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -279,7 +317,9 @@ public partial class App
                 Click("ApplyWorkspacePresetButton");
                 Check(((Slider)dialog.FindName("PageListWidthSlider")).Value == 360 &&
                     ((TextBox)dialog.FindName("UndoHistoryLimitTextBox")).Text == "157", "Applying a preset preserves unrelated pending edits.");
-                Check(dialog.TryReadSettings(out var draft) && draft.WorkspacePresets.Count == 2 && draft.PageThumbnailSize == 183, "Settings save includes presets without resetting fields not exposed by the dialog.");
+                Check(dialog.TryReadSettings(out var draft) && draft.WorkspacePresets.Count == 2 && draft.PageThumbnailSize == 183 &&
+                    draft.DefaultEditingMode == original.DefaultEditingMode && draft.HiddenToolbarItems.SequenceEqual(original.HiddenToolbarItems),
+                    "Settings save preserves editor defaults and hidden toolbar items alongside presets and unexposed fields.");
                 Check(vm.CurrentApplicationSettings.WorkspacePresets.Count == 1, "Draft registration/apply do not change live settings.");
                 var scope = PresentationSource.FromVisual(dialog);
                 AccessKeyManager.ProcessKey(scope, "N", false);
@@ -310,8 +350,34 @@ public partial class App
             var pdf = Path.Combine(output, "source.pdf");
             WriteDocumentUiTestPdf(pdf, 6);
             await vm.LoadPdfForDiagnosticsAsync(pdf);
+            // This endpoint-layout check needs settled page dimensions. Normal
+            // opening deliberately reads them in the background; do not race
+            // those updates against a one-shot ScrollToEnd request in the test.
+            await vm.EnsureDocumentMetadataAsync();
             vm.DocumentViewMode = DocumentViewMode.SinglePage;
             vm.DocumentPageFlowMode = DocumentPageFlowMode.Continuous;
+            // Deterministically publish an unrelated immutable-model update
+            // while rendering is in flight, as the idle vocabulary job does.
+            var projectField = typeof(MainWindowViewModel).GetField("_project",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var renderSnapshot = (PdfCorrectorium.Core.Documents.PdfCorrectoriumProject)projectField.GetValue(vm)!;
+            var pendingPreview = vm.RenderContinuousPreviewPageAsync(6, CancellationToken.None);
+            projectField.SetValue(vm, renderSnapshot with { OcrWordCountsCache = null });
+            Check(await pendingPreview is not null,
+                "Background OCR cache publication does not discard an unchanged continuous page render.");
+            renderSnapshot = (PdfCorrectorium.Core.Documents.PdfCorrectoriumProject)projectField.GetValue(vm)!;
+            pendingPreview = vm.RenderContinuousPreviewPageAsync(6, CancellationToken.None);
+            projectField.SetValue(vm, renderSnapshot with
+            {
+                PageSequence = renderSnapshot.PageSequence.Select((page, index) =>
+                    index == 5 ? page with { RotationDegrees = 90 } : page).ToArray(),
+            });
+            try
+            {
+                Check(await pendingPreview is null,
+                    "A page rotation during an in-flight continuous render still rejects its stale raster.");
+            }
+            finally { projectField.SetValue(vm, renderSnapshot); }
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             main.UpdateLayout();
             var continuousHost = (Controls.ContinuousPagePanel)main.FindName("ContinuousDocumentLayoutHost");
@@ -335,7 +401,9 @@ public partial class App
             }
             Check(passiveImage.Source is not null && !vm.HasNextPreview,
                 "Continuous view lazily renders a visible page through its bounded viewport cache, not the facing-page neighbor slots.");
-            ((ScrollViewer)main.FindName("PreviewScrollViewer")).ScrollToEnd();
+            var previewScroll = (ScrollViewer)main.FindName("PreviewScrollViewer");
+            await Dispatcher.InvokeAsync(main.UpdateLayout, DispatcherPriority.ApplicationIdle);
+            previewScroll.ScrollToEnd();
             Border? lastPage = null;
             Image? lastImage = null;
             for (var attempt = 0; attempt < 200 && lastImage?.Source is null; attempt++)
@@ -346,7 +414,9 @@ public partial class App
                 lastImage = lastPage?.Child is Grid lastSurface ? lastSurface.Children.OfType<Image>().Single() : null;
             }
             Check(lastImage?.Source is not null,
-                "Scrolling to the end reaches and lazily renders the last page without replacing the document with a three-page window.");
+                $"Scrolling to the end reaches and lazily renders the last page without replacing the document with a three-page window " +
+                $"(offset={previewScroll.VerticalOffset:F1}, extent={previewScroll.ExtentHeight:F1}, viewport={previewScroll.ViewportHeight:F1}, " +
+                $"lastSlot={continuousHost.GetPageSlotBounds(6)}, realized={string.Join(',', continuousHost.Children.OfType<Border>().Select(page => page.Tag))}).");
             vm.NavigateFromAdjacentPreview(2);
             for (var attempt = 0; attempt < 200 && vm.SelectedPage?.PageNumber != 2; attempt++) await Task.Delay(10);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
@@ -377,7 +447,8 @@ public partial class App
                   Grid.GetColumn((Border)main.FindName("FacingBlankPageHost")) == 1,
                 "Right-bound facing view places a separate cover on the left.");
             vm.FacingPagesShowCoverSeparately = false;
-            for (var attempt = 0; attempt < 200 && !vm.HasNextPreview; attempt++) await Task.Delay(10);
+            // Do not accept a stale companion from the prior continuous layout.
+            for (var attempt = 0; attempt < 1000 && (!vm.HasNextPreview || vm.NextPreviewPageNumber != 2); attempt++) await Task.Delay(10);
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1 &&
                   Grid.GetColumn((Border)main.FindName("NextPreviewPageHost")) == 0 &&
@@ -385,18 +456,40 @@ public partial class App
                   vm.NextPreviewPageNumber == 2,
                 "Without a separate cover, right-bound facing view pairs pages 1 and 2 in right-to-left order.");
             var visibleCompanionBeforeNavigation = vm.NextPreviewImage;
-            vm.NextPageCommand.Execute(null);
+            var facingNavigation = vm.NavigateToPageAsync(2);
             Check(vm.SelectedPage?.PageNumber == 1 && vm.HasNextPreview &&
                   ReferenceEquals(vm.NextPreviewImage, visibleCompanionBeforeNavigation),
                 "Facing-page navigation retains the complete current spread while the destination spread is prepared.");
-            for (var attempt = 0; attempt < 200 && (vm.SelectedPage?.PageNumber != 2 || !vm.HasPreviousPreview); attempt++) await Task.Delay(10);
+            // The idle vocabulary job publishes a new immutable project while
+            // a spread is being prepared. Await the actual operation, not a
+            // fixed two-second rendering assumption under parallel test load.
+            var facingSnapshot = (PdfCorrectorium.Core.Documents.PdfCorrectoriumProject)projectField.GetValue(vm)!;
+            projectField.SetValue(vm, facingSnapshot with { OcrWordCountsCache = null });
+            await facingNavigation.WaitAsync(TimeSpan.FromSeconds(15));
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 0 &&
                   Grid.GetColumn((Border)main.FindName("PreviousPreviewPageHost")) == 1 &&
                   vm.PreviousPreviewPageNumber == 1,
-                "Selecting the second page retains the right-bound page pair and correct companion.");
+                "Selecting the second page retains the right-bound page pair and correct companion despite background cache publication.");
             Check(!vm.HasNextPreview,
                 "Prepared facing-page navigation replaces both page slots together without leaving a stale companion.");
+            foreach (var changedPage in new[] { 1, 2 })
+            {
+                facingSnapshot = (PdfCorrectorium.Core.Documents.PdfCorrectoriumProject)projectField.GetValue(vm)!;
+                facingNavigation = vm.NavigateToPageAsync(1);
+                projectField.SetValue(vm, facingSnapshot with
+                {
+                    PageSequence = facingSnapshot.PageSequence.Select((page, index) => index == changedPage - 1
+                        ? page with { RotationDegrees = 90 } : page).ToArray(),
+                });
+                try
+                {
+                    await facingNavigation.WaitAsync(TimeSpan.FromSeconds(15));
+                    Check(vm.SelectedPage?.PageNumber == 2 && vm.PreviousPreviewPageNumber == 1,
+                        $"An in-flight spread with changed mapped page {changedPage} is rejected without replacing the visible spread.");
+                }
+                finally { projectField.SetValue(vm, facingSnapshot); }
+            }
             vm.FacingPagesBindingDirection = FacingPageBindingDirection.LeftBinding;
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             Check(Grid.GetColumn((Border)main.FindName("PreviewPageHost")) == 1 &&
@@ -429,6 +522,7 @@ public partial class App
                 "Continuous facing view mirrors the same spread for right binding without duplicating page images.");
             vm.DocumentPageFlowMode = DocumentPageFlowMode.PageByPage;
             vm.DocumentViewMode = DocumentViewMode.SinglePage;
+            vm.EditorMode = EditorInteractionMode.OcrEditing;
             vm.AddManualOcrRegion(new Rect(20, 20, 140, 30));
             // Use the actual UI zoom action to leave auto-fit; the fixture VM replaces the constructor VM.
             typeof(MainWindow).GetMethod("PreviewZoomInMenuItem_OnClick",

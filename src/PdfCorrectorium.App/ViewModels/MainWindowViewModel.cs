@@ -1,3 +1,4 @@
+using PdfCorrectorium.Core.IO;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -199,7 +200,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         IReadOnlyList<OverlayRegionChange> Changes,
         string Description,
         long BeforeStateId = 0,
-        long AfterStateId = 0) : HistoryEdit(Description, BeforeStateId, AfterStateId);
+        long AfterStateId = 0) : HistoryEdit(Description, BeforeStateId, AfterStateId)
+    {
+        public PdfCorrectorium.Core.Analysis.OcrLexicon? BeforeLexicon { get; init; }
+        public PdfCorrectorium.Core.Analysis.OcrLexicon? AfterLexicon { get; init; }
+    }
     /// <summary>画像ピクセルとPDFポイントの座標変換に使うページ寸法です。</summary>
     private sealed record PageMetrics(int PixelWidth, int PixelHeight, double WidthPoints, double HeightPoints);
     /// <summary>
@@ -231,7 +236,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         IReadOnlyList<ProjectComment> Comments,
         IReadOnlyList<ProjectTag> Tags,
         IReadOnlyList<PdfInternalLink> InternalLinks,
-        IReadOnlyList<PdfRedaction> Redactions);
+        IReadOnlyList<PdfRedaction> Redactions,
+        IReadOnlyList<WordReading> WordReadings);
     private sealed record ProjectAnnotationEdit(
         ProjectAnnotationSnapshot Before,
         ProjectAnnotationSnapshot After,
@@ -494,6 +500,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         IncreaseCharacterAdvanceCommand = GeometryCommand(() => AdjustCharacterSelectionAdvance(1), CanAdjustCharacterSelectionAdvance);
         SplitRegionAtSelectedCharacterCommand = GeometryCommand(SplitRegionAtSelectedCharacter, CanSplitRegionAtSelectedCharacter);
         MergeSelectedRegionsCommand = GeometryCommand(MergeSelectedRegions, CanMergeSelectedRegions);
+        GroupParagraphCommand = new RelayCommand(() => SetSelectedParagraph(false), CanGroupParagraph);
+        RegisterWordReadingCommand = new RelayCommand(RegisterWordReading, CanRegisterWordReading);
+        RemoveWordReadingCommand = new RelayCommand(RemoveWordReading, () => CanEditWordReadings && SelectedWordReading is not null);
+        SeparateParagraphLinesCommand = new RelayCommand(() => SetSelectedParagraph(true), () => CanUseOcrEditControls && _selectedOverlays.Count > 0);
+        ResetParagraphGroupingCommand = new RelayCommand(ResetSelectedParagraph, () => CanUseOcrEditControls && _selectedOverlays.Any(row => row.ParagraphGroupId.HasValue));
         ToggleSelectedCharacterLockCommand = GeometryCommand(ToggleSelectedCharacterLock, CanToggleSelectedCharacterLock);
         ToggleGeometryLockCommand = GeometryCommand(
             ToggleGeometryLock,
@@ -517,6 +528,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// </summary>
     public void RefreshLocalization()
     {
+        NotifyOcrPropertyContext();
         RefreshLocalizedOptions();
         OnPropertyChanged(nameof(ReviewSummary));
         foreach (var page in PageItems) page.RefreshLocalization();
@@ -526,6 +538,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(DocumentTitle));
         OnPropertyChanged(nameof(DocumentDescription));
         OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(StatusMessageDisplay));
+        OnPropertyChanged(nameof(BackgroundOperationMessage));
         OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(OcrDataSourceText));
         OnPropertyChanged(nameof(OverlaySummary));
@@ -541,6 +555,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(EstimateCharacterSuffixAdvancesToolTip));
         OnPropertyChanged(nameof(SelectedCharacterLockToolTip));
         OnPropertyChanged(nameof(InputPdfIssueSummary));
+        OnPropertyChanged(nameof(GlobalInputPdfIssueSummary));
         OnPropertyChanged(nameof(DocumentViewModeOptions));
         OnPropertyChanged(nameof(SelectedDocumentViewModeOption));
         OnPropertyChanged(nameof(DocumentViewModeDescription));
@@ -574,6 +589,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(SelectedReviewStatus));
             OnPropertyChanged(nameof(SelectedWritingMode));
             foreach (var option in ReviewFilterOptions) option.RefreshLocalization();
+            OnPropertyChanged(nameof(ParagraphGroupingSummary));
+            OnPropertyChanged(nameof(GroupParagraphToolTip));
+            RaiseWordReadingCommands();
         }
         finally { _refreshingLocalizedOptions = false; }
     }
@@ -744,6 +762,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             nameof(PropertiesPanelColumnWidth),
             nameof(PropertiesPanelSplitterWidth));
     }
+    internal void SetWorkspacePanelVisibility(bool pages, bool bookmarks, bool properties) =>
+        UpdateDisplaySetting(
+            _applicationSettings.ShowPageListPanel == pages &&
+            _applicationSettings.ShowBookmarksPanel == bookmarks &&
+            _applicationSettings.ShowPropertiesPanel == properties,
+            _applicationSettings with { ShowPageListPanel = pages, ShowBookmarksPanel = bookmarks, ShowPropertiesPanel = properties },
+            nameof(ShowPageListPanel), nameof(ShowBookmarksPanel), nameof(ShowPropertiesPanel),
+            nameof(PageListColumnWidth), nameof(PageListSplitterWidth),
+            nameof(PropertiesPanelColumnWidth), nameof(PropertiesPanelSplitterWidth));
     internal void SetWorkspaceDockPositions(WorkspaceDockPosition navigation, WorkspaceDockPosition properties,
         WorkspacePaneGroupMode groupMode) =>
         UpdateDisplaySetting(
@@ -755,6 +782,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     internal void SetBookmarkDockPosition(WorkspaceDockPosition position) =>
         UpdateDisplaySetting(_applicationSettings.BookmarkDockPosition == position,
             _applicationSettings with { BookmarkDockPosition = position });
+    internal void SetWorkspaceLayoutXml(string? layout) =>
+        UpdateDisplaySetting(_applicationSettings.WorkspaceLayoutXml == layout,
+            _applicationSettings with { WorkspaceLayoutXml = layout });
+    // Native drag captures must not trigger deserialization of their own in-flight layout.
+    // Only explicitly applied settings / presets request a restore.
+    internal int WorkspaceLayoutRestoreVersion { get; private set; }
     internal void SetWorkspacePaneWidths(double navigationWidth, double propertiesWidth) =>
         UpdateDisplaySetting(
             Math.Abs(_applicationSettings.PageListWidth - navigationWidth) < 0.5 &&
@@ -951,6 +984,20 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         : new GridLength(0);
     public GridLength PropertiesPanelSplitterWidth => ShowPropertiesPanel ? new GridLength(5) : new GridLength(0);
     public bool ShowUnselectedCharacterCellBorders => _applicationSettings.ShowUnselectedCharacterCellBorders;
+    public bool ShowOcrFrames
+    {
+        get => _applicationSettings.ShowOcrFrames;
+        set
+        {
+            if (_applicationSettings.ShowOcrFrames == value) return;
+            _applicationSettings = _applicationSettings with { ShowOcrFrames = value };
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OcrFrameDisplayOpacity));
+            QueueDisplaySettingsSave();
+        }
+    }
+    public double OcrFrameOpacity => _applicationSettings.OcrFrameOpacity;
+    public double OcrFrameDisplayOpacity => ShowOcrFrames ? OcrFrameOpacity : 0;
     public bool ShowPageThumbnails
     {
         get => _applicationSettings.ShowPageThumbnails;
@@ -1088,6 +1135,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void NotifyPreviewAvailability()
     {
+        RaiseCharacterAdvanceCommands();
         OnPropertyChanged(nameof(CanUsePreview));
         OnPropertyChanged(nameof(CanUseOcrEditControls));
         OnPropertyChanged(nameof(CanAddOcrRegion));
@@ -1100,7 +1148,18 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         RefreshRedactionCommandState();
     }
     public string SourceHash { get => _sourceHash; private set => Set(ref _sourceHash, value); }
-    public string StatusMessage { get => LocalizationService.Translate(_statusMessage); private set => Set(ref _statusMessage, value); }
+    public string StatusMessage
+    {
+        get => LocalizationService.Translate(_statusMessage);
+        private set { if (Set(ref _statusMessage, value)) OnPropertyChanged(nameof(StatusMessageDisplay)); }
+    }
+    // Preserve the underlying status for diagnostics/callers; only suppress a
+    // duplicate presentation while the live progress owns the same message.
+    public string StatusMessageDisplay => IsBackgroundOperationVisible &&
+        string.Equals(StatusMessage, BackgroundOperationMessage, StringComparison.Ordinal) ? string.Empty : StatusMessage;
+    public bool ShowBackgroundOperationInStatusBar => IsBackgroundOperationVisible && !IsPdfExporting;
+    internal void ReportWorkspaceRestoreFailure() =>
+        StatusMessage = "保存された配置を復元できないため、標準配置を使用します。";
     public string PageSummary { get => LocalizationService.Translate(_pageSummary); private set => Set(ref _pageSummary, value); }
     public string OcrDataSourceText { get => LocalizationService.Translate(_ocrDataSourceText); private set => Set(ref _ocrDataSourceText, value); }
     public string OverlaySummary { get => LocalizationService.Translate(_overlaySummary); private set => Set(ref _overlaySummary, value); }
@@ -1111,6 +1170,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         private set
         {
             if (!Set(ref _isBackgroundOperationVisible, value)) return;
+            OnPropertyChanged(nameof(IsDocumentLoadingProgressVisible));
+            OnPropertyChanged(nameof(StatusMessageDisplay));
+            OnPropertyChanged(nameof(ShowBackgroundOperationInStatusBar));
             NotifyRecentFileCommands();
             NotifyHistoryState();
         }
@@ -1120,7 +1182,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>長時間処理の進捗率です。処理量を算出できる場合に0～100で更新します。</summary>
     public double BackgroundOperationProgress { get => _backgroundOperationProgress; private set => Set(ref _backgroundOperationProgress, Math.Clamp(value, 0, 100)); }
     /// <summary>現在実行している長時間処理の説明です。</summary>
-    public string BackgroundOperationMessage { get => LocalizationService.Translate(_backgroundOperationMessage); private set => Set(ref _backgroundOperationMessage, value); }
+    public string BackgroundOperationMessage
+    {
+        get => LocalizationService.Translate(_backgroundOperationMessage);
+        private set { if (Set(ref _backgroundOperationMessage, value)) OnPropertyChanged(nameof(StatusMessageDisplay)); }
+    }
     public ImageSource? PreviewImage
     {
         get => _previewImage;
@@ -1185,11 +1251,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         private set
         {
             if (!Set(ref _isPdfExporting, value)) return;
+            OnPropertyChanged(nameof(ShowBackgroundOperationInStatusBar));
             NotifyRecentFileCommands();
             NotifyHistoryState();
         }
     }
-    public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set { if (Set(ref _isOcrOverlayVisible, value)) OnPropertyChanged(nameof(IsPointerSurfaceVisible)); } }
+    public bool IsOcrOverlayVisible { get => _isOcrOverlayVisible; set { if (Set(ref _isOcrOverlayVisible, value)) { OnPropertyChanged(nameof(IsPointerSurfaceVisible)); OnPropertyChanged(nameof(AreWordReadingRubiesVisible)); } } }
     public int EditorModeIndex
     {
         get => _editorModeIndex;
@@ -1233,7 +1300,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             RaiseCharacterAdvanceCommands();
         }
     }
-    public OcrEditUnit EditUnit => (OcrEditUnit)EditUnitIndex;
+    public OcrEditUnit EditUnit { get => (OcrEditUnit)EditUnitIndex; set => EditUnitIndex = (int)value; }
     public bool IsLineEditMode => EditUnit == OcrEditUnit.Line;
     public bool IsParagraphEditMode => EditUnit == OcrEditUnit.Paragraph;
     public bool IsCharacterEditMode => EditUnit == OcrEditUnit.Character;
@@ -1430,6 +1497,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(ShowSelectedOverlayProperties));
             OnPropertyChanged(nameof(ShowOcrSelectionHint));
             NotifyCharacterSelectionState();
+            RefreshWordReadingDraft();
             OnPropertyChanged(nameof(SelectedReviewStatus));
             OnPropertyChanged(nameof(SelectedWritingMode));
             RefreshProjectFeatureState();
@@ -1468,6 +1536,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             var facingPageLayoutChanged =
                 _applicationSettings.FacingPagesShowCoverSeparately != normalized.FacingPagesShowCoverSeparately ||
                 _applicationSettings.FacingPagesBindingDirection != normalized.FacingPagesBindingDirection;
+            if (_applicationSettings.WorkspaceLayoutXml != normalized.WorkspaceLayoutXml) WorkspaceLayoutRestoreVersion++;
             _applicationSettings = normalized;
             if (documentViewModeChanged || facingPageLayoutChanged) RecordEditorViewOverride();
             RefreshRecentFiles();
@@ -1502,6 +1571,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(PropertiesPanelColumnWidth));
             OnPropertyChanged(nameof(PropertiesPanelSplitterWidth));
             OnPropertyChanged(nameof(ShowUnselectedCharacterCellBorders));
+            OnPropertyChanged(nameof(ShowOcrFrames));
+            OnPropertyChanged(nameof(ShowWordReadingRuby));
+            OnPropertyChanged(nameof(AreWordReadingRubiesVisible));
+            OnPropertyChanged(nameof(OcrFrameOpacity));
+            OnPropertyChanged(nameof(OcrFrameDisplayOpacity));
             NotifyCharacterCellBorderThicknesses();
             OnPropertyChanged(nameof(ShowPageThumbnails));
             OnPropertyChanged(nameof(PageThumbnailSize));
@@ -1732,6 +1806,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             CancelReviewNavigation();
             if (_selectedPage is not null) _selectedPage.IsCurrent = false;
             if (!Set(ref _selectedPage, value)) return;
+            NotifyOcrPropertyContext();
             if (_selectedPage is not null) _selectedPage.IsCurrent = true;
             _adjacentPreviewCancellation?.Cancel();
             ClearAdjacentPreviews();
@@ -1744,7 +1819,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             NotifyDocumentLoading();
             RefreshProjectFeatureState();
             if (value is not null && _resolvedPdfPath is not null && !_isApplyingPreparedFacingNavigation)
-                _ = RenderSelectedPageAsync();
+                _selectedPageRenderTask = RenderSelectedPageAsync();
         }
     }
 
@@ -2000,6 +2075,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                     ? "参照先のPDFは存在しますが、記録されたファイルサイズと異なります。"
                     : "参照先のPDFは存在しますが、内容のSHA-256が一致しません。";
             }
+            catch (SourcePdfSelectionRequiredException)
+            {
+                reason = "ネットワーク共有・特殊パス・リンクを含む参照先は自動で開きません。利用する元PDFを明示的に選択してください。";
+            }
             catch (FileNotFoundException)
             {
                 reason = "参照先の元PDFが見つかりません。移動または名前の変更が考えられます。";
@@ -2021,7 +2100,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                     Title = "元PDFを再選択",
                     Filter = "PDFファイル (*.pdf)|*.pdf",
                     CheckFileExists = true,
-                    FileName = source.FileName,
+                    FileName = SafeFileName.ForDialog(source.FileName, "document.pdf"),
                     InitialDirectory = projectDirectory,
                 };
                 replacementPath = dialog.ShowDialog() == true ? dialog.FileName : null;
@@ -2159,9 +2238,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 文書全体を走査し、寸法が近いOCR領域群に対して文字数だけが極端に異なる候補を返します。
+    /// 文字種と枠の縦横比で正規化した文字密度を、同方向・近い行の太さで比較します。
     /// </summary>
-    /// <param name="options">寸法許容差、比較に必要な件数、外れ値とする文字数比率。</param>
+    /// <param name="options">行の太さ許容差、基準に必要な件数、外れ値とする密度比。</param>
     /// <param name="progress">ページ読込状況を受け取る任意の進捗通知。</param>
     /// <param name="detailedProgress">進捗率表示に使う現在ページ数と総ページ数。</param>
     /// <param name="cancellationToken">分析を中断するための通知。</param>
@@ -2173,7 +2252,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     {
         var samples = await CollectOcrQualitySamplesAsync(progress, detailedProgress, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        var results = new OcrQualityAnalyzer().FindCharacterCountAnomalies(samples, options);
+        progress?.Report(LocalizationService.Translate("文字種と枠の比率を分析しています..."));
+        var results = await Task.Run(() => new OcrQualityAnalyzer().FindCharacterCountAnomalies(samples, options, cancellationToken), cancellationToken);
         StatusMessage = results.Count == 0
             ? "文字数が極端に異なるOCR領域は見つかりませんでした。"
             : $"文字数が極端に異なるOCR領域が{results.Count}件見つかりました。";
@@ -2419,7 +2499,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             Filter = "PDF Correctorium プロジェクト (*.pdfocrproj)|*.pdfocrproj",
             DefaultExt = ProjectPackageService.ProjectExtension,
             AddExtension = true,
-            FileName = _project.Name + ProjectPackageService.ProjectExtension,
+            FileName = SafeFileName.ForDialog(_project.Name) + ProjectPackageService.ProjectExtension,
         };
         if (dialog.ShowDialog() != true) return;
         var storageMode = ShowProjectSaveOptions();
@@ -2448,7 +2528,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 Filter = "PDF Correctorium プロジェクト (*.pdfocrproj)|*.pdfocrproj",
                 DefaultExt = ProjectPackageService.ProjectExtension,
                 AddExtension = true,
-                FileName = _project.Name + ProjectPackageService.ProjectExtension,
+                FileName = SafeFileName.ForDialog(_project.Name) + ProjectPackageService.ProjectExtension,
             };
             if (dialog.ShowDialog() != true) return false;
             var storageMode = ShowProjectSaveOptions();
@@ -2504,6 +2584,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         {
             StatusMessage = "プロジェクトを保存・検証しています...";
             SynchronizeProjectPages();
+            _project = _project with { EditingMode = (ProjectEditingMode)EditorMode };
             // Save As can explicitly convert between embedded and relative storage. Ordinary
             // overwrite saves preserve the mode already recorded by the current project.
             var mode = requestedStorageMode ?? GetCurrentProjectStorageMode();
@@ -2577,7 +2658,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
             directReference = directReference with
             {
-                FileName = _project.SourcePdf.FileName,
+                FileName = SafeFileName.ForDialog(_project.SourcePdf.FileName, "document.pdf"),
                 PageCount = _project.SourcePdf.PageCount ?? PageItems.Count,
                 IsEmbedded = false,
                 AbsolutePathHint = null,
@@ -2618,7 +2699,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var managedReference = await _packages.CreateSourceReferenceAsync(managedPdfPath, projectDirectory);
         managedReference = managedReference with
         {
-            FileName = _project.SourcePdf.FileName,
+            FileName = SafeFileName.ForDialog(_project.SourcePdf.FileName, "document.pdf"),
             PageCount = _project.SourcePdf.PageCount ?? PageItems.Count,
             IsEmbedded = false,
         };
@@ -2869,7 +2950,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             Filter = "PDFファイル (*.pdf)|*.pdf",
             DefaultExt = ".pdf",
             AddExtension = true,
-            FileName = _project.Name + "_edited.pdf",
+            FileName = SafeFileName.ForDialog(_project.Name) + "_edited.pdf",
         };
         while (true)
         {
@@ -2967,6 +3048,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 $"\n元PDFサイズ: {FormatFileSize(sourceBytes)}" +
                 $"\nサイズ変化: {sizeChange:P1}" +
                 $"\n変更ページ: {result.ModifiedPages}\n変更領域: {result.ModifiedRegions}" +
+                (result.SavedReadingRows > 0 ? $"\n保存した読み方情報: {result.SavedReadingRows:N0}行\n外部リーダーでは、発音や区切りが異なる場合があります。" : string.Empty) +
                 $"\n墨消し範囲: {result.AppliedRedactions}（確定ページ: {result.RedactedPages}）\n最適化画像: {result.OptimizedImages}",
                 "PDF Correctorium",
                 MessageBoxButton.OK,
@@ -3006,7 +3088,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         {
             BeginBackgroundOperation("OCR付随データを読み込んでいます...");
             StatusMessage = "OCR付随データを読み込んでいます...";
-            _ndlOcrDocument = await _ndlOcrCompanionService.ImportAsync(dialog.FileName);
+            var companionPath = dialog.FileName;
+            _ndlOcrDocument = await Task.Run(() => _ndlOcrCompanionService.ImportAsync(companionPath));
             if (_project is not null) _project = _project with { Pages = [] };
             ClearOverlaySession();
             OcrDataSourceText = $"{_ndlOcrDocument.SourceKind}（付随ファイル: {_ndlOcrDocument.CompanionFiles.Count}件）";
@@ -3028,6 +3111,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         // A bad PDF, missing source or invalid overlay must leave edits and Undo intact.
         var resolvedPath = Path.GetFullPath(sourcePath);
         var physicalPreview = await _previewService.RenderPageAsync(resolvedPath, 1);
+        if (project.SourcePdf.PageCount is > 0 && project.SourcePdf.PageCount != physicalPreview.PageCount ||
+            project.PageSequence.Any(page => page.SourcePageNumber > physicalPreview.PageCount))
+            throw new InvalidDataException("プロジェクトのページ参照が実際の元PDFページ数と一致しません。");
         project = project with
         {
             SourcePdf = project.SourcePdf with { PageCount = physicalPreview.PageCount },
@@ -3037,7 +3123,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var preview = firstPage.SourcePageNumber == 1
             ? PdfPreviewTransform.Rotate(physicalPreview, firstPage.RotationDegrees, 1, project.PageSequence.Count)
             : await RenderProjectPageAsync(resolvedPath, project, 1);
-        var companion = await _ndlOcrCompanionService.TryImportAsync(resolvedPath);
+        var companion = await Task.Run(() => _ndlOcrCompanionService.TryImportAsync(resolvedPath));
         var metrics = new PageMetrics(preview.Image.PixelWidth, preview.Image.PixelHeight,
             preview.PageWidthPoints, preview.PageHeightPoints);
         var companionRegions = GetCompanionRegions(companion, project, 1, preview);
@@ -3063,6 +3149,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _project = project.SourcePdf.IsEmbedded
             ? project with { SourcePdf = project.SourcePdf with { AbsolutePathHint = resolvedPath } }
             : project;
+        EditorMode = (EditorInteractionMode)(_project.EditingMode is { } savedMode && Enum.IsDefined(savedMode)
+            ? savedMode : _applicationSettings.DefaultEditingMode);
+        LinkInputModeIndex = 0;
+        RedactionInputModeIndex = 0;
         _isLinkOverlayVisible = _project.LinkOverlayVisible;
         OnPropertyChanged(nameof(IsLinkOverlayVisible));
         OnPropertyChanged(nameof(IsLinkOverlayDisplayed));
@@ -3079,6 +3169,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         SourcePdfPath = _resolvedPdfPath;
         SourceHash = _project.SourcePdf.Sha256;
         PreviewImage = null;
+        _displayedLogicalPageNumber = null;
         ClearOverlaySession();
         OverlaySummary = "文字領域: 0件";
         OcrDataSourceText = "OCR付随ファイルを検索しています...";
@@ -3106,6 +3197,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ExportBookmarksCommand.RaiseCanExecuteChanged();
         RaisePageManagementCommands();
         StartDocumentMetadata(resolvedPath);
+        QueueLexiconPreparation(full: true);
     }
 
     private void LoadBookmarkItems(IReadOnlyList<PdfBookmark> bookmarks)
@@ -3334,7 +3426,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             Filter = "PDF Correctorium JSON (*.pdfbookmarks.json)|*.pdfbookmarks.json|pdf_as テキスト (*.txt)|*.txt|pdf_as/XML (*.xml)|*.xml|JSON (*.json)|*.json",
             DefaultExt = ".pdfbookmarks.json",
             AddExtension = true,
-            FileName = _project?.Name ?? "bookmarks",
+            FileName = SafeFileName.ForDialog(_project?.Name, "bookmarks"),
         };
         if (dialog.ShowDialog() != true) return;
         BeginBackgroundOperation("しおりを書き出しています...");
@@ -3369,10 +3461,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         int logicalPageNumber,
         int targetWidth = 1200,
         CancellationToken cancellationToken = default,
-        bool useBackgroundWorker = false)
+        bool useBackgroundWorker = false,
+        PdfNativeWorkerClient? batchWorker = null)
     {
         if (project is null)
-            return useBackgroundWorker
+            return batchWorker is not null ? await batchWorker.RenderPageAsync(pdfPath, logicalPageNumber, targetWidth, cancellationToken) : useBackgroundWorker
                 ? await _previewService.RenderBackgroundPageAsync(pdfPath, logicalPageNumber, targetWidth, cancellationToken)
                 : await _previewService.RenderPageAsync(pdfPath, logicalPageNumber, targetWidth, cancellationToken);
         var sourcePageCount = project.SourcePdf.PageCount ?? Math.Max(project.Pages.Count, logicalPageNumber);
@@ -3380,7 +3473,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         if (logicalPageNumber < 1 || logicalPageNumber > sequence.Count)
             throw new ArgumentOutOfRangeException(nameof(logicalPageNumber));
         var page = sequence[logicalPageNumber - 1];
-        var physical = useBackgroundWorker
+        var physical = batchWorker is not null ? await batchWorker.RenderPageAsync(pdfPath, page.SourcePageNumber, targetWidth, cancellationToken) : useBackgroundWorker
             ? await _previewService.RenderBackgroundPageAsync(
                 pdfPath,
                 page.SourcePageNumber,
@@ -3401,6 +3494,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     {
         var path = _resolvedPdfPath;
         var project = _project;
+        var documentGeneration = _documentMetadataGeneration;
         if (!HasDocument || path is null || logicalPageNumber < 1 || logicalPageNumber > PageItems.Count)
             return null;
         var result = await RenderProjectPageAsync(
@@ -3411,7 +3505,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             cancellationToken,
             useBackgroundWorker: true);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!string.Equals(path, _resolvedPdfPath, StringComparison.Ordinal) || !ReferenceEquals(project, _project))
+        // Background link imports and vocabulary-cache publication replace the
+        // immutable project too. Only invalidate this raster for a new document
+        // or changed page mapping, not an unrelated model/cache update.
+        if (!IsPreviewSnapshotCurrent(path, project, documentGeneration, logicalPageNumber))
             return null;
         _pageMetrics[logicalPageNumber] = new PageMetrics(
             result.Image.PixelWidth,
@@ -3420,6 +3517,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             result.PageHeightPoints);
         return result;
     }
+
+    /// <summary>Unrelated immutable model/cache updates do not invalidate a raster; document or mapped-page changes do.</summary>
+    private bool IsPreviewSnapshotCurrent(string path, PdfCorrectoriumProject? project, int generation,
+        int pageNumber, int? companionPageNumber = null) =>
+        generation == _documentMetadataGeneration &&
+        string.Equals(path, _resolvedPdfPath, StringComparison.Ordinal) &&
+        project?.ProjectId == _project?.ProjectId &&
+        project?.PageSequence.Count == _project?.PageSequence.Count &&
+        project?.PageSequence.ElementAtOrDefault(pageNumber - 1) == _project?.PageSequence.ElementAtOrDefault(pageNumber - 1) &&
+        (!companionPageNumber.HasValue ||
+         project?.PageSequence.ElementAtOrDefault(companionPageNumber.Value - 1) == _project?.PageSequence.ElementAtOrDefault(companionPageNumber.Value - 1));
 
     /// <summary>未描画ページの連続表示枠に使う寸法を、既知のページ寸法または現在ページから返します。</summary>
     internal (double Width, double Height) GetContinuousPreviewSize(int pageNumber)
@@ -3490,6 +3598,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             }
 
             PreviewImage = result.Image;
+            _displayedLogicalPageNumber = result.PageNumber;
             PreviewPixelWidth = result.Image.PixelWidth;
             PreviewPixelHeight = result.Image.PixelHeight;
             SetSelectablePdfCharacters(result.SelectableCharacters);
@@ -3729,18 +3838,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         return stream.ToArray();
     }
 
-    private static BitmapSource? DecodeThumbnail(byte[] bytes)
-    {
-        try
-        {
-            using var stream = new MemoryStream(bytes, writable: false);
-            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            var image = decoder.Frames[0];
-            image.Freeze();
-            return image;
-        }
-        catch { return null; }
-    }
+    private static BitmapSource? DecodeThumbnail(byte[] bytes) => ThumbnailDecoder.Decode(bytes);
 
     /// <summary>ページ一覧の複数選択をページ操作コマンドへ反映します。</summary>
     public void SetPageSelection(IEnumerable<PdfPageItem> selectedPages)
@@ -3848,7 +3946,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             Filter = "PDFファイル (*.pdf)|*.pdf",
             DefaultExt = ".pdf",
             AddExtension = true,
-            FileName = $"{_project.Name}-pages-{PageRangeParser.Format(dialog.ResultPages).Replace(", ", "_").Replace('-', '_')}.pdf",
+            FileName = $"{SafeFileName.ForDialog(_project.Name)}-pages-{PageRangeParser.Format(dialog.ResultPages).Replace(", ", "_").Replace('-', '_')}.pdf",
             Title = "抽出したPDFの保存先",
         };
         if (saveDialog.ShowDialog() != true) return;
@@ -4398,6 +4496,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var originalPageNumber = SelectedPage?.PageNumber;
         var path = _resolvedPdfPath;
         var project = _project;
+        var documentGeneration = _documentMetadataGeneration;
         var layout = FacingPageLayoutCalculator.Calculate(
             pageNumber,
             PageItems.Count,
@@ -4417,8 +4516,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             var companionResult = companionTask is null ? null : await companionTask;
             token.ThrowIfCancellationRequested();
 
-            if (!string.Equals(path, _resolvedPdfPath, StringComparison.Ordinal) ||
-                !ReferenceEquals(project, _project) ||
+            if (!IsPreviewSnapshotCurrent(path, project, documentGeneration, pageNumber, companionPageNumber) ||
                 SelectedPage?.PageNumber != originalPageNumber ||
                 !IsFacingPagesView || IsContinuousView)
                 return;
@@ -4622,19 +4720,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public IReadOnlyList<OverlayRegionViewModel> ResolveEditUnitSelection(OverlayRegionViewModel region)
     {
         if (EditUnit != OcrEditUnit.Paragraph) return [region];
-        var paragraph = new HashSet<OverlayRegionViewModel> { region };
-        var pending = new Queue<OverlayRegionViewModel>();
-        pending.Enqueue(region);
-        while (pending.TryDequeue(out var current))
-        {
-            foreach (var candidate in OverlayItems.Where(candidate => !candidate.IsDeleted))
-            {
-                if (paragraph.Contains(candidate) || !BelongsToSameParagraph(current, candidate)) continue;
-                paragraph.Add(candidate);
-                pending.Enqueue(candidate);
-            }
-        }
-        return paragraph.OrderBy(item => item.ReadingOrder).ToArray();
+        return ResolveParagraphSelection(region);
     }
 
     /// <summary>
@@ -4908,6 +4994,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsSelectedGeometryEditable));
         OnPropertyChanged(nameof(SelectedCharacterCount));
         OnPropertyChanged(nameof(CharacterSelectionSummary));
+        NotifyOcrPropertyContext();
     }
 
     private bool CanEqualizeCharacterAdvances() =>
@@ -5320,22 +5407,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SelectedParagraphText));
     }
 
-    private static bool BelongsToSameParagraph(OverlayRegionViewModel first, OverlayRegionViewModel second)
-    {
-        if (first.IsVertical != second.IsVertical || Math.Abs(first.RotationDegrees - second.RotationDegrees) > 5) return false;
-        if (first.IsVertical)
-        {
-            var verticalOverlap = Math.Max(0, Math.Min(first.Top + first.Height, second.Top + second.Height) - Math.Max(first.Top, second.Top));
-            var overlapRatio = verticalOverlap / Math.Max(1, Math.Min(first.Height, second.Height));
-            var horizontalGap = Math.Max(0, Math.Max(first.Left, second.Left) - Math.Min(first.Left + first.Width, second.Left + second.Width));
-            return overlapRatio >= 0.35 && horizontalGap <= Math.Max(first.Width, second.Width) * 2.2;
-        }
-        var horizontalOverlap = Math.Max(0, Math.Min(first.Left + first.Width, second.Left + second.Width) - Math.Max(first.Left, second.Left));
-        var horizontalRatio = horizontalOverlap / Math.Max(1, Math.Min(first.Width, second.Width));
-        var verticalGap = Math.Max(0, Math.Max(first.Top, second.Top) - Math.Min(first.Top + first.Height, second.Top + second.Height));
-        return horizontalRatio >= 0.35 && verticalGap <= Math.Max(first.Height, second.Height) * 2.2;
-    }
-
     private void EqualizeSelectedWidths()
     {
         if (_selectedOverlays.Count < 2) return;
@@ -5531,6 +5602,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void ApplyRegionEdit(string description, IReadOnlyList<OverlayRegionViewModel> affected, Action apply)
     {
+        var beforeLexicon = CurrentOcrLexicon;
         var before = affected.ToDictionary(region => region, region => region.Capture());
         _applyingHistory = true;
         try { apply(); }
@@ -5540,7 +5612,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             .Where(change => change.Before != change.After)
             .ToArray();
         foreach (var change in changes) _lastOverlaySnapshots[change.Region.Id] = change.After;
-        if (changes.Length > 0) RecordEdit(new OverlayEdit(changes, description));
+        if (changes.Length > 0 || !ReferenceEquals(beforeLexicon, CurrentOcrLexicon)) RecordEdit(new OverlayEdit(changes, description)
+        { BeforeLexicon = beforeLexicon, AfterLexicon = CurrentOcrLexicon });
     }
 
     private List<OverlayRegionViewModel> CreatePageOverlayModels(
@@ -5571,8 +5644,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 ? originalMode == WritingMode.Vertical
                 : isVertical;
             var directionCorrected = !region.HasExplicitWritingMode && isVertical != savedVertical;
-            var original = FromPdfGeometry(region.OriginalText, region.OriginalGeometry, metrics, order, wordReadings, originalVertical, region.ReviewStatus, directionCorrected);
-            var current = FromPdfGeometry(region.EffectiveText, region.EditedGeometry, metrics, order, wordReadings, isVertical, region.ReviewStatus, directionCorrected);
+            var original = FromPdfGeometry(region.OriginalText, region.OriginalGeometry, metrics, order, wordReadings, originalVertical, region.ReviewStatus, directionCorrected)
+                with { ParagraphGroupId = region.ParagraphGroupId };
+            var current = FromPdfGeometry(region.EffectiveText, region.EditedGeometry, metrics, order, wordReadings, isVertical, region.ReviewStatus, directionCorrected)
+                with { ParagraphGroupId = region.ParagraphGroupId };
             return new OverlayRegionViewModel(
                 region.Id,
                 region.OriginalText,
@@ -5590,7 +5665,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>
     /// 検索対象ページのOCR領域を作業キャッシュへ読み込みます。プレビュー画像と現在ページは変更しません。
     /// </summary>
-    private async Task<List<OverlayRegionViewModel>> EnsurePageOverlaysLoadedForSearchAsync(int pageNumber, CancellationToken cancellationToken = default)
+    private async Task<List<OverlayRegionViewModel>> EnsurePageOverlaysLoadedForSearchAsync(int pageNumber, CancellationToken cancellationToken = default,
+        PdfNativeWorkerClient? batchWorker = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_pageOverlays.TryGetValue(pageNumber, out var cached)) return cached;
@@ -5599,26 +5675,37 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         var overlaySession = _overlaySessionVersion;
         var pdfPath = _resolvedPdfPath;
         // 検索・品質分析では画像自体を表示しないため、文字抽出に十分な最小プレビューで処理します。
-        var result = await RenderProjectPageAsync(
+        var result = await Task.Run(() => RenderProjectPageAsync(
             _resolvedPdfPath,
             _project,
             pageNumber,
             96,
             cancellationToken,
-            useBackgroundWorker: true);
+            useBackgroundWorker: true, batchWorker: batchWorker), cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         if (overlaySession != _overlaySessionVersion || pdfPath != _resolvedPdfPath)
             throw new OperationCanceledException("Document changed while loading OCR regions.");
         if (_pageOverlays.TryGetValue(pageNumber, out cached)) return cached;
-        var metrics = new PageMetrics(
-            result.Image.PixelWidth,
-            result.Image.PixelHeight,
-            result.PageWidthPoints,
-            result.PageHeightPoints);
+        // Keep a tiny extraction bitmap, but never cache tiny display models. Scaling
+        // later would also require rewriting every Undo snapshot that references them.
+        var swapsAxes = ProjectPageSequence.NormalizeRotation(_project?.PageSequence[pageNumber - 1].RotationDegrees ?? 0) is 90 or 270;
+        var (physicalWidth, physicalHeight) = PdfPreviewService.GetPreviewPixelSize(
+            swapsAxes ? result.PageHeightPoints : result.PageWidthPoints,
+            swapsAxes ? result.PageWidthPoints : result.PageHeightPoints);
+        var metrics = new PageMetrics(swapsAxes ? physicalHeight : physicalWidth, swapsAxes ? physicalWidth : physicalHeight,
+            result.PageWidthPoints, result.PageHeightPoints);
         _pageMetrics[pageNumber] = metrics;
         var companionRegions = GetCompanionRegions(_ndlOcrDocument, _project, pageNumber, result);
         var extracted = companionRegions.Count > 0 ? companionRegions : result.TextRegions;
-        var models = CreatePageOverlayModels(pageNumber, extracted, metrics);
+        var scaleX = metrics.PixelWidth / (double)result.Image.PixelWidth;
+        var scaleY = metrics.PixelHeight / (double)result.Image.PixelHeight;
+        var displayRegions = extracted.Select(region => region with
+        {
+            Left = region.Left * scaleX, Top = region.Top * scaleY,
+            Width = region.Width * scaleX, Height = region.Height * scaleY,
+            CharacterAdvances = region.CharacterAdvances?.Select(value => value * (region.IsVertical ? scaleY : scaleX)).ToArray()
+        }).ToArray();
+        var models = CreatePageOverlayModels(pageNumber, displayRegions, metrics);
         _pageOverlays[pageNumber] = models;
         foreach (var overlay in models) AttachOverlay(overlay);
         return models;
@@ -6463,6 +6550,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                         IsAdded = overlay.IsAdded,
                         IsDeleted = overlay.IsDeleted,
                         WordReadings = ParseWordReadings(overlay.WordReadingsText),
+                        ParagraphGroupId = overlay.ParagraphGroupId,
                     }).ToArray(),
                 ReadingOrder = overlays
                     .Where(overlay => !overlay.IsDeleted)
@@ -6479,37 +6567,30 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private static IReadOnlyList<WordReading> ParseWordReadings(string value)
     {
-        var readings = new List<WordReading>();
-        var lineNumber = 0;
-        foreach (var rawLine in value.Replace("\r\n", "\n").Split('\n'))
-        {
-            lineNumber++;
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-            var separator = line.IndexOf('=');
-            if (separator <= 0 || separator == line.Length - 1)
-                throw new InvalidDataException($"読み方設定の{lineNumber}行目は「表記=よみ」で入力してください。");
-            readings.Add(new WordReading
-            {
-                SurfaceText = line[..separator].Trim(),
-                ReadingText = line[(separator + 1)..].Trim(),
-            });
-        }
+        if (!WordReadingRules.TryParse(value, out var readings, out var error)) throw new InvalidDataException(error);
         return readings;
     }
 
     private static string FormatWordReadings(IReadOnlyList<WordReading> readings) =>
-        string.Join(Environment.NewLine, readings.Select(reading => $"{reading.SurfaceText}={reading.ReadingText}"));
+        WordReadingRules.Format(readings);
 
     private void AttachOverlay(OverlayRegionViewModel overlay)
     {
+        overlay.SetCommonWordReadings(CommonWordReadings, CommonReadingMatcher);
         _lastOverlaySnapshots[overlay.Id] = overlay.Capture();
         overlay.PropertyChanged += OnOverlayPropertyChanged;
     }
 
     private void OnOverlayPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (ReferenceEquals(sender, SelectedOverlay))
+        {
+            if (e.PropertyName == nameof(OverlayRegionViewModel.WordReadingsText)) RefreshWordReadingEntries();
+            if (e.PropertyName is nameof(OverlayRegionViewModel.SelectedCharacterIndices) or nameof(OverlayRegionViewModel.Text)) RefreshWordReadingDraft();
+        }
         if (_applyingHistory || sender is not OverlayRegionViewModel region || e.PropertyName == nameof(OverlayRegionViewModel.IsModified)) return;
+        if (e.PropertyName is nameof(OverlayRegionViewModel.Text) or nameof(OverlayRegionViewModel.WordReadingsText) or
+            nameof(OverlayRegionViewModel.IsDeleted) or nameof(OverlayRegionViewModel.ReadingOrder) or nameof(OverlayRegionViewModel.ParagraphGroupId)) InvalidateReadAloud();
         if ((e.PropertyName is nameof(OverlayRegionViewModel.Text) or nameof(OverlayRegionViewModel.Left) or nameof(OverlayRegionViewModel.Top) or
             nameof(OverlayRegionViewModel.Width) or nameof(OverlayRegionViewModel.Height) or nameof(OverlayRegionViewModel.RotationDegrees) or
             nameof(OverlayRegionViewModel.ReadingOrder) or nameof(OverlayRegionViewModel.WordReadingsText) or
@@ -6574,7 +6655,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         };
         _undo.Push(edit);
         _redo.Clear();
-        SetCurrentEditState(edit.AfterStateId);
+        SetCurrentEditState(edit.AfterStateId, edit);
         var historyCountBeforeRetention = _undo.Count;
         var retention = TrimUndoHistory();
         CleanupPageWorkingFiles();
@@ -6597,16 +6678,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             _undo.Pop();
             ApplyProjectAnnotationSnapshot(annotationEdit.Before, annotationEdit.After);
             _redo.Push(edit);
-            SetCurrentEditState(edit.BeforeStateId);
+            SetCurrentEditState(edit.BeforeStateId, edit);
             StatusMessage = $"元に戻す: {edit.Description}";
             NotifyHistoryState();
             return;
         }
         _undo.Pop();
         var overlayEdit = (OverlayEdit)edit;
+        if (overlayEdit.BeforeLexicon is { } lexicon && _project is not null) _project = _project with { OcrLexicon = lexicon };
         foreach (var change in overlayEdit.Changes) ApplyHistory(change.Region, change.Before);
         _redo.Push(edit);
-        SetCurrentEditState(edit.BeforeStateId);
+        SetCurrentEditState(edit.BeforeStateId, edit);
         StatusMessage = $"元に戻す: {edit.Description}";
         NotifyCharacterSelectionState();
         NotifyHistoryState();
@@ -6625,16 +6707,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             _redo.Pop();
             ApplyProjectAnnotationSnapshot(annotationEdit.After, annotationEdit.Before);
             _undo.Push(edit);
-            SetCurrentEditState(edit.AfterStateId);
+            SetCurrentEditState(edit.AfterStateId, edit);
             StatusMessage = $"やり直す: {edit.Description}";
             NotifyHistoryState();
             return;
         }
         _redo.Pop();
         var overlayEdit = (OverlayEdit)edit;
+        if (overlayEdit.AfterLexicon is { } lexicon && _project is not null) _project = _project with { OcrLexicon = lexicon };
         foreach (var change in overlayEdit.Changes) ApplyHistory(change.Region, change.After);
         _undo.Push(edit);
-        SetCurrentEditState(edit.AfterStateId);
+        SetCurrentEditState(edit.AfterStateId, edit);
         StatusMessage = $"やり直す: {edit.Description}";
         NotifyCharacterSelectionState();
         NotifyHistoryState();
@@ -6652,7 +6735,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             await RestorePageStructureSnapshotAsync(edit.Before);
             _undo.Pop();
             _redo.Push(edit);
-            SetCurrentEditState(edit.BeforeStateId);
+            SetCurrentEditState(edit.BeforeStateId, edit);
             StatusMessage = $"元に戻す: {edit.Description}";
             await _log.WriteAsync(LogLevel.Information, "page.structure.undo", edit.Description);
         }
@@ -6680,7 +6763,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
             await RestorePageStructureSnapshotAsync(edit.After);
             _redo.Pop();
             _undo.Push(edit);
-            SetCurrentEditState(edit.AfterStateId);
+            SetCurrentEditState(edit.AfterStateId, edit);
             StatusMessage = $"やり直す: {edit.Description}";
             await _log.WriteAsync(LogLevel.Information, "page.structure.redo", edit.Description);
         }
@@ -6789,6 +6872,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>アプリ終了時にこの編集セッションが所有する一時PDFをすべて解放します。</summary>
     public void ReleaseTransientResources()
     {
+        CancelLexiconPreparation();
         CancelDocumentMetadata();
         _renderCancellation?.Cancel();
         _thumbnailCancellation?.Cancel();
@@ -6803,10 +6887,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _pageWorkingFiles.Dispose();
     }
 
-    private void SetCurrentEditState(long stateId)
+    private void SetCurrentEditState(long stateId, HistoryEdit? edit = null)
     {
         if (_currentEditStateId == stateId) return;
+        InvalidateReadAloudForEdit(edit);
+        _similarWordHistoryGeneration++;
+        if (ChangesSimilarWordInput(edit)) _similarWordTextGeneration++;
         _currentEditStateId = stateId;
+        InvalidateLexiconForEdit(edit);
+        NotifyOcrPositionLocksChanged(edit);
         NotifyUserActivity();
         OnPropertyChanged(nameof(HasUnsavedChanges));
     }
@@ -6831,6 +6920,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void ClearOverlaySession(bool clearHistory = true)
     {
+        CancelLexiconPreparation();
         _overlaySessionVersion++;
         CancelReviewNavigation();
         foreach (var overlay in _pageOverlays.Values.SelectMany(page => page))
@@ -6850,6 +6940,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         _batchStart = null;
         OverlayItems.Clear();
         RedactionItems.Clear();
+        _selectedLinkIds.Clear();
+        SelectedLinkArea = null;
         SelectedRedaction = null;
         OnPropertyChanged(nameof(CurrentPageRedactionCount));
         RefreshRedactionCommandState();
@@ -6881,6 +6973,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private void RaiseCharacterAdvanceCommands()
     {
+        RaiseParagraphCommands();
+        RaiseWordReadingCommands();
         EqualizeCharacterAdvancesCommand.RaiseCanExecuteChanged();
         RestoreOriginalCharacterAdvancesCommand.RaiseCanExecuteChanged();
         EstimateCharacterAdvancesCommand.RaiseCanExecuteChanged();
@@ -6895,6 +6989,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         ToggleGeometryLockCommand.RaiseCanExecuteChanged();
         DecreaseLineCharacterSizeCommand.RaiseCanExecuteChanged();
         IncreaseLineCharacterSizeCommand.RaiseCanExecuteChanged();
+        NotifyOcrPropertyContext();
     }
 
     private static string Abbreviate(string value) => value.Length <= 18 ? value : value[..18] + "…";

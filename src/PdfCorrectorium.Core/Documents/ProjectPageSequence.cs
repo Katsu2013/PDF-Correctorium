@@ -3,29 +3,44 @@ namespace PdfCorrectorium.Core.Documents;
 /// <summary>論理ページと不変の元PDFページとの対応を正規化します。</summary>
 public static class ProjectPageSequence
 {
-    /// <summary>
-    /// 保存済み対応がなければ物理ページと同じ順の対応を作り、既存OCRページIDを再利用します。
-    /// </summary>
+    /// <summary>ページ配列を生成する前に適用する既定の資源上限です。</summary>
+    public const int DefaultMaximumPageCount = 10_000;
+
+    public static void ValidatePageBudget(IReadOnlyList<ProjectPageReference>? sequence,
+        IReadOnlyList<OcrPage> pages, int sourcePageCount, int maximumPageCount = DefaultMaximumPageCount)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        if (maximumPageCount <= 0) throw new ArgumentOutOfRangeException(nameof(maximumPageCount));
+        if (sourcePageCount < 0 || sourcePageCount > maximumPageCount || pages.Count > maximumPageCount ||
+            sequence?.Count > maximumPageCount || pages.Any(page => page.PageNumber < 1 || page.PageNumber > maximumPageCount) ||
+            sequence is not null && sequence.Any(page => page.SourcePageNumber < 1 || page.SourcePageNumber > maximumPageCount))
+            throw new InvalidDataException($"プロジェクトのページ数・ページ番号が上限 {maximumPageCount:N0} の範囲外です。");
+    }
+
+    /// <summary>ページ数を検査し、既存のOCRページIDを再利用して論理ページ列を生成します。</summary>
     public static IReadOnlyList<ProjectPageReference> Normalize(
         IReadOnlyList<ProjectPageReference>? sequence,
         IReadOnlyList<OcrPage> pages,
-        int sourcePageCount)
+        int sourcePageCount,
+        int maximumPageCount = DefaultMaximumPageCount,
+        CancellationToken cancellationToken = default)
     {
-        if (sourcePageCount < 0) throw new ArgumentOutOfRangeException(nameof(sourcePageCount));
-        ArgumentNullException.ThrowIfNull(pages);
+        ValidatePageBudget(sequence, pages, sourcePageCount, maximumPageCount);
+        cancellationToken.ThrowIfCancellationRequested();
         if (sequence is { Count: > 0 }) return sequence.ToArray();
-
-        var pageIds = pages
-            .Where(page => page.PageNumber > 0)
-            .GroupBy(page => page.PageNumber)
+        var pageIds = pages.GroupBy(page => page.PageNumber)
             .ToDictionary(group => group.Key, group => group.First().Id);
-        return Enumerable.Range(1, sourcePageCount)
-            .Select(number => new ProjectPageReference
+        var result = new ProjectPageReference[sourcePageCount];
+        for (var index = 0; index < result.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            result[index] = new ProjectPageReference
             {
-                PageId = pageIds.GetValueOrDefault(number, Guid.NewGuid()),
-                SourcePageNumber = number,
-            })
-            .ToArray();
+                PageId = pageIds.TryGetValue(index + 1, out var id) ? id : Guid.NewGuid(),
+                SourcePageNumber = index + 1,
+            };
+        }
+        return result;
     }
 
     /// <summary>0、90、180、270度のいずれかへ正規化します。</summary>

@@ -10,11 +10,11 @@ public sealed record ProjectManifest
     /// <summary>旧名称のアプリで保存されたプロジェクト形式識別子です。</summary>
     public const string LegacyFormat = "PdfOcrEditorProject";
     /// <summary>このアプリが新規保存するプロジェクト形式のバージョンです。</summary>
-    public const string CurrentVersion = "1.10";
-    /// <summary>形式1.10の複数範囲リンクを失わずに扱える最初のアプリバージョンです。</summary>
-    public const string MinimumCompatibleApplicationVersion = "1.0.0-dev.200";
-    /// <summary>論理ページ列導入前を含む旧形式1.0～1.9も読み込めます。</summary>
-    public static bool IsSupportedVersion(string version) => version is "1.0" or "1.1" or "1.2" or "1.3" or "1.4" or "1.5" or "1.6" or "1.7" or "1.8" or "1.9" or CurrentVersion;
+    public const string CurrentVersion = "1.14";
+    /// <summary>プロジェクト共通の読み方を失わずに扱える最初のアプリバージョンです。</summary>
+    public const string MinimumCompatibleApplicationVersion = "1.0.0-dev.262";
+    /// <summary>手動段落指定導入前を含む旧形式1.0～1.12も読み込めます。</summary>
+    public static bool IsSupportedVersion(string version) => version is "1.0" or "1.1" or "1.2" or "1.3" or "1.4" or "1.5" or "1.6" or "1.7" or "1.8" or "1.9" or "1.10" or "1.11" or "1.12" or "1.13" or CurrentVersion;
     /// <summary>読み込んだコンテナの形式識別子です。</summary>
     public string Format { get; init; } = CurrentFormat;
     /// <summary>読み込んだコンテナのデータ構造バージョンです。</summary>

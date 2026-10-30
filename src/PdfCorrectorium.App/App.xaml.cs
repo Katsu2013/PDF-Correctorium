@@ -46,26 +46,41 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        var filesTakePriority = StartupArgumentRouting.FilesTakePriority(e.Args);
         _isSmokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--redaction-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
-        _diagnostics = StartupDiagnostics.Create(AppContext.BaseDirectory);
+        _isNonInteractiveTest |= e.Args.Contains("--sandbox-probe", StringComparer.OrdinalIgnoreCase);
+        _diagnostics = StartupDiagnostics.Create(WindowsSandboxProcess.IsAppContainer
+            ? Environment.GetEnvironmentVariable("PDFCORRECTORIUM_WORKER_ROOT") ?? throw new InvalidOperationException("Worker directory is missing.")
+            : AppContext.BaseDirectory);
         _isNonInteractiveTest |= e.Args.Contains("--document-ui-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--document-organization-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--link-editing-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--ocr-rendering-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--keyboard-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--settings-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--theme-speech-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--updates-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--recent-files-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--review-mode-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--similar-word-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--rapid-ocr-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--ocr-notices-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--pane-visibility-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--persistence-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--page-history-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--character-estimation-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--ocr-property-test", StringComparer.OrdinalIgnoreCase);
+        _isNonInteractiveTest |= e.Args.Contains("--document-data-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--avalondock-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--startup-file-test", StringComparer.OrdinalIgnoreCase) ||
             e.Args.Contains("--file-launch-tests", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--diagnostic-delay-worker", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--diagnostic-output-worker", StringComparer.OrdinalIgnoreCase);
+        if (filesTakePriority) { _isSmokeTest = false; _isNonInteractiveTest = false; }
         _diagnostics.Write("startup.begin", $"Args: {string.Join(' ', e.Args)}");
         _diagnostics.Write("startup.version", $"Version: {PdfCorrectorium.Core.ApplicationBuildInfo.InformationalVersion}; build: {PdfCorrectorium.Core.ApplicationBuildInfo.NumericVersion}");
+        _diagnostics.Write("startup.runtime", $"{System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}; architecture: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}; WPF: {typeof(Application).Assembly.Location}");
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -74,6 +89,18 @@ public partial class App : Application
         {
             base.OnStartup(e);
             _diagnostics.Write("startup.application-ready");
+            if (!WindowsSandboxProcess.IsAppContainer)
+            {
+                var cleanup = await Task.Run(WindowsSandboxProcess.CleanupAbandoned);
+                _diagnostics.Write("startup.sandbox-cleanup", $"Scanned={cleanup.Scanned}; removed={cleanup.Removed}; skipped={cleanup.Skipped}; errors={cleanup.Errors}");
+            }
+            if (filesTakePriority)
+            {
+                var normalWindow = new MainWindow();
+                MainWindow = normalWindow;
+                await ShowNormalWindowAsync(normalWindow, e.Args);
+                return;
+            }
 
             var delayWorkerIndex = Array.FindIndex(e.Args,
                 value => string.Equals(value, "--diagnostic-delay-worker", StringComparison.OrdinalIgnoreCase));
@@ -100,6 +127,11 @@ public partial class App : Application
                 return;
             }
 
+            if (e.Args.Contains("--sandbox-probe", StringComparer.Ordinal))
+            {
+                var sandboxExitCode = Task.Run(() => WindowsSandboxProcess.RunProbeAsync(e.Args)).GetAwaiter().GetResult();
+                Shutdown(sandboxExitCode); return;
+            }
             if (e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase))
             {
                 var exitCode = Task.Run(() => PdfNativeWorkerClient.RunServerAsync()).GetAwaiter().GetResult();
@@ -128,9 +160,17 @@ public partial class App : Application
                 return;
             }
 
+            var characterEstimationIndex = Array.FindIndex(e.Args,
+                value => value.Equals("--character-estimation-test", StringComparison.OrdinalIgnoreCase));
+            if (characterEstimationIndex >= 0)
+            {
+                await RunCharacterEstimationTestAsync(e.Args, characterEstimationIndex);
+                return;
+            }
+
             if (e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase))
             {
-                RunEditorTest();
+                await RunEditorTestAsync();
                 return;
             }
 
@@ -193,11 +233,65 @@ public partial class App : Application
             var avalonDockTestIndex = Array.FindIndex(e.Args, value => value.Equals("--avalondock-test", StringComparison.OrdinalIgnoreCase));
             var linkDiagnosticIndex = Array.FindIndex(e.Args, value => value.Equals("--link-editing-test", StringComparison.OrdinalIgnoreCase));
             var dockingDiagnosticIndex = avalonDockTestIndex >= 0 ? avalonDockTestIndex : linkDiagnosticIndex;
+            var keyboardDiagnosticIndex = Array.FindIndex(e.Args, value => value.Equals("--keyboard-test", StringComparison.OrdinalIgnoreCase));
+            var ocrStateDiagnosticIndex = Array.FindIndex(e.Args, value => value.Equals("--ocr-rendering-test", StringComparison.OrdinalIgnoreCase));
+            var ocrPropertyIndex = Array.FindIndex(e.Args, value => value.Equals("--ocr-property-test", StringComparison.OrdinalIgnoreCase));
+            var documentDataIndex = Array.FindIndex(e.Args, value => value.Equals("--document-data-test", StringComparison.OrdinalIgnoreCase));
+            var rapidOcrIndex = Array.FindIndex(e.Args, value => value.Equals("--rapid-ocr-test", StringComparison.OrdinalIgnoreCase));
+            var ocrNoticesIndex = Array.FindIndex(e.Args, value => value.Equals("--ocr-notices-test", StringComparison.OrdinalIgnoreCase));
+            var paneVisibilityIndex = Array.FindIndex(e.Args, value => value.Equals("--pane-visibility-test", StringComparison.OrdinalIgnoreCase));
+            var similarWordStateIndex = Array.FindIndex(e.Args, value => value.Equals("--similar-word-test", StringComparison.OrdinalIgnoreCase));
+            var documentUiTestIndex = Array.FindIndex(e.Args, value => value.Equals("--document-ui-test", StringComparison.OrdinalIgnoreCase));
+            var settingsTestIndex = Array.FindIndex(e.Args, value => value.Equals("--settings-test", StringComparison.OrdinalIgnoreCase));
+            var themeSpeechIndex = Array.FindIndex(e.Args, value => value.Equals("--theme-speech-test", StringComparison.OrdinalIgnoreCase));
+            var updatesIndex = Array.FindIndex(e.Args, value => value.Equals("--updates-test", StringComparison.OrdinalIgnoreCase));
+            var reviewStateDiagnosticIndex = Array.FindIndex(e.Args, value => value.Equals("--review-mode-test", StringComparison.OrdinalIgnoreCase));
+            var stateDiagnosticIndex = updatesIndex >= 0 ? updatesIndex : themeSpeechIndex >= 0 ? themeSpeechIndex : paneVisibilityIndex >= 0 ? paneVisibilityIndex : ocrNoticesIndex >= 0 ? ocrNoticesIndex : similarWordStateIndex >= 0 ? similarWordStateIndex : rapidOcrIndex >= 0 ? rapidOcrIndex : dockingDiagnosticIndex >= 0 ? dockingDiagnosticIndex
+                : keyboardDiagnosticIndex >= 0 ? keyboardDiagnosticIndex : documentDataIndex >= 0 ? documentDataIndex : ocrPropertyIndex >= 0 ? ocrPropertyIndex
+                : ocrStateDiagnosticIndex >= 0 ? ocrStateDiagnosticIndex : documentUiTestIndex >= 0 ? documentUiTestIndex
+                : reviewStateDiagnosticIndex >= 0 ? reviewStateDiagnosticIndex : settingsTestIndex;
             var window = new MainWindow(useAvalonDockDiagnosticLayout: dockingDiagnosticIndex >= 0,
-                diagnosticDirectory: dockingDiagnosticIndex >= 0 && e.Args.Length > dockingDiagnosticIndex + 1
-                    ? Path.GetFullPath(e.Args[dockingDiagnosticIndex + 1]) : null);
+                diagnosticDirectory: stateDiagnosticIndex >= 0 && e.Args.Length > stateDiagnosticIndex + 1
+                    ? Path.GetFullPath(e.Args[stateDiagnosticIndex + 1]) : null);
             MainWindow = window;
             _diagnostics.Write("startup.window-created");
+            if (updatesIndex >= 0)
+            {
+                await RunUpdatesTestAsync(window, e.Args, updatesIndex);
+                return;
+            }
+            if (themeSpeechIndex >= 0)
+            {
+                await RunThemeSpeechTestAsync(window, e.Args, themeSpeechIndex);
+                return;
+            }
+            if (paneVisibilityIndex >= 0)
+            {
+                await RunPaneVisibilityTestAsync(window, e.Args, paneVisibilityIndex);
+                return;
+            }
+            if (ocrNoticesIndex >= 0)
+            {
+                await RunOcrNoticesTestAsync(window, e.Args, ocrNoticesIndex);
+                return;
+            }
+            if (rapidOcrIndex >= 0)
+            {
+                await RunRapidOcrTestAsync(window, e.Args, rapidOcrIndex);
+                return;
+            }
+
+            if (documentDataIndex >= 0)
+            {
+                await RunDocumentDataExportTestAsync(window, e.Args, documentDataIndex);
+                return;
+            }
+
+            if (ocrPropertyIndex >= 0)
+            {
+                await RunOcrPropertyTestAsync(window, e.Args, ocrPropertyIndex);
+                return;
+            }
 
             if (avalonDockTestIndex >= 0)
             {
@@ -225,10 +319,8 @@ public partial class App : Application
                 return;
             }
 
-            var documentUiTestIndex = Array.FindIndex(e.Args, value => string.Equals(value, "--document-ui-test", StringComparison.OrdinalIgnoreCase));
             var pageHistoryTestIndex = Array.FindIndex(e.Args, value => value.Equals("--page-history-test", StringComparison.OrdinalIgnoreCase));
             var keyboardTestIndex = Array.FindIndex(e.Args, value => value.Equals("--keyboard-test", StringComparison.OrdinalIgnoreCase));
-            var settingsTestIndex = Array.FindIndex(e.Args, value => value.Equals("--settings-test", StringComparison.OrdinalIgnoreCase));
             var recentFilesTestIndex = Array.FindIndex(e.Args, value => value.Equals("--recent-files-test", StringComparison.OrdinalIgnoreCase));
             if (recentFilesTestIndex >= 0)
             {
@@ -257,6 +349,12 @@ public partial class App : Application
             }
 
             var reviewTestIndex = Array.FindIndex(e.Args, value => value.Equals("--review-mode-test", StringComparison.OrdinalIgnoreCase));
+            var similarWordTestIndex = Array.FindIndex(e.Args, value => value.Equals("--similar-word-test", StringComparison.OrdinalIgnoreCase));
+            if (similarWordTestIndex >= 0)
+            {
+                await RunSimilarWordTestAsync(window, e.Args, similarWordTestIndex);
+                return;
+            }
             if (reviewTestIndex >= 0)
             {
                 await RunReviewModeTestAsync(window, e.Args, reviewTestIndex);
@@ -282,18 +380,22 @@ public partial class App : Application
                 return;
             }
 
-            window.Show();
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
-            _diagnostics.Write("startup.window-shown");
             var startupFiles = e.Args.Where(argument => !argument.Equals("--avalondock-preview", StringComparison.OrdinalIgnoreCase)).ToArray();
-            var startupOpened = await OpenStartupFileAsync(window, startupFiles);
-            if (startupOpened && startupFiles.Length == 0)
-                await OfferRecoveryProjectAsync(window);
+            await ShowNormalWindowAsync(window, startupFiles);
         }
         catch (Exception exception)
         {
             ReportFatal("The application failed during startup.", exception);
         }
+    }
+
+    private async Task ShowNormalWindowAsync(MainWindow window, string[] startupFiles)
+    {
+        window.Show();
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        _diagnostics?.Write("startup.window-shown");
+        var startupOpened = await OpenStartupFileAsync(window, startupFiles);
+        if (startupOpened && startupFiles.Length == 0) await OfferRecoveryProjectAsync(window);
     }
 
     /// <summary>通常起動時に未保存文書の復旧パッケージを検出し、利用者が選んだ1件を開きます。</summary>
@@ -317,6 +419,7 @@ public partial class App : Application
         PdfNativeWorkerClient.Shared.Shutdown();
         PdfNativeWorkerClient.Background.Shutdown();
         PdfNativeWorkerClient.Inspection.Shutdown();
+        PdfNativeWorkerClient.Ocr.Shutdown();
         _diagnostics?.Write("shutdown", $"Exit code: {e.ApplicationExitCode}");
         base.OnExit(e);
     }
@@ -526,9 +629,11 @@ public partial class App : Application
         Shutdown(0);
     }
 
-    private void RunEditorTest()
+    private async Task RunEditorTestAsync()
     {
-        var paths = ApplicationPathResolver.Resolve(AppContext.BaseDirectory);
+        var testRoot = Path.Combine(AppContext.BaseDirectory, ".editor-test", Guid.NewGuid().ToString("N"));
+        var paths = new ApplicationPaths(StorageMode.Portable, Path.Combine(testRoot, "config"),
+            Path.Combine(testRoot, "logs"), Path.Combine(testRoot, "cache"), Path.Combine(testRoot, "work"));
         ApplicationPathResolver.EnsureDirectories(paths);
         var viewModel = new MainWindowViewModel(
             new ProjectPackageService(),
@@ -538,6 +643,11 @@ public partial class App : Application
             new DiagnosticLog(paths.LogDirectory),
             paths,
             () => { });
+        // Command availability requires a real, fully prepared document. Do not
+        // bypass that guard just to test geometry with manually inserted regions.
+        var blank = Path.Combine(testRoot, "blank.pdf");
+        await BlankPdfService.CreateAsync(blank, 1, 595, 842);
+        await viewModel.LoadPdfForDiagnosticsAsync(blank);
         viewModel.ZoomPercent = 175;
         if (viewModel.ZoomFactor != 1.75) throw new InvalidOperationException("Zoom factor was not updated.");
         viewModel.ZoomPercent = 999;
@@ -2543,6 +2653,7 @@ public partial class App : Application
         var logPath = _diagnostics?.WriteException("fatal", exception) ?? "The startup log could not be created.";
         if (_isNonInteractiveTest)
         {
+            Console.Error.WriteLine(exception);
             Shutdown(-1);
             return;
         }

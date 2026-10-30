@@ -55,7 +55,7 @@ public partial class MainWindow
     private bool HandleLinkEditingKey(KeyEventArgs e)
     {
         if (!ViewModel.IsLinkEditMode) return false;
-        if (ShouldDeleteSelectedRedaction(e.Key, true, ViewModel.CanEditLinkSelection, Keyboard.FocusedElement))
+        if (ShouldDeleteSelectedRedaction(e.Key, true, ViewModel.CanDeleteLinkSelection, Keyboard.FocusedElement))
         {
             CancelLinkTransform();
             ViewModel.DeleteSelectedInternalLink();
@@ -78,16 +78,16 @@ public partial class MainWindow
         if (item.SourcePageNumber != ViewModel.SelectedPage?.PageNumber)
         {
             await ViewModel.SelectLinkPageAsync(item.SourcePageNumber, item.Id);
-            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) await ViewModel.NavigateSelectedInternalLinkAsync();
+            if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0) await ViewModel.NavigateSelectedInternalLinkAsync();
             e.Handled = true; return;
         }
-        ViewModel.SelectedLinkArea = item;
+        ViewModel.SelectLink(item, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
         ViewModel.SelectedOverlay = null;
-        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0)
             await ViewModel.NavigateSelectedInternalLinkAsync();
         else if (e.ClickCount == 2 && item.IsEditable)
             InternalLinkEdit_OnClick(sender, new RoutedEventArgs());
-        else if (ViewModel.CanTransformSelectedLink)
+        else if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 && ViewModel.CanTransformSelectedLink)
         {
             _linkTransformOriginal = new Rect(item.Left, item.Top, item.Width, item.Height);
             _linkTransformPending = _linkTransformOriginal;
@@ -103,7 +103,7 @@ public partial class MainWindow
         if (!ViewModel.CanHitLinkAreas || sender is not FrameworkElement { DataContext: DocumentLinkOverlayViewModel item }) return;
         if (item.SourcePageNumber != ViewModel.SelectedPage?.PageNumber)
             await ViewModel.SelectLinkPageAsync(item.SourcePageNumber, item.Id);
-        else ViewModel.SelectedLinkArea = item;
+        else if (!item.IsSelected) ViewModel.SelectLink(item, false);
         ViewModel.SelectedOverlay = null;
     }
 

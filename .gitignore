@@ -21,11 +21,14 @@ TestResults/
 *.suo
 *.tmp
 *.bak
+__pycache__/
+*.pyc
 work/
 tmp/
 artifacts/
 
 # Generated releases and integration-test outputs. Keep the design documentation.
+output/
 outputs/*
 !outputs/PdfCorrectorium-Documentation/
 !outputs/PdfCorrectorium-Documentation/**
@@ -33,8 +36,24 @@ outputs/*
 # Keep the offline NuGet package itself, but not the expanded local cache.
 local-packages/*/
 
+# All pinned archives can be restored and hash-checked by RestoreLockedPackages.
+# Already tracked legacy archives stay tracked; fresh downloads must not dirty CI.
+local-packages/*.nupkg
+
+# OCR build archives are reproducible via tools/RestoreLockedPackages.ps1.
+# In particular, ONNX Runtime's multi-platform archive exceeds GitHub's single-file limit.
+local-packages/clipper2.*.nupkg
+local-packages/microsoft.ml.onnxruntime.*.nupkg
+local-packages/rapidocrnet.*.nupkg
+local-packages/skiasharp.*.nupkg
+local-packages/system.memory.*.nupkg
+local-packages/system.numerics.tensors.*.nupkg
+
 # Downloaded upstream archive; the bundled runtime and licenses live under tools/qpdf.
 qpdf-*.zip
 
 # Runtime diagnostics can also appear below publish folders.
 **/logs/
+
+# Local conversation scratch data; never part of source or release assets.
+/scratch_inputs.txt

@@ -125,6 +125,7 @@ public partial class MainWindow
             Title = "プロパティ", ContentId = "properties", Content = PropertiesDockPane,
             CanClose = false, CanHide = true, CanAutoHide = true,
         };
+        InitializePropertyPanes();
         var document = new LayoutDocument
         {
             Title = "PDF編集", ContentId = "editor", Content = DocumentWorkspacePane,
@@ -165,7 +166,11 @@ public partial class MainWindow
         var manager = new DockingManager
         {
             Layout = root, AllowMixedOrientation = true, DataContext = ViewModel,
+            AnchorTemplate = (ControlTemplate)FindResource("AccessibleAutoHideAnchorTemplate"),
+            LayoutUpdateStrategy = new ToolbarFallbackLayoutStrategy(this),
         };
+        _propertyPanes["read-aloud"].Hide();
+        _avalonNavigation.IsSelected = true;
         manager.Loaded += (_, _) =>
         {
             if (_avalonTopTabStyle is not null) return;
@@ -194,6 +199,8 @@ public partial class MainWindow
                     _avalonBookmarks.Float();
                 if (settings.PropertiesDockPosition == WorkspaceDockPosition.Floating)
                     _avalonProperties.Float();
+                if (!_useAvalonDockDiagnosticLayout) RestoreNativeWorkspace(settings.WorkspaceLayoutXml);
+                ActivateModePropertyPane(revealHidden: false);
                 SynchronizeAvalonDockPreviewVisibility();
                 UpdateAvalonToolbarOrientation(manager);
                 RefreshAvalonToolbarChrome(manager);
@@ -230,22 +237,29 @@ public partial class MainWindow
         };
         manager.AddHandler(Mouse.PreviewMouseUpEvent,
             new MouseButtonEventHandler((_, _) => Dispatcher.BeginInvoke(CaptureAvalonDockingSettings)), true);
-        foreach (var toolbar in new[] { _avalonMainToolbar, _avalonPageToolbar })
+        AttachAvalonToolbarEvents();
+        foreach (var tray in new[] { _avalonMainToolbarTray, _avalonPageToolbarTray })
+            tray.SizeChanged += (_, _) => _toolbarChromeNeedsRefresh = true;
+        _avalonDockPreviewManager = manager;
+        AttachAvalonPaneVisibilityEvents();
+        _lastAppliedDockingSettings = settings;
+        Grid.SetColumn(manager, 2);
+        WorkspaceLayoutGrid.Children.Add(manager);
+    }
+
+    private void AttachAvalonToolbarEvents()
+    {
+        foreach (var toolbar in new[] { _avalonMainToolbar!, _avalonPageToolbar! })
+        {
+            toolbar.CanClose = false; toolbar.CanHide = false; toolbar.CanAutoHide = false;
             toolbar.PropertyChanged += (_, args) =>
             {
-                // Dock() can be followed immediately by another native drag, before
-                // the idle sizing callback sees the intervening docked state.
                 if (args.PropertyName == nameof(LayoutAnchorable.IsFloating) && !toolbar.IsFloating)
                     _sizedFloatingToolbarWindows.Remove(toolbar);
                 if (args.PropertyName is nameof(LayoutAnchorable.IsFloating) or "Parent")
                     QueueToolbarDropCapture();
             };
-        foreach (var tray in new[] { _avalonMainToolbarTray, _avalonPageToolbarTray })
-            tray.SizeChanged += (_, _) => _toolbarChromeNeedsRefresh = true;
-        _avalonDockPreviewManager = manager;
-        _lastAppliedDockingSettings = settings;
-        Grid.SetColumn(manager, 2);
-        WorkspaceLayoutGrid.Children.Add(manager);
+        }
     }
 
     private static void OnAvalonPaneVisualLoaded(object sender, RoutedEventArgs e)
@@ -365,6 +379,11 @@ public partial class MainWindow
     private void PruneVacantWorkspacePanes()
     {
         if (_avalonWorkspaceBand is null) return;
+        // Empty panes can still be the native PreviousContainer of an X-hidden panel.
+        // Removing them makes Show() insert into a detached tree (or do nothing).
+        // Keep these invisible, bounded workspace containers while panels are hidden;
+        // toolbar-only band compaction remains independent.
+        if (_avalonDockPreviewManager?.Layout.Hidden.Count > 0) return;
         foreach (var pane in _avalonWorkspaceBand.Children.OfType<LayoutAnchorablePane>()
                      .Where(pane => pane.Children.Count == 0).ToArray())
             _avalonWorkspaceBand.Children.Remove(pane);
@@ -654,8 +673,8 @@ public partial class MainWindow
             foreach (var item in tray.ToolBars) item.InvalidateMeasure();
             tray.UpdateLayout();
             tray.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            if (tray.DesiredSize.Width < 20 || tray.DesiredSize.Height < 20) continue;
-            var width = Math.Min(Math.Ceiling(tray.DesiredSize.Width + 32),
+            if (tray.DesiredSize.Width <= 0 || tray.DesiredSize.Height <= 0) continue;
+            var width = Math.Min(Math.Max(64, Math.Ceiling(tray.DesiredSize.Width + 32)),
                 Math.Max(160, SystemParameters.WorkArea.Width - 40));
             var height = Math.Max(70, Math.Ceiling(tray.DesiredSize.Height +
                 SystemParameters.WindowCaptionHeight + 6));
@@ -680,7 +699,7 @@ public partial class MainWindow
                 if (!toolbar.IsFloating || !ReferenceEquals(FindFloatingToolbarWindow(toolbar), floatingWindow))
                     return;
                 tray.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                var correctedWidth = Math.Min(Math.Ceiling(tray.DesiredSize.Width + 32),
+                var correctedWidth = Math.Min(Math.Max(64, Math.Ceiling(tray.DesiredSize.Width + 32)),
                     Math.Max(160, SystemParameters.WorkArea.Width - 40));
                 if (Math.Abs(correctedWidth - floatingWindow.Width) <= 1) return;
                 toolbar.FloatingWidth = correctedWidth;
@@ -705,7 +724,7 @@ public partial class MainWindow
         if (toolbar.IsFloating)
         {
             tray.Orientation = Orientation.Horizontal;
-            return ToolbarDockSide.Top;
+            return ReferenceEquals(toolbar, _avalonMainToolbar) ? _mainToolbarSide : _pageToolbarSide;
         }
         var pane = FindAvalonToolbarPaneControl(manager, toolbar.Parent as LayoutAnchorablePane);
         if (pane is null) return tray.Orientation == Orientation.Vertical
@@ -797,12 +816,16 @@ public partial class MainWindow
             if (bookmarksHere) navigationPane.Children.Add(_avalonBookmarks!);
             stack.Children.Add(navigationPane);
             stack.Children.Add(new LayoutAnchorablePane(_avalonProperties!));
+            foreach (var property in _propertyPanes.Values.Where(item => !ReferenceEquals(item, _avalonProperties)))
+                ((LayoutAnchorablePane)stack.Children[1]).Children.Add(property);
             return stack;
         }
         var pane = new LayoutAnchorablePane { DockWidth = width };
         if (navigationHere) pane.Children.Add(_avalonNavigation!);
         if (bookmarksHere) pane.Children.Add(_avalonBookmarks!);
         if (propertiesHere) pane.Children.Add(_avalonProperties!);
+        if (propertiesHere)
+            foreach (var property in _propertyPanes.Values.Where(item => !ReferenceEquals(item, _avalonProperties))) pane.Children.Add(property);
         return pane;
     }
 
@@ -811,20 +834,11 @@ public partial class MainWindow
         if (_avalonDockPreviewManager is null) return;
         var settings = ViewModel.CurrentApplicationSettings;
         if (_avalonNavigation is not null && _avalonNavigation.IsVisible != settings.ShowPageListPanel)
-        {
-            if (settings.ShowPageListPanel) _avalonNavigation.Show();
-            else _avalonNavigation.Hide();
-        }
+            SetAvalonPaneVisible(_avalonNavigation, settings.ShowPageListPanel);
         if (_avalonBookmarks is not null && _avalonBookmarks.IsVisible != settings.ShowBookmarksPanel)
-        {
-            if (settings.ShowBookmarksPanel) _avalonBookmarks.Show();
-            else _avalonBookmarks.Hide();
-        }
+            SetAvalonPaneVisible(_avalonBookmarks, settings.ShowBookmarksPanel);
         if (_avalonProperties is not null && _avalonProperties.IsVisible != settings.ShowPropertiesPanel)
-        {
-            if (settings.ShowPropertiesPanel) _avalonProperties.Show();
-            else _avalonProperties.Hide();
-        }
+            SetAvalonPaneVisible(_avalonProperties, settings.ShowPropertiesPanel);
     }
 
     internal void SynchronizeAvalonDockLayout()
@@ -840,22 +854,35 @@ public partial class MainWindow
             _avalonNavigation is null || _avalonBookmarks is null || _avalonProperties is null ||
             _avalonMainToolbar is null || _avalonPageToolbar is null) return;
         var settings = ViewModel.CurrentApplicationSettings;
+        var restoreRequested = _appliedWorkspaceRestoreVersion != ViewModel.WorkspaceLayoutRestoreVersion;
+        _appliedWorkspaceRestoreVersion = ViewModel.WorkspaceLayoutRestoreVersion;
+        if (!_restoringNativeWorkspace && restoreRequested &&
+            settings.WorkspaceLayoutXml is not null && RestoreNativeWorkspace(settings.WorkspaceLayoutXml))
+        {
+            UpdateAvalonToolbarOrientation(manager);
+            _toolbarChromeNeedsRefresh = true;
+            return;
+        }
         _updatingAvalonSettings = true;
         _avalonLayoutGeneration++;
         try
         {
-            PositionPane(_avalonNavigation, settings.NavigationDockPosition,
-                settings.PageListWidth, null);
+            var previous = _lastAppliedDockingSettings;
+            if (previous is null || previous.NavigationDockPosition != settings.NavigationDockPosition)
+                PositionPane(_avalonNavigation, settings.NavigationDockPosition, settings.PageListWidth, null);
             var bookmarkTarget = settings.BookmarkDockPosition == settings.NavigationDockPosition &&
                                  settings.BookmarkDockPosition != WorkspaceDockPosition.Floating
                 ? _avalonNavigation.Parent as LayoutAnchorablePane : null;
-            PositionPane(_avalonBookmarks, settings.BookmarkDockPosition,
-                settings.PageListWidth, bookmarkTarget);
+            if (previous is null || previous.BookmarkDockPosition != settings.BookmarkDockPosition ||
+                previous.NavigationDockPosition != settings.NavigationDockPosition && bookmarkTarget is not null)
+                PositionPane(_avalonBookmarks, settings.BookmarkDockPosition, settings.PageListWidth, bookmarkTarget);
             var tabTarget = settings.NavigationDockPosition == settings.PropertiesDockPosition &&
                             settings.PaneGroupMode == WorkspacePaneGroupMode.Tabbed
                 ? _avalonNavigation.Parent as LayoutAnchorablePane : null;
-            PositionPane(_avalonProperties, settings.PropertiesDockPosition,
-                settings.PropertiesPanelWidth, tabTarget);
+            if (previous is null || previous.PropertiesDockPosition != settings.PropertiesDockPosition ||
+                previous.PaneGroupMode != settings.PaneGroupMode ||
+                previous.NavigationDockPosition != settings.NavigationDockPosition && tabTarget is not null)
+                PositionPane(_avalonProperties, settings.PropertiesDockPosition, settings.PropertiesPanelWidth, tabTarget);
             if (settings.NavigationDockPosition == settings.PropertiesDockPosition &&
                 settings.PaneGroupMode == WorkspacePaneGroupMode.Stacked &&
                 _avalonNavigation.Parent is LayoutAnchorablePane first &&
@@ -899,6 +926,7 @@ public partial class MainWindow
             previous.ShowPageListPanel != settings.ShowPageListPanel ||
             previous.ShowBookmarksPanel != settings.ShowBookmarksPanel ||
             previous.ShowPropertiesPanel != settings.ShowPropertiesPanel ||
+            previous.WorkspaceLayoutXml != settings.WorkspaceLayoutXml ||
             Math.Abs(previous.PageListWidth - settings.PageListWidth) > 0.5 ||
             Math.Abs(previous.PropertiesPanelWidth - settings.PropertiesPanelWidth) > 0.5;
     }
@@ -906,12 +934,13 @@ public partial class MainWindow
     private void PositionPane(LayoutAnchorable pane, WorkspaceDockPosition position,
         double width, LayoutAnchorablePane? tabTarget)
     {
+        if (!pane.IsVisible || !ReferenceEquals(pane.Root, _avalonDockPreviewManager?.Layout))
+            SetAvalonPaneVisible(pane, true);
         if (position == WorkspaceDockPosition.Floating)
         {
             if (!pane.IsFloating) pane.Float();
             return;
         }
-        if (pane.IsHidden) pane.Show();
         if (pane.IsFloating) pane.Dock();
         if (tabTarget is not null)
         {
@@ -1124,6 +1153,8 @@ public partial class MainWindow
                     ? width.Value : fallback;
             ViewModel.SetWorkspacePaneWidths(Width(_avalonNavigation, current.PageListWidth),
                 Width(_avalonProperties, current.PropertiesPanelWidth));
+            CaptureAvalonPaneVisibility();
+            if (!_restoringNativeWorkspace) ViewModel.SetWorkspaceLayoutXml(CaptureNativeWorkspace());
             _lastAppliedDockingSettings = ViewModel.CurrentApplicationSettings;
         }
         finally { _updatingAvalonSettings = false; }

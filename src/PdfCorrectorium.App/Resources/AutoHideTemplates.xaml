@@ -1,0 +1,43 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ad="clr-namespace:AvalonDock.Controls;assembly=AvalonDock"
+                    xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources"
+                    xmlns:services="clr-namespace:PdfCorrectorium.App.Services">
+    <services:AutoHidePaneIconConverter x:Key="AutoHidePaneIconConverter" />
+    <ControlTemplate x:Key="AccessibleAutoHideAnchorTemplate" TargetType="{x:Type ad:LayoutAnchorControl}">
+        <Border x:Name="Chrome" Height="32" MinWidth="64" Margin="2,0" Padding="6,4" CornerRadius="2"
+                Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                ToolTip="{Binding Model.Title, RelativeSource={RelativeSource TemplatedParent}}"
+                AutomationProperties.Name="{Binding Model.Title, RelativeSource={RelativeSource TemplatedParent}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <icons:ActionIcon x:Name="PaneIcon" Width="20" Height="20" Margin="0,0,6,0" IsHitTestVisible="False"
+                                  Foreground="{DynamicResource BodyTextBrush}"
+                                  Key="{Binding Model.ContentId, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource AutoHidePaneIconConverter}}">
+                    <icons:ActionIcon.Style>
+                        <Style TargetType="{x:Type icons:ActionIcon}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Side, RelativeSource={RelativeSource TemplatedParent}}" Value="Left">
+                                    <Setter Property="LayoutTransform"><Setter.Value><RotateTransform Angle="-90" /></Setter.Value></Setter>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Side, RelativeSource={RelativeSource TemplatedParent}}" Value="Right">
+                                    <Setter Property="LayoutTransform"><Setter.Value><RotateTransform Angle="-90" /></Setter.Value></Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </icons:ActionIcon.Style>
+                </icons:ActionIcon>
+                <TextBlock x:Name="PaneLabel" Text="{Binding Model.Title, RelativeSource={RelativeSource TemplatedParent}}"
+                           FontSize="12" Foreground="{DynamicResource BodyTextBrush}" MaxWidth="108"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" IsHitTestVisible="False" />
+            </StackPanel>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger>
+            <DataTrigger Binding="{Binding Model.IsActive, RelativeSource={RelativeSource TemplatedParent}}" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            </DataTrigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+</ResourceDictionary>

@@ -40,7 +40,9 @@ public partial class ApplicationSettingsWindow : Window
         RecentFileLimitTextBox.Text = settings.RecentFileLimit.ToString(CultureInfo.InvariantCulture);
         UpdateRecentFilesStatus();
         UiLanguageComboBox.SelectedValue = settings.UiLanguage;
+        ThemeComboBox.SelectedValue = settings.Theme.ToString();
         ToolbarDisplayModeComboBox.SelectedIndex = settings.ShowToolbarText ? 1 : 0;
+        DefaultEditingModeComboBox.SelectedIndex = (int)settings.DefaultEditingMode;
         ToolbarButtonSizeSlider.Value = settings.ToolbarButtonSize;
         DocumentPageFlowModeComboBox.SelectedValue = settings.DocumentPageFlowMode.ToString();
         FacingPagesShowCoverSeparatelyCheckBox.IsChecked = settings.FacingPagesShowCoverSeparately;
@@ -54,6 +56,8 @@ public partial class ApplicationSettingsWindow : Window
         PropertiesPanelWidthSlider.Value = settings.PropertiesPanelWidth;
         OcrOverlayColorTextBox.Text = settings.OcrOverlayColor;
         OcrOverlayOpacitySlider.Value = settings.OcrOverlayOpacity * 100;
+        ShowOcrFramesCheckBox.IsChecked = settings.ShowOcrFrames;
+        OcrFrameOpacitySlider.Value = settings.OcrFrameOpacity;
         ShowUnselectedCharacterCellBordersCheckBox.IsChecked = settings.ShowUnselectedCharacterCellBorders;
         CharacterCellBorderThicknessSlider.Value = settings.CharacterCellBorderThickness;
         ShowPageThumbnailsCheckBox.IsChecked = settings.ShowPageThumbnails;
@@ -210,7 +214,9 @@ public partial class ApplicationSettingsWindow : Window
             RecentFileLimit = recentFileLimit,
             WorkspacePresets = _workspacePresets.ToArray(),
             UiLanguage = UiLanguageComboBox.SelectedValue as string ?? LocalizationService.JapaneseLanguage,
+            Theme = Enum.TryParse<ApplicationThemeMode>(ThemeComboBox.SelectedValue as string, out var theme) ? theme : ApplicationThemeMode.System,
             ShowToolbarText = ToolbarDisplayModeComboBox.SelectedIndex == 1,
+            DefaultEditingMode = (PdfCorrectorium.Core.Documents.ProjectEditingMode)Math.Max(0, DefaultEditingModeComboBox.SelectedIndex),
             ToolbarButtonSize = ToolbarButtonSizeSlider.Value,
             DocumentPageFlowMode = documentPageFlowMode,
             FacingPagesShowCoverSeparately = FacingPagesShowCoverSeparatelyCheckBox.IsChecked == true,
@@ -224,6 +230,8 @@ public partial class ApplicationSettingsWindow : Window
             PropertiesPanelWidth = PropertiesPanelWidthSlider.Value,
             OcrOverlayColor = OcrOverlayColorTextBox.Text,
             OcrOverlayOpacity = OcrOverlayOpacitySlider.Value / 100,
+            ShowOcrFrames = ShowOcrFramesCheckBox.IsChecked == true,
+            OcrFrameOpacity = OcrFrameOpacitySlider.Value,
             ShowUnselectedCharacterCellBorders = ShowUnselectedCharacterCellBordersCheckBox.IsChecked == true,
             CharacterCellBorderThickness = CharacterCellBorderThicknessSlider.Value,
             ShowPageThumbnails = ShowPageThumbnailsCheckBox.IsChecked == true,

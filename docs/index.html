@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PDF Correctorium | 完全無料・インストール不要のWindows向けPDF総合エディタ</title>
-  <meta name="description" content="商用も完全無料・インストール不要。二度と復元できない本物の墨消し、国会図書館NDLOCR連携による透明OCRテキスト精密校正、無劣化ページ結合ができるWindows向けPDF総合編集ツール。完全ローカル動作で機密書類も安心。">
+  <meta name="description" content="商用も完全無料・インストール不要。指定範囲を除去・検証する墨消し、国会図書館NDLOCR連携による透明OCRテキスト精密校正、ページ整理ができるWindows向けPDF編集ツール。PDF・OCR本文をクラウドへ送らず、文書処理は完全ローカル。">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -71,7 +71,7 @@
 
       <!-- ダウンロードCTA -->
       <div id="download" class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip" class="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition flex items-center justify-center gap-3">
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases" class="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition flex items-center justify-center gap-3">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           最新版を無料ダウンロード (容量はリリースページに記載)
         </a>
@@ -81,7 +81,7 @@
       </div>
 
       <p class="mt-3 text-xs sm:text-sm text-slate-500">
-        バージョン: v1.0.0-dev.199 ｜ 解凍してすぐ使えるポータブル版（レジストリ使用なし・USBメモリ動作OK）
+        公開版: v1.0.0-dev.199 ｜ ZIPを展開して利用（.NET 8 Desktop Runtime x64が必要）
       </p>
 
       <!-- アプリ画面モックアップ -->
@@ -94,12 +94,21 @@
   </section>
 
   <!-- 3大特長セクション -->
+  <section id="next-release" class="py-10 bg-blue-50 border-t border-blue-100">
+    <div class="max-w-5xl mx-auto px-6">
+      <h2 class="text-2xl font-bold text-slate-900 mb-3">dev.199からの更新候補</h2>
+      <p class="text-slate-700 leading-relaxed">選択行のRapidOCR再認識と資料の辞書、既存リンクの編集・整列・ロック、読み上げと段落・読み方、ライト／ダーク／OS追従、独立ドック、作業データ・完成画像の出力を追加しています。新しい自己完結型ZIPは.NET 10を同梱します。</p>
+      <p class="text-sm text-slate-600 mt-3">次回公開候補のソースを説明しています。未OCRページ／PDF全体の新規認識、署名済みMSIX・Store掲載は未完了です。実際の配布状況はReleasesで確認してください。</p>
+      <a class="inline-block mt-4 text-blue-700 underline" href="https://github.com/Katsu2013/PDF-Correctorium/blob/main/docs/releases/v1.0.0-dev.274.md">累積変更・互換性・検証と残る制約</a>
+    </div>
+  </section>
+
   <section id="features" class="py-20 bg-white border-t border-slate-200">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto mb-16">
         <h2 class="text-xs sm:text-sm font-bold tracking-widest text-blue-600 uppercase">FEATURES</h2>
         <p class="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900">
-          PDF Correctorium が選ばれる3つの理由
+          PDF Correctorium の3つの主な特長
         </p>
       </div>
 
@@ -111,10 +120,10 @@
               🛡️
             </div>
             <h3 class="text-xl font-bold text-slate-900 mb-3">
-              二度と復元できない「本物の墨消し」
+              指定範囲の文字を除去する墨消し
             </h3>
             <p class="text-slate-600 text-sm leading-relaxed mb-4">
-              単に黒い四角形を上に重ねるソフトと違い、PDF内部の<strong>文字描画命令そのものを完全消去</strong>。コピペや文字検索で情報が漏洩する心配がありません。
+              対象範囲の<strong>文字データを除去し、本文文字の残存を出力時に検査</strong>します。同じ情報が別ページ・文書情報・添付ファイルにも存在する場合、それらは別途確認してください。原本を保持する編集用プロジェクトは、完成した墨消し済みPDFとは区別します。
             </p>
             <ul class="text-xs text-slate-600 space-y-2 mb-6">
               <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> 文字選択・矩形・多角形・フリーハンド対応</li>
@@ -162,7 +171,7 @@
               画質無劣化のページ整理 & しおり
             </h3>
             <p class="text-slate-600 text-sm leading-relaxed mb-4">
-              サムネイルのマウス操作でページの並べ替え・回転・結合。写真やイラストを再圧縮しないため、元の画質を100%保ったまま新しいPDFを出力できます。
+              サムネイルのマウス操作でページの並べ替え・回転・結合。通常のページ整理では元画像を不要に再圧縮しません。画像最適化や範囲墨消しなど、画像変換を伴う機能とは区別します。
             </p>
             <ul class="text-xs text-slate-600 space-y-2 mb-6">
               <li class="flex items-center gap-1.5"><span class="text-blue-500 font-bold">✓</span> ドラッグ＆ドロップによる直感的な並べ替え・回転</li>
@@ -192,17 +201,17 @@
       </h2>
       <p class="text-slate-300 leading-relaxed max-w-2xl mx-auto mb-8 text-sm sm:text-base">
         Web上のオンラインPDF編集サービスは手軽ですが、<strong>「大切な機密書類、契約書、顧客情報、医療記録が外部サーバーにアップロードされる」</strong>という重大な情報漏洩リスクを抱えています。<br><br>
-        PDF Correctorium は<strong>すべての処理をお手元のPC内だけで完結</strong>します。インターネット通信を行わないため、自治体・官公庁・企業・法務・医療機関などの厳格なセキュリティ基準でも安心してお使いいただけます。
+        PDF Correctorium は<strong>PDFの読込・OCR・編集・保存をお手元のPC内で完結</strong>し、PDF・OCR本文をクラウドへ送信しません。利用者が実行するWebリンクの表示や更新確認では通信します。組織での利用は、それぞれの運用基準に沿って確認してください。
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
         <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
           <div class="text-blue-400 font-bold text-sm mb-1">クラウド送信ゼロ</div>
-          <p class="text-xs text-slate-400">PDFファイルやテキストデータがお使いのPCから外に出ることは一切ありません。</p>
+          <p class="text-xs text-slate-400">文書処理のためにPDF・OCR本文を外部サーバーへアップロードしません。</p>
         </div>
         <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
-          <div class="text-blue-400 font-bold text-sm mb-1">容量・回数制限なし</div>
-          <p class="text-xs text-slate-400">オンラインツールのような「1日○回まで」「○MBまで」といった制限や待ち時間がありません。</p>
+          <div class="text-blue-400 font-bold text-sm mb-1">回数・期限・利用料の制限なし</div>
+          <p class="text-xs text-slate-400">課金による利用制限はありません。巨大・破損入力からPCを守る処理上限があり、超過時は処理できない場合があります。</p>
         </div>
         <div class="bg-slate-800/80 rounded-xl p-5 border border-slate-700">
           <div class="text-blue-400 font-bold text-sm mb-1">完全ポータブル</div>
@@ -306,7 +315,7 @@
       </div>
 
       <div class="mt-10 text-center">
-        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip" class="inline-flex items-center gap-2 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition">
+        <a href="https://github.com/Katsu2013/PDF-Correctorium/releases" class="inline-flex items-center gap-2 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           最新版をダウンロードする (無料)
         </a>
@@ -340,14 +349,14 @@
         <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
           <h3 class="font-bold text-slate-900 text-base mb-2">Q. 機密情報を含む書類を読み込んでも情報漏洩の心配はありませんか？</h3>
           <p class="text-slate-600 text-sm leading-relaxed">
-            安心してお使いいただけます。PDF Correctorium は完全なローカルデスクトップアプリケーションであり、処理内容やPDFファイルを外部のサーバーやクラウドへ一切送信しません。インターネットに接続されていないオフライン環境でもすべての機能が動作します。
+            文書処理はPC内で完結し、PDF・OCR本文を外部サーバーへアップロードしません。通常の文書処理はオフラインで利用できますが、Webリンク・更新確認には接続が必要です。共有する場合は完成PDFを確認し、原本を含み得るプロジェクト・バックアップ・作業キャッシュを混ぜないでください。
           </p>
         </div>
 
         <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
           <h3 class="font-bold text-slate-900 text-base mb-2">Q. 起動時に「WindowsによってPCが保護されました」と表示されます</h3>
           <p class="text-slate-600 text-sm leading-relaxed">
-            公開直後の個人開発ソフトウェアであるため、Windows SmartScreen（保護フィルター）が表示される場合があります。マルウェア等の有害なプログラムは含まれておりませんので、「詳細情報」をクリックし、「実行」ボタンを押して起動してください。
+            配布物の署名や利用実績などにより、Windows SmartScreenが表示される場合があります。公式リリースから取得したか、版番号と公開SHA-256、署名がある版では発行元を確認してください。確認できないファイルを警告だけで判断して実行しないでください。
           </p>
         </div>
       </div>

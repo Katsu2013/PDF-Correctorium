@@ -68,6 +68,7 @@ internal sealed class IsolatedPdfExportService(
         long? peakWorkerMemoryBytes = null;
         long? workerMemoryLimitBytes = null;
 
+        using var sandbox = new WindowsSandboxProcess();
         try
         {
             // The worker receives the actual source PDF as a separate, explicit argument. Its
@@ -91,40 +92,29 @@ internal sealed class IsolatedPdfExportService(
             };
             await packages.SaveAsync(temporaryProjectPath, transportProject, embedSourcePdf: false, cancellationToken);
             var executablePath = ResolveExecutablePath();
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = executablePath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-            };
-            startInfo.ArgumentList.Add(WorkerOption);
-            startInfo.ArgumentList.Add(Path.GetFullPath(sourcePdfPath));
-            startInfo.ArgumentList.Add(temporaryProjectPath);
-            startInfo.ArgumentList.Add(completedOutputPath);
-            startInfo.ArgumentList.Add(statePath);
-
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("PDF出力プロセスを開始できませんでした。");
+            var stagedExecutable = sandbox.StageApplication(executablePath);
+            var stagedSource = sandbox.StageInput(sourcePdfPath, "input.pdf");
+            var stagedProject = sandbox.StageInput(temporaryProjectPath, "project.pdfocrproj");
+            statePath = Path.Combine(sandbox.WorkDirectory, "export.state.json");
+            var stagedOutput = Path.Combine(sandbox.WorkDirectory, "completed.pdf");
+            sandbox.Start(stagedExecutable, [WorkerOption, stagedSource, stagedProject, stagedOutput, statePath]);
+            var process = sandbox.Process;
             try
             {
-                using var job = WindowsProcessJob.Attach(process);
-                workerMemoryLimitBytes = job.ProcessMemoryLimitBytes;
+                workerMemoryLimitBytes = sandbox.MemoryLimitBytes;
                 using var timeoutSource = new CancellationTokenSource(ExportTimeout);
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
                 var errorTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
-                    process.StandardError, MaximumWorkerOutputCharacters, linkedSource.Token);
+                    sandbox.StandardError, MaximumWorkerOutputCharacters, linkedSource.Token);
                 var outputTask = ExternalProcessRunner.ReadToEndWithLimitAsync(
-                    process.StandardOutput, MaximumWorkerOutputCharacters, linkedSource.Token);
+                    sandbox.StandardOutput, MaximumWorkerOutputCharacters, linkedSource.Token);
                 var exitTask = process.WaitForExitAsync(linkedSource.Token);
                 string? lastProgressKey = null;
                 while (!exitTask.IsCompleted)
                 {
                     if (errorTask.IsFaulted) await errorTask;
                     if (outputTask.IsFaulted) await outputTask;
-                    var progressState = await TryReadStateAsync(statePath, linkedSource.Token);
+                    var progressState = await TryReadStateAsync(sandbox, statePath, linkedSource.Token);
                     if (progressState is not null)
                     {
                         var progressKey = $"{progressState.Phase}:{progressState.Current}:{progressState.Total}:{progressState.Message}";
@@ -143,7 +133,7 @@ internal sealed class IsolatedPdfExportService(
                 }
 
                 await exitTask;
-                peakWorkerMemoryBytes = job.TryGetPeakProcessMemoryBytes();
+                peakWorkerMemoryBytes = sandbox.PeakMemoryBytes;
                 standardError = await errorTask;
                 _ = await outputTask;
             }
@@ -161,9 +151,10 @@ internal sealed class IsolatedPdfExportService(
                 throw;
             }
 
-            var state = await ReadStateAsync(statePath, cancellationToken);
+            var state = await ReadStateAsync(sandbox, statePath, cancellationToken);
             if (process.ExitCode == 0 && state?.Result is not null)
             {
+                sandbox.CopyOutput(stagedOutput, completedOutputPath, 16L * 1024 * 1024 * 1024);
                 try
                 {
                     var commit = await Task.Run(
@@ -225,14 +216,14 @@ internal sealed class IsolatedPdfExportService(
         var stateWriter = new ExportWorkerStateWriter(statePath);
         try
         {
-            await stateWriter.WriteAsync(new ExportWorkerState("starting"), cancellationToken);
+            await stateWriter.TryWriteProgressAsync(new ExportWorkerState("starting"), cancellationToken);
             var packageService = new ProjectPackageService();
             var project = await packageService.OpenAsync(projectPath, cancellationToken);
             if (!await packageService.VerifySourceFileAsync(project.SourcePdf, sourcePdfPath, cancellationToken))
                 throw new InvalidDataException(
                     "PDF出力用の元PDFが、準備時に検証したファイルと一致しません。元PDFを開き直して再試行してください。");
-            await stateWriter.WriteAsync(new ExportWorkerState("project-opened"), cancellationToken);
-            await stateWriter.WriteAsync(new ExportWorkerState("exporting"), cancellationToken);
+            await stateWriter.TryWriteProgressAsync(new ExportWorkerState("project-opened"), cancellationToken);
+            await stateWriter.TryWriteProgressAsync(new ExportWorkerState("exporting"), cancellationToken);
             var progress = new WorkerProgressReporter(stateWriter);
             var result = await new PdfExportService().ExportAsync(
                 sourcePdfPath,
@@ -251,9 +242,11 @@ internal sealed class IsolatedPdfExportService(
                     new ExportWorkerState("failed", Error: exception.ToString()),
                     CancellationToken.None);
             }
-            catch
+            catch (Exception stateException)
             {
-                // 元の出力例外を優先します。状態ファイルを書けない場合も終了コードで親へ通知します。
+                // 状態ファイル自体を書けない場合も、元のエラーを制限付きstderrへ伝えます。
+                try { await Console.Error.WriteLineAsync(exception + "\n状態通知にも失敗しました。\n" + stateException); }
+                catch { /* 終了コードによる失敗通知は維持します。 */ }
             }
             return -1;
         }
@@ -267,23 +260,29 @@ internal sealed class IsolatedPdfExportService(
             ?? throw new InvalidOperationException("PDF Correctorium の実行ファイルを特定できませんでした。");
     }
 
-    private static async Task<ExportWorkerState?> ReadStateAsync(string path, CancellationToken cancellationToken)
+    private static async Task<ExportWorkerState?> ReadStateAsync(WindowsSandboxProcess sandbox, string path, CancellationToken cancellationToken)
     {
         if (!File.Exists(path)) return null;
-        await using var stream = File.OpenRead(path);
-        return await JsonSerializer.DeserializeAsync<ExportWorkerState>(stream, JsonOptions, cancellationToken);
+        using var snapshot = new MemoryStream();
+        // Release the verified file handle before JSON parsing, minimizing the
+        // Windows rename-conflict window. Sharing denies in-place writes, and the
+        // checked file's size is at most 4 MiB, so this copy remains bounded.
+        await using (var stream = sandbox.OpenStateOutput(path, 4 * 1024 * 1024))
+            await stream.CopyToAsync(snapshot, cancellationToken);
+        snapshot.Position = 0;
+        return await JsonSerializer.DeserializeAsync<ExportWorkerState>(snapshot, JsonOptions, cancellationToken);
     }
 
     /// <summary>
     /// ワーカーが状態ファイルを置換している最中でも、親プロセスの監視を失敗させずに読み込みます。
     /// </summary>
-    private static async Task<ExportWorkerState?> TryReadStateAsync(
-        string path,
+    internal static async Task<ExportWorkerState?> TryReadStateAsync(
+        WindowsSandboxProcess sandbox, string path,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await ReadStateAsync(path, cancellationToken);
+            return await ReadStateAsync(sandbox, path, cancellationToken);
         }
         catch (IOException)
         {
@@ -309,6 +308,7 @@ internal sealed class IsolatedPdfExportService(
         "saving" => "一時PDFの保存中",
         "redacting" => "文字選択の墨消し確定中",
         "calibrating" => "文字位置の校正中",
+        "readings" => "読み方情報の保存中",
         "spacing" => "文字送りの反映中",
         "compacting" => "PDFの圧縮中",
         "bookmarks" => "しおりの反映中",
@@ -368,11 +368,22 @@ internal sealed class IsolatedPdfExportService(
     }
 
     /// <summary>進捗と完了通知を直列化し、一意な一時ファイルから原子的に公開します。</summary>
-    private sealed class ExportWorkerStateWriter(string statePath)
+    internal sealed class ExportWorkerStateWriter(string statePath)
     {
         private readonly SemaphoreSlim _gate = new(1, 1);
 
-        public async Task WriteAsync(ExportWorkerState state, CancellationToken cancellationToken)
+        public Task WriteAsync(ExportWorkerState state, CancellationToken cancellationToken) =>
+            WriteCoreAsync(state, TimeSpan.FromSeconds(5), cancellationToken);
+
+        internal async Task<bool> TryWriteProgressAsync(ExportWorkerState state, CancellationToken cancellationToken)
+        {
+            if (state.Result is not null || state.Phase is "completed" or "failed")
+                throw new ArgumentException("Final export states require mandatory publication.", nameof(state));
+            try { await WriteCoreAsync(state, TimeSpan.FromMilliseconds(250), cancellationToken); return true; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+        }
+
+        private async Task WriteCoreAsync(ExportWorkerState state, TimeSpan retryLimit, CancellationToken cancellationToken)
         {
             await _gate.WaitAsync(cancellationToken);
             var fullPath = Path.GetFullPath(statePath);
@@ -391,7 +402,20 @@ internal sealed class IsolatedPdfExportService(
                     await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
                     await stream.FlushAsync(cancellationToken);
                 }
-                File.Move(temporaryPath, fullPath, overwrite: true);
+                // Windows overwrite-move can reject a destination held by the
+                // parent's short-lived reader. Retry only access/sharing conflicts,
+                // with a deadline and cancellation; never delete/write in place,
+                // relax ACLs, or change AppContainer privileges to publish state.
+                var wait = Stopwatch.StartNew();
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try { File.Move(temporaryPath, fullPath, overwrite: true); break; }
+                    catch (Exception error) when (IsStateSharingConflict(error) && wait.Elapsed < retryLimit)
+                    {
+                        await Task.Delay(25, cancellationToken);
+                    }
+                }
             }
             finally
             {
@@ -399,6 +423,10 @@ internal sealed class IsolatedPdfExportService(
                 _gate.Release();
             }
         }
+
+        private static bool IsStateSharingConflict(Exception error) =>
+            error is IOException or UnauthorizedAccessException &&
+            (error.HResult & 0xFFFF) is 5 or 32 or 33;
     }
 
     /// <summary>PDF出力サービスの進捗を、親プロセスが監視する状態ファイルへ直ちに反映します。</summary>
@@ -408,7 +436,7 @@ internal sealed class IsolatedPdfExportService(
         {
             try
             {
-                stateWriter.WriteAsync(
+                stateWriter.TryWriteProgressAsync(
                         new ExportWorkerState(
                             value.Phase,
                             Current: value.Current,
@@ -425,7 +453,7 @@ internal sealed class IsolatedPdfExportService(
         }
     }
 
-    private sealed record ExportWorkerState(
+    internal sealed record ExportWorkerState(
         string Phase,
         PdfExportResult? Result = null,
         string? Error = null,

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows7.0</TargetFramework>
-    <TargetPlatformMoniker>Windows,Version=7.0</TargetPlatformMoniker>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.19041.57</WindowsSdkPackageVersion>
     <TargetPlatformDisplayName>Windows</TargetPlatformDisplayName>
     <TargetPlatformSdkPath>$(MSBuildProgramFiles32)\Windows Kits\10\</TargetPlatformSdkPath>
     <PlatformTarget>x64</PlatformTarget>
@@ -14,4 +14,10 @@
     <ProjectReference Include="..\..\src\PdfCorrectorium.App\PdfCorrectorium.App.csproj" />
     <ProjectReference Include="..\..\src\PdfCorrectorium.ProjectFormat\PdfCorrectorium.ProjectFormat.csproj" />
   </ItemGroup>
+  <Target Name="PinWindowsSdkProjectionVersion" BeforeTargets="ProcessFrameworkReferences">
+    <ItemGroup>
+      <FrameworkReference Include="Microsoft.Windows.SDK.NET.Ref" RuntimeFrameworkVersion="$(WindowsSdkPackageVersion)"
+                          IsImplicitlyDefined="true" Pack="false" PrivateAssets="All" />
+    </ItemGroup>
+  </Target>
 </Project>

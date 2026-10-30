@@ -4,7 +4,9 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using PdfCorrectorium.Core.Documents;
+using PdfCorrectorium.Core.Analysis;
 using PdfCorrectorium.Core.Geometry;
+using PdfCorrectorium.Core.IO;
 
 namespace PdfCorrectorium.ProjectFormat;
 
@@ -32,6 +34,8 @@ public sealed class ProjectPackageService
     /// <summary>信頼できないプロジェクトの展開量を制限する読込ポリシーです。</summary>
     public ProjectPackageLimits Limits { get; init; } = new();
     /// <summary>列挙値を可読な文字列で保存する共通JSON設定です。</summary>
+    private readonly HashSet<string> _selectedSourcePaths = new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -49,7 +53,7 @@ public sealed class ProjectPackageService
 
         await using var stream = file.OpenRead();
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
-        return new SourcePdfReference
+        var source = new SourcePdfReference
         {
             FileName = file.Name,
             RelativePath = projectDirectory is null ? file.Name : Path.GetRelativePath(projectDirectory, file.FullName),
@@ -57,6 +61,14 @@ public sealed class ProjectPackageService
             Sha256 = Convert.ToHexString(hash).ToLowerInvariant(),
             FileSize = file.Length,
         };
+        // This API reads an explicitly supplied PDF, rather than a path from a
+        // package. Preserve that selection when later embedding the same file.
+        try { SourcePdfPathPolicy.EnsureAutomaticAccessAllowed(file.FullName); }
+        catch (SourcePdfSelectionRequiredException)
+        {
+            AuthorizeSelectedSource(source, file.FullName);
+        }
+        return source;
     }
 
     /// <summary>
@@ -165,10 +177,13 @@ public sealed class ProjectPackageService
                     LastSavedAtUtc = now,
                     SourcePdf = sourceForSave,
                     PdfStorageMode = storageMode,
-                    PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount),
+                    PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount, Limits.MaximumPageCount, cancellationToken),
                 };
                 await WriteJsonAsync(archive, "manifest.json", manifest, cancellationToken);
                 await WriteJsonAsync(archive, "project.json", projectForSave, cancellationToken);
+                if (project.OcrWordCountsCache is { } cache && IsWordCacheValid(cache) &&
+                    cache.Stamp == await Task.Run(() => OcrLexiconPolicy.GetCacheStamp(projectForSave), cancellationToken).ConfigureAwait(false))
+                    await WriteJsonAsync(archive, "cache/ocr-word-counts.json", cache, cancellationToken);
 
                 if (embedSourcePdf)
                 {
@@ -294,6 +309,7 @@ public sealed class ProjectPackageService
         await using var file = File.OpenRead(projectPath);
         using var archive = new ZipArchive(file, ZipArchiveMode.Read);
         EnsureArchiveWithinLimits(archive);
+        long thumbnailBytesRead = 0;
         foreach (var entry in archive.Entries.Where(x =>
                      x.FullName.StartsWith("thumbnails/page-", StringComparison.OrdinalIgnoreCase) &&
                      x.FullName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
@@ -307,9 +323,11 @@ public sealed class ProjectPackageService
             // A cached thumbnail must stay small enough that a damaged project cannot exhaust memory.
             if (entry.Length <= 0 || entry.Length > Limits.MaximumThumbnailEntryBytes)
                 continue;
-            await using var input = entry.Open();
+            await using var input = new BoundedReadStream(entry.Open(),
+                Math.Min(Limits.MaximumThumbnailEntryBytes, Limits.MaximumTotalThumbnailBytes - thumbnailBytesRead), entry.Length);
             using var buffer = new MemoryStream((int)entry.Length);
             await input.CopyToAsync(buffer, cancellationToken);
+            thumbnailBytesRead = checked(thumbnailBytesRead + input.BytesRead);
             result[pageNumber] = buffer.ToArray();
         }
 
@@ -331,12 +349,37 @@ public sealed class ProjectPackageService
         var project = await ReadJsonAsync<PdfCorrectoriumProject>(archive, "project.json", cancellationToken);
         EnsureSourceReferenceIsSafe(project.SourcePdf);
         project = NormalizeStorageMode(project, manifest.FormatVersion);
+        var modelIssues = new List<ProjectValidationIssue>();
+        try { ValidateProjectExtensions(project, modelIssues); }
+        catch (Exception ex) when (ex is ArgumentException or NullReferenceException)
+        { throw new InvalidDataException("The project contains invalid or duplicate model values.", ex); }
+        if (modelIssues.Any(issue => issue.IsError))
+            throw new InvalidDataException(string.Join(" ", modelIssues.Where(issue => issue.IsError).Take(8).Select(issue => issue.Message)));
         var sourcePageCount = project.SourcePdf.PageCount ?? project.Pages.Select(page => page.PageNumber).DefaultIfEmpty(0).Max();
-        return project with
+        project = project with
         {
-            PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount),
+            PageSequence = ProjectPageSequence.Normalize(project.PageSequence, project.Pages, sourcePageCount, Limits.MaximumPageCount, cancellationToken),
         };
+        if (archive.GetEntry("cache/ocr-word-counts.json") is { Length: > 0 and <= 4_000_000 })
+        {
+            try
+            {
+                var cache = await ReadJsonAsync<OcrWordCountsCache>(archive, "cache/ocr-word-counts.json", cancellationToken);
+                if (IsWordCacheValid(cache) && cache.Stamp == await Task.Run(() => OcrLexiconPolicy.GetCacheStamp(project), cancellationToken).ConfigureAwait(false))
+                    project = project with { OcrWordCountsCache = cache };
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidDataException or ArgumentException or NullReferenceException)
+            { /* A bounded, optional cache is disposable; authoritative dictionary errors are not. */ }
+        }
+        return project;
     }
+
+    private static bool IsWordCacheValid(OcrWordCountsCache cache) =>
+        cache.AlgorithmVersion == OcrWordCountsCache.CurrentAlgorithmVersion && cache.Stamp is { Length: 64 } &&
+        cache.Stamp.All(Uri.IsHexDigit) && cache.Words is { Count: <= 25000 } &&
+        cache.Words.All(w => w is not null && w.Count > 0 && OcrLexiconPolicy.IsLatinTerm(w.Word)) &&
+        cache.Words.Select(w => w.Word).Distinct(StringComparer.Ordinal).Count() == cache.Words.Count &&
+        cache.Words.Sum(w => (long)w.Count) <= 750000;
 
     /// <summary>外部参照PDFのサイズとSHA-256がプロジェクト記録と一致するか確認します。</summary>
     public async Task<bool> VerifySourceAsync(SourcePdfReference source, string projectDirectory, CancellationToken cancellationToken = default)
@@ -345,7 +388,7 @@ public sealed class ProjectPackageService
         EnsureSourceReferenceIsSafe(source);
         string sourcePath;
         try { sourcePath = ResolveExternalSourcePath(source, projectDirectory); }
-        catch (FileNotFoundException) { return false; }
+        catch (IOException ex) when (ex is FileNotFoundException or SourcePdfSelectionRequiredException) { return false; }
         var info = new FileInfo(sourcePath);
         if (info.Length != source.FileSize) return false;
         await using var stream = info.OpenRead();
@@ -391,13 +434,16 @@ public sealed class ProjectPackageService
             throw new InvalidDataException("選択したPDFのSHA-256がプロジェクトに記録された元PDFと一致しません。別のPDFへ編集内容を適用することはできません。");
 
         var relativePath = Path.GetRelativePath(Path.GetFullPath(projectDirectory), fullPath);
-        if (!IsSafeRelativeSourcePath(relativePath, allowParentSegments: true))
-            throw new InvalidOperationException("この場所から元PDFへの安全な相対パスを作れません。プロジェクトと元PDFを同じドライブに置いてください。");
+        // Cross-root selections cannot be persisted as a relative path. Keep only a
+        // file-name hint on disk; the explicitly chosen path is trusted for this session.
+        var needsSessionHint = !IsSafeRelativeSourcePath(relativePath, allowParentSegments: true);
+        if (needsSessionHint) relativePath = file.Name;
+        AuthorizeSelectedSource(source, fullPath);
         return source with
         {
             FileName = file.Name,
             RelativePath = relativePath,
-            AbsolutePathHint = null,
+            AbsolutePathHint = needsSessionHint ? fullPath : null,
         };
     }
 
@@ -464,7 +510,7 @@ public sealed class ProjectPackageService
     }
 
     private static bool UsesCanonicalProjectEntry(string version) =>
-        version is "1.4" or "1.5" or "1.6" or "1.7" or "1.8" or ProjectManifest.CurrentVersion;
+        version is "1.4" or "1.5" or "1.6" or "1.7" or "1.8" or "1.9" or "1.10" or "1.11" or "1.12" or "1.13" or ProjectManifest.CurrentVersion;
 
     private static bool UsesExplicitStorageMode(string version) =>
         version is "1.2" or "1.3" || UsesCanonicalProjectEntry(version);
@@ -512,7 +558,7 @@ public sealed class ProjectPackageService
                     ?? throw new InvalidDataException("The embedded source PDF is missing from the project.");
                 if (source.FileSize < 0 || source.FileSize > Limits.MaximumEmbeddedPdfBytes || entry.Length != source.FileSize)
                     throw new InvalidDataException("The embedded source PDF size does not match the validated project reference.");
-                await using var input = entry.Open();
+                await using var input = new BoundedReadStream(entry.Open(), Limits.MaximumEmbeddedPdfBytes, source.FileSize);
                 await using var output = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
                 await CopyWithLimitAsync(input, output, Limits.MaximumEmbeddedPdfBytes, cancellationToken);
             }
@@ -560,6 +606,8 @@ public sealed class ProjectPackageService
                 var source = legacySourceEntry is null
                     ? project.SourcePdf
                     : await ReadJsonAsync<SourcePdfReference>(archive, "source/source-reference.json", cancellationToken);
+                ProjectPageSequence.ValidatePageBudget(project.PageSequence, project.Pages,
+                    source.PageCount ?? project.Pages.Select(page => page.PageNumber).DefaultIfEmpty(0).Max(), Limits.MaximumPageCount);
                 if (manifest.ProjectId != project.ProjectId) issues.Add(new("projectId.mismatch", "Manifest and project IDs differ.", true));
                 if (legacySourceEntry is not null && source != project.SourcePdf) issues.Add(new("sourceReference.mismatch", "The project and source reference entries differ.", true));
                 try { EnsureSourceReferenceIsSafe(source); }
@@ -596,6 +644,8 @@ public sealed class ProjectPackageService
         }
         catch (InvalidDataException ex) { issues.Add(new("zip.invalid", ex.Message, true)); }
         catch (JsonException ex) { issues.Add(new("json.invalid", ex.Message, true)); }
+        catch (Exception ex) when (ex is ArgumentException or NullReferenceException)
+        { issues.Add(new("model.invalid", "The project contains invalid, null or duplicate model values.", true)); }
         catch (OverflowException ex) { issues.Add(new("size.invalid", ex.Message, true)); }
         catch (IOException ex) { issues.Add(new("io.error", ex.Message, true)); }
         return new(issues);
@@ -614,8 +664,30 @@ public sealed class ProjectPackageService
         var entry = archive.GetEntry(name) ?? throw new InvalidDataException($"Missing entry: {name}");
         if (entry.Length <= 0 || entry.Length > Limits.MaximumJsonEntryBytes)
             throw new InvalidDataException($"JSON entry exceeds the allowed size: {name}");
-        await using var stream = entry.Open();
-        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken)
+        var budget = new JsonInputBudget
+        {
+            MaximumTokens = Limits.MaximumJsonTokens, MaximumObjects = Limits.MaximumJsonObjects,
+            MaximumArrayItems = Limits.MaximumJsonArrayItems, MaximumStringCharacters = Limits.MaximumOcrTextCharacters,
+            MaximumTotalStringCharacters = Limits.MaximumTotalJsonStringCharacters,
+            StringLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            { ["knownTerms"] = 256, ["ignoredTerms"] = 256, ["source"] = 256, ["target"] = 256, ["word"] = 256, ["stamp"] = 64 },
+            ArrayLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["pages"] = Limits.MaximumPageCount, ["pageSequence"] = Limits.MaximumPageCount,
+                ["knownTerms"] = 2000, ["ignoredTerms"] = 2000, ["rules"] = 2000, ["words"] = 25000,
+                ["textRegions"] = Limits.MaximumOcrRegionsPerPage, ["readingOrder"] = Limits.MaximumOcrRegionsPerPage,
+                ["characterAdvances"] = Limits.MaximumOcrTextCharacters, ["characterLocks"] = Limits.MaximumOcrTextCharacters,
+                ["comments"] = Limits.MaximumCommentCount, ["tags"] = Limits.MaximumTagCount,
+                ["internalLinks"] = Limits.MaximumInternalLinkCount, ["redactions"] = Limits.MaximumRedactionCount,
+                ["textDecorations"] = Limits.MaximumTextDecorationCount, ["pathPoints"] = Limits.MaximumRedactionPathPoints,
+            },
+            AggregateArrayLimits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            { ["textRegions"] = Limits.MaximumOcrRegionCount, ["bookmarks"] = Limits.MaximumBookmarkCount, ["children"] = Limits.MaximumBookmarkCount },
+        };
+        await using (var scan = new BoundedReadStream(entry.Open(), Limits.MaximumJsonEntryBytes, entry.Length))
+            await Task.Run(() => budget.ValidateAsync(scan, cancellationToken), cancellationToken).ConfigureAwait(false);
+        await using var stream = new BoundedReadStream(entry.Open(), Limits.MaximumJsonEntryBytes, entry.Length);
+        return await Task.Run(async () => await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidDataException($"Empty JSON entry: {name}");
     }
 
@@ -679,7 +751,9 @@ public sealed class ProjectPackageService
 
     private void ValidateLimits()
     {
-        if (Limits.MaximumArchiveBytes <= 0 || Limits.MaximumEntryCount <= 0 ||
+        if (Limits.MaximumJsonTokens <= 0 || Limits.MaximumJsonObjects <= 0 || Limits.MaximumJsonArrayItems <= 0 ||
+            Limits.MaximumOcrRegionsPerPage <= 0 || Limits.MaximumOcrRegionCount <= 0 || Limits.MaximumOcrTextCharacters <= 0 ||
+            Limits.MaximumTotalJsonStringCharacters <= 0 || Limits.MaximumBookmarkCount <= 0 || Limits.MaximumPageCount <= 0 || Limits.MaximumArchiveBytes <= 0 || Limits.MaximumEntryCount <= 0 ||
             Limits.MaximumJsonEntryBytes <= 0 || Limits.MaximumThumbnailCount <= 0 ||
             Limits.MaximumThumbnailEntryBytes <= 0 || Limits.MaximumTotalThumbnailBytes <= 0 ||
             Limits.MaximumEmbeddedPdfBytes <= 0 || Limits.MaximumTotalUncompressedBytes <= 0 ||
@@ -705,6 +779,40 @@ public sealed class ProjectPackageService
 
     private void ValidateProjectExtensions(PdfCorrectoriumProject project, List<ProjectValidationIssue> issues)
     {
+        OcrLexiconPolicy.Validate(project.OcrLexicon);
+        if (!WordReadingRules.IsValidShared(project.WordReadings))
+            throw new InvalidDataException("The project contains invalid or excessive shared word readings.");
+        if (project.SourcePdf is null || project.ViewerSettings is null || project.Pages is null || project.PageSequence is null ||
+            project.Bookmarks is null || project.Comments is null || project.Tags is null || project.InternalLinks is null ||
+            project.TextDecorations is null || project.Redactions is null)
+            throw new InvalidDataException("The project contains null required collections or settings.");
+        var pendingBookmarks = new Stack<(PdfBookmark Bookmark, int Depth)>(project.Bookmarks.Select(item => (item, 1)));
+        var bookmarkCount = 0;
+        while (pendingBookmarks.TryPop(out var bookmark))
+        {
+            if (++bookmarkCount > Limits.MaximumBookmarkCount || bookmark.Depth > 64 || bookmark.Bookmark is null ||
+                bookmark.Bookmark.Children is null || bookmark.Bookmark.Title is null || bookmark.Bookmark.Title.Length > Limits.MaximumOcrTextCharacters)
+                throw new InvalidDataException("The project contains invalid or excessive bookmarks.");
+            foreach (var child in bookmark.Bookmark.Children) pendingBookmarks.Push((child, bookmark.Depth + 1));
+        }
+        if (!SafeFileName.IsValid(project.Name))
+            issues.Add(new("project.name", "The project name must be a simple valid filename.", true));
+        foreach (var page in project.Pages)
+        {
+            if (page is null || page.TextRegions is null || page.ReadingOrder is null || page.RubyRegions is null ||
+                page.RubyRegions.Any(item => item is null || item.Output is null || item.VisibleText is null))
+                throw new InvalidDataException("The project contains invalid OCR page values.");
+            if (page.TextRegions.Count > Limits.MaximumOcrRegionsPerPage)
+                issues.Add(new("regions.limit", "The page contains too many OCR regions.", true));
+            foreach (var region in page.TextRegions)
+                if (region is null || region.OriginalText is null || region.EditedText is null || region.Output is null ||
+                    region.WordReadings is null || region.WordReadings.Any(item => item is null || item.SurfaceText is null || item.ReadingText is null) ||
+                    region.OriginalGeometry is null || region.EditedGeometry is null ||
+                    region.OriginalGeometry.CharacterAdvances is null || region.OriginalGeometry.CharacterLocks is null ||
+                    region.EditedGeometry.CharacterAdvances is null || region.EditedGeometry.CharacterLocks is null ||
+                    region.OriginalGeometry.Validate().Count != 0 || region.EditedGeometry.Validate().Count != 0)
+                    issues.Add(new("regions.geometry", "An OCR region has invalid geometry.", true));
+        }
         if (project.Comments.Count > Limits.MaximumCommentCount)
             issues.Add(new("comments.limit", "The project contains too many comments.", true));
         if (project.Tags.Count > Limits.MaximumTagCount)
@@ -1012,9 +1120,11 @@ public sealed class ProjectPackageService
 
     private static void EnsureSourceReferenceIsSafe(SourcePdfReference source)
     {
+        if (source is null || !SafeFileName.IsValid(source.FileName))
+            throw new InvalidDataException("The source PDF filename must be a simple valid filename.");
         if (source.FileSize < 0)
             throw new InvalidDataException("The source PDF size is invalid.");
-        if (source.Sha256.Length != 64 || source.Sha256.Any(character => !Uri.IsHexDigit(character)))
+        if (source.Sha256 is null || source.Sha256.Length != 64 || source.Sha256.Any(character => !Uri.IsHexDigit(character)))
             throw new InvalidDataException("The source PDF SHA-256 value must contain exactly 64 hexadecimal characters.");
     }
 
@@ -1029,17 +1139,43 @@ public sealed class ProjectPackageService
         return string.Equals(Convert.ToHexString(hash), source.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>プロジェクト基準の相対パスを優先し、利用できない場合だけ旧形式の絶対パスを試します。</summary>
-    private static string ResolveExternalSourcePath(SourcePdfReference source, string projectDirectory)
+    private static string SourceKey(SourcePdfReference source, string fullPath) =>
+        $"{source.Sha256}:{source.FileSize}:{fullPath}";
+
+    private void AuthorizeSelectedSource(SourcePdfReference source, string fullPath)
     {
+        lock (_selectedSourcePaths) _selectedSourcePaths.Add(SourceKey(source, fullPath));
+    }
+
+    private bool IsSelectedSource(SourcePdfReference source, string fullPath)
+    {
+        lock (_selectedSourcePaths) return _selectedSourcePaths.Contains(SourceKey(source, fullPath));
+    }
+
+    /// <summary>明示選択を優先し、未選択の参照はアクセス先を検査してから解決します。</summary>
+    private string ResolveExternalSourcePath(SourcePdfReference source, string projectDirectory)
+    {
+        // Prefer only this reference's explicitly selected hint. Approval for the
+        // same bytes at another path must not redirect an unrelated project.
+        if (!string.IsNullOrWhiteSpace(source.AbsolutePathHint))
+        {
+            var hinted = Path.GetFullPath(source.AbsolutePathHint);
+            if (IsSelectedSource(source, hinted) && File.Exists(hinted)) return hinted;
+        }
         if (!string.IsNullOrWhiteSpace(source.RelativePath))
         {
             if (!IsSafeRelativeSourcePath(source.RelativePath, allowParentSegments: true))
                 throw new InvalidDataException("The source PDF path is not a normalized relative path.");
             var relative = Path.GetFullPath(Path.Combine(projectDirectory, source.RelativePath));
+            if (!IsSelectedSource(source, relative)) SourcePdfPathPolicy.EnsureAutomaticAccessAllowed(relative);
             if (File.Exists(relative)) return relative;
         }
-        if (!string.IsNullOrWhiteSpace(source.AbsolutePathHint) && File.Exists(source.AbsolutePathHint)) return source.AbsolutePathHint;
+        if (!string.IsNullOrWhiteSpace(source.AbsolutePathHint))
+        {
+            var hinted = Path.GetFullPath(source.AbsolutePathHint);
+            if (!IsSelectedSource(source, hinted)) SourcePdfPathPolicy.EnsureAutomaticAccessAllowed(hinted);
+            if (File.Exists(hinted)) return hinted;
+        }
         throw new FileNotFoundException("The source PDF could not be resolved.", source.FileName);
     }
 }

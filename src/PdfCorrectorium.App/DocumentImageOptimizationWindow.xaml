@@ -1,4 +1,4 @@
-<Window x:Class="PdfCorrectorium.App.DocumentImageOptimizationWindow"
+<Window xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" x:Class="PdfCorrectorium.App.DocumentImageOptimizationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PDF全体の画像最適化"
@@ -14,14 +14,14 @@
 
         <StackPanel>
             <TextBlock Text="PDF全体の画像最適化候補" FontSize="20" FontWeight="SemiBold" />
-            <TextBlock x:Name="DocumentSummaryText" Margin="0,7,0,0" TextWrapping="Wrap" Foreground="#455566" />
+            <TextBlock x:Name="DocumentSummaryText" Margin="0,7,0,0" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryTextBrush}" />
             <TextBlock x:Name="SelectionSummaryText" Margin="0,6,0,0" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,8">
-            <Button Padding="10,4" Margin="0,0,6,0" Click="SelectAllButton_OnClick" Content="すべて選択(_A)" AutomationProperties.AccessKey="Alt+A"/>
-            <Button Padding="10,4" Click="ClearAllButton_OnClick" Content="選択解除(_D)" AutomationProperties.AccessKey="Alt+D"/>
-            <TextBlock Margin="14,5,0,0" Foreground="#52606D"
+<Button icons:ActionIcon.Key="SelectAll" Padding="10,4" Margin="0,0,6,0" Click="SelectAllButton_OnClick" Content="すべて選択(_A)" AutomationProperties.AccessKey="Alt+A"/>
+<Button icons:ActionIcon.Key="Deselect" Padding="10,4" Click="ClearAllButton_OnClick" Content="選択解除(_D)" AutomationProperties.AccessKey="Alt+D"/>
+            <TextBlock Margin="14,5,0,0" Foreground="{DynamicResource SecondaryTextBrush}"
                        Text="空白だけの全面画像はページを残し、画像オブジェクトだけを削除します。" />
         </StackPanel>
 
@@ -41,12 +41,12 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <Grid Grid.Row="3" Margin="0,12,0,0">
+        <Grid x:Name="DialogFooter" Grid.Row="3" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock VerticalAlignment="Center" Foreground="#52606D" TextWrapping="Wrap"
+            <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"
                        Text="一括適用は選択したページをまとめて登録します。順に確認ではページ画像と削減範囲を1ページずつ確認できます。" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0">
                 <Button Width="90" Margin="0,3,8,3" Padding="8,5" IsCancel="True" Content="キャンセル" />

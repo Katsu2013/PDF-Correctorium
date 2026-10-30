@@ -30,7 +30,7 @@ internal static class InputPdfInspectionService
             issues.Add(new("properties.partial", PdfInputIssueSeverity.Warning, "PDF情報の一部を取得できません", properties.ErrorMessage, "構造"));
         if (!properties.SecurityMethodText.Contains("なし", StringComparison.OrdinalIgnoreCase))
             issues.Add(new("security.present", PdfInputIssueSeverity.Critical, "セキュリティ設定があります", $"{properties.SecurityMethodText}。権限設定により編集または出力が制限される場合があります。", "セキュリティ"));
-        var unembedded = properties.Fonts.Where(font => string.Equals(font.EmbeddedText, "いいえ", StringComparison.Ordinal)).Select(font => font.Name).Distinct().Take(8).ToArray();
+        var unembedded = properties.Fonts.Where(font => !font.IsInvisibleOnly && string.Equals(font.EmbeddedText, "いいえ", StringComparison.Ordinal)).Select(font => font.Name).Distinct().Take(8).ToArray();
         if (unembedded.Length > 0)
             issues.Add(new("fonts.not_embedded", PdfInputIssueSeverity.Warning, "埋め込まれていないフォントがあります", string.Join("、", unembedded) + "。表示環境によって外観が変わる可能性があります。", "フォント"));
 

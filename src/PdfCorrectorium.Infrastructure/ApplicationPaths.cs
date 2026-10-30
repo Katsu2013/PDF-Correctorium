@@ -31,10 +31,12 @@ public static class ApplicationPathResolver
     /// それ以外はAppDataを使用するインストールモードとしてパスを返します。
     /// </summary>
     /// <param name="executableDirectory">実行ファイルが置かれているディレクトリ。</param>
-    public static ApplicationPaths Resolve(string executableDirectory)
+    public static ApplicationPaths Resolve(string executableDirectory, bool? packaged = null)
     {
         var basePath = Path.GetFullPath(executableDirectory);
-        if (File.Exists(Path.Combine(basePath, "portable.marker")))
+        // The portable and MSIX wrappers share a certified payload. A marker in
+        // a read-only package must never redirect writable data into WindowsApps.
+        if (!(packaged ?? ApplicationPackageIdentity.IsPackaged) && File.Exists(Path.Combine(basePath, "portable.marker")))
         {
             return new(StorageMode.Portable,
                 Path.Combine(basePath, "config"),

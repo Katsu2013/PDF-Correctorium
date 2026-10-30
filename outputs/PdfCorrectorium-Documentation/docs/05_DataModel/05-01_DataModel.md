@@ -1,6 +1,52 @@
 # 05-01 データモデル
 
-## dev.200のリンクモデル（現行）
+<!-- CURRENT-RELEASE-SNAPSHOT -->
+## 現行仕様（v1.0.0-dev.274・コミット前確認）
+
+形式1.14／最小読取版dev.262、設定21。資料別OCR辞書（正解語・訂正ルール・無視語）、プロジェクト共通読み方、行ごとの例外、手動段落ID、リンクの幾何固定を保存する。頻度キャッシュは正解の根拠とは別にする。
+
+手動段落はnull=自動、空GUID=行ごと、同じ非空GUID=同一段落。文字・位置・ロックを維持し、Undo／Redoと保存へ反映する。削除済み領域を保持しても、有効なReadingOrderには再挿入しない。OCR訂正辞書と音声の読み方辞書は用途が異なる。
+<!-- END-CURRENT-RELEASE-SNAPSHOT -->
+
+## 共通の読み方（dev.262）
+
+PdfCorrectoriumProject.WordReadingsが共通辞書、OcrTextRegion.WordReadingsが行の例外となる。同じ表記は行優先、候補の重なりは最長優先で、曖昧な重複は勝手に選ばない。共通辞書は最大5,000件、表記・読みは各256文字以内、無効・重複・制御文字を保存前に検証する。共通辞書を既存の文書注釈履歴へ含め、行のUndoと区別して復元する。読み方の画面キャッシュは保存しない。形式1.14／最小読込dev.262へ更新し、設定21は維持する。
+
+## 確認用ルビ（dev.261）
+
+読み方は既存OcrTextRegion.WordReadingsに保存し、既存Undoスナップショットを共用する。ルビの描画座標・画面キャッシュは保存しない。設定21へ任意のShowWordReadingRuby（欠落時true）を追加する。表示切替はプロジェクトを変更せず、プロジェクト1.13／最小読込dev.257を維持する。
+
+## 小数の読み上げ速度（dev.260・設定21）
+
+任意のFineSpeechRateを0.5刻みのdoubleとして保存する。欠落時は従来の整数SpeechRateを使い、保存時にも整数の近似値を残す。EffectiveSpeechRateは計算値で保存しない。非有限値と範囲を正規化し、設定画面・移出入・同時起動のマージに保持する。プロジェクトへは格納しない。[互換性](../../../../docs/Speech-Fractional-Speed.md)。
+
+## 手動段落（dev.257・形式1.13）
+
+OcrTextRegion.ParagraphGroupIdはnullで自動、空GUIDで行ごとの独立指定、同じ非空GUIDで明示段落を示す。自動のnullは保存時に省略する。既存ParentRegionIdは保持し、同じページの連続する行へだけ明示グループを設定する。OverlayRegionSnapshotにも保持し、Undoで一括復元する。文字列・文字送り・幾何・ロック・読む順を変えず、語数キャッシュの全再集計を追加しない。[設計](../../../../docs/Speech-Navigation-And-Paragraphs.md)。
+
+## 資料別OCR辞書（dev.243・プロジェクト形式1.12）
+
+`PdfCorrectoriumProject.OcrLexicon`は正本の`OcrLexicon`。正解語、無視語、安定ID付き`OcrCorrectionRule`（有効・元語・正解・明示自動許可）を保持する。正解語と頻度は別である。`OcrWordCountsCache`はJsonIgnoreの任意データで、パッケージ内の別エントリへ保存する。アプリ設定やPDF出力へ転用しない。
+
+`OcrLexiconIndex`は不変の共通検索索引、`OcrWordAccumulator`はページ／領域ごとに実際に計数済みの寄与を保持する。本文・削除変更だけ寄与を差し替え、位置・回転・固定状態は頻度を変えない。取り消し・やり直しでも非同期世代は戻さない。辞書だけの編集と、文字／配置＋任意登録の複合編集はそれぞれ既存履歴へまとめる。
+
+## 配置保存の追加（dev.213・設定形式20）
+
+`ApplicationSettings.WorkspaceLayoutXml`および`WorkspacePreset.WorkspaceLayoutXml`は任意のネイティブAvalonDock配置。アプリ全体のタブ・分割・浮動座標・非表示状態を保持し、プロジェクトには格納しない。上限65,536文字、200要素、既知9個の重複しないContentId（navigation／bookmarks／properties／link-properties／redaction-properties／comment-properties／main-toolbar／page-toolbar／editor）を必須とし、非有限・過大な寸法やDTDを拒否する。旧設定はnullで移行し、既存の左右・幅・浮動情報を利用する。プロジェクト形式1.11／最低読込版dev.206は変更しない。
+
+## 当時のモデルの差分（dev.208／形式1.11）
+
+`PdfInternalLink.IsGeometryLocked`は幾何と削除の保護状態である。ロック中は移動・リサイズ・整列・削除を拒否し、移動先や説明の変更は許可する。OCR領域に関連付いたリンクも、ロック中はOCR編集からの枠自動更新を停止する。解除後の追従と元注釈置換は従来の識別情報を使う。保護状態はUndo/Redoと保存・再読込に含む。
+
+`PdfCorrectoriumProject.EditingMode`は任意の`ProjectEditingMode`（OCR編集／読み順／校正・確認／墨消し／リンク編集）。nullの旧プロジェクトは`ApplicationSettings.DefaultEditingMode`へ従う。通常保存で現在モードを記録し、モードだけの変更は編集内容の未保存フラグを立てない。`EditorViewState`は単一／見開き・スクロール・表紙・綴じ方向の状態で、別に管理する。
+
+`ApplicationSettings.HiddenToolbarItems`は安定した操作IDの非表示リスト、設定形式は19。アプリ共通で、プロジェクトや名前付き配置プリセットのデータではない。説明の表示は`ShowPropertyHelpText`で全5モードに共通適用するが、選択情報・読込状態・警告・入力エラーは隠さない。
+
+`DocumentBatchCandidate`は自動ページリンク／文字検索墨消し／範囲繰り返しの確認用データ。対象ページ、移動先、適用可否、既定チェック状態、プレビュー座標と適用結果モデルを保持する。確定したリンク／墨消しだけを既存配列へ加え、候補・画面画像はプロジェクトへ保存しない。最大10,000候補で、適用は一つのUndo操作とする。
+
+文字装飾は`PdfTextDecoration`の種類、対象範囲、テンプレート、番号補正、通常位置、任意の偶数ページ位置、色・寸法・不透明度・余白で保持する。日本語フォントは同梱Noto Sans JPを使用する。コメント・タグ、論理ページ列、リンク識別、輪郭墨消しの既存モデルは維持する。[形式仕様](../08_ProjectFormat/08-01_ProjectFormat.md)と[現行索引](../00_Project/00-04_CurrentImplementation.md)を参照。
+
+## dev.200で追加したリンクモデル（現行にも維持）
 
 - `PdfInternalLink.SourceBounds`は元PDFの未回転座標での外接矩形、`SourceAreas`は行／列ごとの独立したクリック矩形です。表示時だけ回転とCropBox原点を変換します。
 - `SourceAnnotations`は元注釈の参照、元矩形、任意の`/NM`識別名を保持します。元のオブジェクト番号はPDF再保存で変化し得るため、置換時は一意な矩形／名前の照合が必要です。
@@ -9,7 +55,7 @@
 - 複数矩形のPDF出力には標準Link注釈を用い、`/NM=pdfcorrectorium-link-<ID>-<index>`で再取り込み時に一つのリンクへまとめます。
 - ページIDの解決は論理ページ列に依存し、OCRの遅延読込状態には依存しません。元のPDFと編集プロジェクトは非破壊です。
 
-以下のdev.152等の節は当時の履歴です。既存PDFリンクの取り込み・編集は現在実装済みです。
+以下のdev.152等の節は当時の履歴です。既存PDFリンクの取り込み・編集、限定的な行末ページ番号候補化、編集モード保存は現在実装済みです。古い節の「含まない／保存しない」を現行の制限として使わない。
 
 
 ## dev.163の輪郭付き墨消しモデル
@@ -30,7 +76,7 @@
 
 コメント／タグ／リンク／墨消し指定の編集は実行中のUndo/Redoへ入る。永続的な監査履歴、共同編集者管理、既存PDFリンクの取り込み、ページ番号の文字列自動認識は含まない。
 
-## 現行実装上の制約（2026-08-30 / dev.123）
+## dev.123当時の実装制約（2026-08-30、後続改訂あり）
 
 以下にはVersion 1.0の目標モデルを含む。領域レビュー状態と対象別コメント／タグは実装済みだが、階層別状態集計、監査履歴・ルビ関連付けUI等は未実装である。校正のモードと対象フィルターは一時的なUI状態であり、領域のレビュー状態とは別に扱い、プロジェクトには保存しない。
 

@@ -1,28 +1,22 @@
 # qpdf runtime
 
-PdfOcrEditor uses qpdf to remove PDF objects that became unreachable after an
-image was cropped. This final compaction step is required for page-image
-optimization to reduce the actual PDF file size while preserving document
-metadata, bookmarks, viewer preferences, and other catalog information.
-
-Expected runtime layout:
+PDF Correctorium bundles the official Windows x64 MSVC build of qpdf 12.4.2.
+It reads and edits PDF structure, links, bookmarks and metadata, checks redaction
+residuals, and compacts generated PDFs. The application explicitly requests JSON
+schema version 2 and runs native processing in its existing restricted sandbox.
 
 ```text
-PdfOcrEditor/
-├─ PdfOcrEditor.exe
-├─ qpdf.exe
-├─ qpdf runtime DLLs
-└─ licenses/
-   └─ qpdf/
-      ├─ LICENSE.txt
-      └─ third-party notices
+PDF Correctorium/
+├─ PdfCorrectorium.exe
+├─ components/qpdf/       # qpdf.exe and all DLLs from the same MSVC64 release
+└─ licenses/qpdf/         # Apache license, copyright and bundled notices
 ```
 
-The source tree stages the official files under `tools/qpdf/bin` and
-`tools/qpdf/licenses`. Publishing places the executables and DLLs beside
-`PdfOcrEditor.exe`. The application also accepts a full executable path through
-the `PDFOCR_QPDF_PATH` environment variable, or `qpdf.exe` available on `PATH`.
+The source files live in tools/qpdf/bin and tools/qpdf/licenses. Update the whole
+runtime set from a verified release, then update DEPENDENCIES.lock.json, notices,
+and run the PDF output/security diagnostics. Do not replace only qpdf.exe.
 
-The portable distribution uses the official 64-bit MSVC build of qpdf. qpdf is
-licensed under Apache License 2.0. Its license and notices must be included with
-the portable package.
+Release builds use bundled executable paths only. PDFOCR_QPDF_PATH and PATH
+fallbacks are available only in Debug builds; they do not override the bundled
+Release runtime. Hashes identify exact files and do not establish freedom from
+known vulnerabilities.

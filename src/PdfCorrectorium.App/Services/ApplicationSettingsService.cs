@@ -44,6 +44,9 @@ public enum ToolbarDockSide { Top, Bottom, Left, Right }
 /// <summary>同じ側に固定した２つのパネルの配置です。</summary>
 public enum WorkspacePaneGroupMode { Tabbed, Stacked }
 
+/// <summary>Application chrome only; never changes PDF pixels or exported colors.</summary>
+public enum ApplicationThemeMode { System, Light, Dark }
+
 /// <summary>
 /// 画面表示、編集補助、履歴、およびショートカットに関する利用者設定です。
 /// </summary>
@@ -53,7 +56,7 @@ public enum WorkspacePaneGroupMode { Tabbed, Stacked }
 /// </remarks>
 public sealed record ApplicationSettings
 {
-    public const int CurrentFormatVersion = 18;
+    public const int CurrentFormatVersion = 21;
     /// <summary>最近開いたファイルの表示件数。0は表示と新規記録を停止します。</summary>
     public int RecentFileLimit { get; init; } = 10;
     /// <summary>設定ファイルの移行判定に使用する形式バージョンです。</summary>
@@ -62,8 +65,19 @@ public sealed record ApplicationSettings
     public IReadOnlyList<WorkspacePreset> WorkspacePresets { get; init; } = [];
     /// <summary>画面表示に使用する言語コードです。</summary>
     public string UiLanguage { get; init; } = LocalizationService.JapaneseLanguage;
+    public ApplicationThemeMode Theme { get; init; } = ApplicationThemeMode.System;
+    public string SpeechVoiceName { get; init; } = string.Empty;
+    public int SpeechRate { get; init; }
+    /// <summary>Fine speed adjustment. The integer property remains a backwards-compatible approximation.</summary>
+    public double? FineSpeechRate { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double EffectiveSpeechRate => FineSpeechRate ?? SpeechRate;
+    public static double NormalizeSpeechRate(double value) => double.IsFinite(value)
+        ? Math.Round(Math.Clamp(value, -5, 5) * 2, MidpointRounding.AwayFromZero) / 2 : 0;
     /// <summary>ツールバーにアイコンだけでなく説明文字も表示するかを指定します。</summary>
     public bool ShowToolbarText { get; init; }
+    public PdfCorrectorium.Core.Documents.ProjectEditingMode DefaultEditingMode { get; init; }
+    public IReadOnlyList<string> HiddenToolbarItems { get; init; } = [];
     /// <summary>ツールバーボタンとアイコンのサイズ基準（DIP）。コンパクト表示ではボタン外周の余白を4DIP詰めます。</summary>
     public double ToolbarButtonSize { get; init; } = 36;
     /// <summary>プロパティ欄に長い操作説明を表示するかを指定します。</summary>
@@ -78,6 +92,8 @@ public sealed record ApplicationSettings
     public WorkspaceDockPosition BookmarkDockPosition { get; init; } = WorkspaceDockPosition.Left;
     public WorkspaceDockPosition PropertiesDockPosition { get; init; } = WorkspaceDockPosition.Right;
     public WorkspacePaneGroupMode PaneGroupMode { get; init; } = WorkspacePaneGroupMode.Tabbed;
+    /// <summary>Native pane hierarchy and floating bounds; contains only stable UI IDs, never document data.</summary>
+    public string? WorkspaceLayoutXml { get; init; }
     public ToolbarDockSide MainToolbarDockSide { get; init; } = ToolbarDockSide.Top;
     public ToolbarDockSide PageToolbarDockSide { get; init; } = ToolbarDockSide.Top;
     public int MainToolbarBand { get; init; }
@@ -106,6 +122,11 @@ public sealed record ApplicationSettings
     public string OcrOverlayColor { get; init; } = "#C40000";
     /// <summary>OCR領域を重ねる塗りの不透明度です。</summary>
     public double OcrOverlayOpacity { get; init; } = 0.22;
+    /// <summary>OCRの枠・塗り・ハンドルだけを表示します。文字と選択判定には影響しません。</summary>
+    public bool ShowOcrFrames { get; init; } = true;
+    public bool ShowWordReadingRuby { get; init; } = true;
+    /// <summary>OCR枠・塗りの描画に掛ける不透明度。文字の不透明度とは独立です。</summary>
+    public double OcrFrameOpacity { get; init; } = 0.45;
     /// <summary>文字編集時に未選択の文字セル境界も表示するかを指定します。</summary>
     public bool ShowUnselectedCharacterCellBorders { get; init; } = true;
     /// <summary>文字編集時の文字セル枠を、画面上に描く基準太さです。</summary>
@@ -164,7 +185,16 @@ public sealed record ApplicationSettings
     /// </summary>
     public ApplicationSettings Normalize() => this with
     {
+        Theme = Enum.IsDefined(Theme) ? Theme : ApplicationThemeMode.System,
+        SpeechVoiceName = (SpeechVoiceName ?? string.Empty).Trim() is { Length: <= 256 } voice ? voice : string.Empty,
+        SpeechRate = FineSpeechRate is { } fine && double.IsFinite(fine)
+            ? (int)Math.Round(NormalizeSpeechRate(fine), MidpointRounding.AwayFromZero) : Math.Clamp(SpeechRate, -5, 5),
+        FineSpeechRate = FineSpeechRate is { } value && double.IsFinite(value) ? NormalizeSpeechRate(value) : null,
         FormatVersion = CurrentFormatVersion,
+        WorkspaceLayoutXml = WorkspaceDockLayout.Normalize(WorkspaceLayoutXml),
+        DefaultEditingMode = Enum.IsDefined(DefaultEditingMode) ? DefaultEditingMode : PdfCorrectorium.Core.Documents.ProjectEditingMode.OcrEditing,
+        HiddenToolbarItems = (HiddenToolbarItems ?? []).Where(id => !string.IsNullOrWhiteSpace(id) && id.Length <= 100)
+            .Distinct(StringComparer.Ordinal).Take(100).ToArray(),
         RecentFileLimit = Math.Clamp(RecentFileLimit, 0, RecentFilesService.MaximumCount),
         // 形式15までの「連続ページ」は単一ページ配置とスクロール方式を兼ねていたため、
         // 形式16で独立した2軸へ無損失で移行します。
@@ -202,6 +232,7 @@ public sealed record ApplicationSettings
         PageThumbnailSize = Math.Clamp(PageThumbnailSize, 72, 220),
         OcrOverlayColor = NormalizeColor(OcrOverlayColor, "#C40000"),
         OcrOverlayOpacity = Math.Clamp(OcrOverlayOpacity, 0.05, 1),
+        OcrFrameOpacity = double.IsFinite(OcrFrameOpacity) ? Math.Clamp(OcrFrameOpacity, 0, 1) : 0.45,
         CharacterCellBorderThickness = Math.Clamp(CharacterCellBorderThickness, 0.25, 2.0),
         CharacterHandleColor = NormalizeColor(CharacterHandleColor, "#F57C00"),
         CharacterHandleThickness = Math.Clamp(CharacterHandleThickness, 2, 10),

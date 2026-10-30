@@ -24,7 +24,7 @@ public sealed record OcrQualitySample(
     public bool IsLocked => IsGeometryLocked || HasLockedCharacters;
 }
 
-/// <summary>同程度の寸法を持つOCR領域群から文字数の外れ値を探す条件です。</summary>
+/// <summary>同方向・近い行の太さで、文字種補正後の密度を比較する条件です。</summary>
 public sealed record OcrCharacterCountAnalysisOptions(
     double SizeTolerancePercent = 15,
     int MinimumPeerCount = 4,
@@ -39,7 +39,7 @@ public enum OcrCharacterCountAnomalyKind
     TooMany,
 }
 
-/// <summary>同程度の寸法を持つ領域群と比べ、文字数だけが外れているOCR領域です。</summary>
+/// <summary>文字種補正後の文字量と枠の縦横比から、文字密度が外れているOCR領域です。</summary>
 public sealed record OcrCharacterCountAnomaly(
     OcrQualitySample Sample,
     OcrCharacterCountAnomalyKind Kind,
@@ -102,52 +102,16 @@ public sealed record OcrKeywordWidthAnalysisResult(
 /// 文書全体のOCR領域を統計的に比較し、文字数または同一語の幅比率が不自然な候補を抽出します。
 /// </summary>
 /// <remarks>
-/// 書字方向と寸法が近い領域だけを比較し、見出し、本文、縦書きが不用意に混ざらないようにします。
+/// 書字方向と行の太さを揃え、全角・半角等を補正した文字量を枠の縦横比で正規化します。
 /// 判定結果は自動修正の確定値ではなく、人が画像と照合するための候補です。
 /// </remarks>
-public sealed class OcrQualityAnalyzer
+public sealed partial class OcrQualityAnalyzer
 {
-    /// <summary>同程度の幅・高さを持つ領域群の中央値から文字数だけ外れた候補を返します。</summary>
-    /// <remarks>
-    /// 書字方向と領域寸法が近い領域だけをピアとし、中央値を期待値に使います。
-    /// そのため、見出しと本文など異なる用途の領域が同じ文書に混在していても、比較対象を不用意に混ぜません。
-    /// </remarks>
+    /// <summary>文字種補正後の密度を同方向・近い太さの行と比較し、安定した基準から外れる候補を返します。</summary>
     public IReadOnlyList<OcrCharacterCountAnomaly> FindCharacterCountAnomalies(
         IReadOnlyList<OcrQualitySample> samples,
-        OcrCharacterCountAnalysisOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(samples);
-        ArgumentNullException.ThrowIfNull(options);
-        var sizeTolerance = Math.Clamp(options.SizeTolerancePercent, 1, 100);
-        var minimumPeerCount = Math.Max(2, options.MinimumPeerCount);
-        var ratioThreshold = Math.Max(1.05, options.CountRatioThreshold);
-        var validSamples = samples.Where(IsValidSample).ToArray();
-        var results = new List<OcrCharacterCountAnomaly>();
-
-        foreach (var sample in validSamples)
-        {
-            var peers = validSamples
-                .Where(candidate => candidate.RegionId != sample.RegionId &&
-                                    candidate.IsVertical == sample.IsVertical &&
-                                    RelativeDifferencePercent(candidate.Width, sample.Width) <= sizeTolerance &&
-                                    RelativeDifferencePercent(candidate.Height, sample.Height) <= sizeTolerance)
-                .ToArray();
-            if (peers.Length < minimumPeerCount) continue;
-
-            var expected = Median(peers.Select(peer => (double)peer.CharacterCount));
-            if (expected <= 0 || Math.Abs(sample.CharacterCount - expected) < 2) continue;
-            var ratio = sample.CharacterCount / expected;
-            if (ratio <= 1d / ratioThreshold)
-                results.Add(new(sample, OcrCharacterCountAnomalyKind.TooFew, expected, peers.Length, ratio));
-            else if (ratio >= ratioThreshold)
-                results.Add(new(sample, OcrCharacterCountAnomalyKind.TooMany, expected, peers.Length, ratio));
-        }
-
-        return results
-            .OrderByDescending(result => Math.Abs(Math.Log(Math.Max(0.0001, result.CountRatio))))
-            .ThenBy(result => result.PageNumber)
-            .ToArray();
-    }
+        OcrCharacterCountAnalysisOptions options,
+        CancellationToken cancellationToken = default) => FindDensityAnomalies(samples, options, cancellationToken);
 
     /// <summary>同じキーワードの出現幅を行の太さで正規化し、中央値から外れた候補を返します。</summary>
     /// <remarks>横書きと縦書きは同じキーワードでも文字送りの基準軸が異なるため、別々の母集団で幅を比較します。</remarks>
@@ -219,9 +183,6 @@ public sealed class OcrQualityAnalyzer
         double.IsFinite(sample.Height) && sample.Height > 0 &&
         double.IsFinite(sample.LineThickness) && sample.LineThickness > 0 &&
         double.IsFinite(sample.WritingExtent) && sample.WritingExtent > 0;
-
-    private static double RelativeDifferencePercent(double left, double right) =>
-        Math.Abs(left - right) / Math.Max(Math.Max(Math.Abs(left), Math.Abs(right)), 0.0001) * 100d;
 
     private static double Median(IEnumerable<double> values)
     {

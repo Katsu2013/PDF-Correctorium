@@ -94,6 +94,10 @@ public partial class App
             Check(vm.HasDocument && vm.CanUsePreview && vm.IsDocumentMetadataLoading && !vm.CanEditDocument,
                 "First-page preview is available before delayed metadata, without enabling premature edits.");
             await LayoutAsync(); Snapshot("00-progressive-loading");
+            Check(!vm.NeedsDocumentLoadingNotice && vm.IsDocumentLoadingProgressVisible &&
+                  ((TextBlock)window.FindName("DocumentLoadingErrorNotice")).Visibility == Visibility.Collapsed &&
+                  ((StatusBarItem)window.FindName("DocumentLoadingStatusItem")).Visibility == Visibility.Visible,
+                "Normal link scanning appears in the status bar, never in the top error notice.");
             Check(await vm.CreateLinkAreaAsync(new Rect(10, 10, 100, 30), 2, null, "premature", null) is null &&
                 vm.ProjectForDiagnostics!.InternalLinks.Count == 0,
                 "Link creation cannot bypass the pending-metadata interaction guard.");
@@ -239,6 +243,10 @@ public partial class App
             catch (InvalidOperationException) { Check(true, "A metadata failure is reported and does not permit an incomplete save."); }
             Check(vm.CanUsePreview && !vm.CanEditDocument && vm.InputPdfIssues.Any(issue => issue.Code == "links.read.failed"),
                 "Import failure keeps the preview usable and shows its reason.");
+            await LayoutAsync();
+            Check(vm.NeedsDocumentLoadingNotice && !vm.IsDocumentLoadingProgressVisible &&
+                  ((TextBlock)window.FindName("DocumentLoadingErrorNotice")).Visibility == Visibility.Visible,
+                "Blocking metadata errors remain prominent rather than being hidden as routine progress.");
             vm.DocumentMetadataScanOverride = null;
             await vm.LoadPdfForDiagnosticsAsync(fixture);
             vm.ActivateLinkEditMode();
@@ -459,6 +467,7 @@ public partial class App
             Check(redactionResult.AppliedRedactions == 1 && redactedProject.InternalLinks.Count == 3,
                 "Redaction link filtering applies only to output, not the editable project.");
 
+            await RunBatchAndPreferenceChecksAsync(window, vm, blank, directory, Check, LayoutAsync, Snapshot);
             File.WriteAllLines(Path.Combine(directory, "checks.txt"), checks);
             _diagnostics?.Write("link-editing-test.passed", $"{checks.Count} checks passed. {directory}");
             Shutdown(0);

@@ -27,7 +27,8 @@ public sealed record PdfExportResult(
     IReadOnlyList<string> Warnings,
     int OptimizedImages = 0,
     int AppliedRedactions = 0,
-    int RedactedPages = 0);
+    int RedactedPages = 0,
+    int SavedReadingRows = 0);
 
 /// <summary>PDF生成ワーカーが通知する処理段階と進捗を表します。</summary>
 /// <param name="Phase">機械判定に使用する処理段階。</param>
@@ -128,7 +129,7 @@ public sealed record PdfImageOptimizationPreviewRegion(
 /// 出力は一時ファイルへ作成してから再読込と検証を行い、合格した場合だけ出力先へ確定します。
 /// 元PDFは直接変更しません。PDFiumオブジェクトの生成・変形・削除は、共通ロック内で行います。
 /// </remarks>
-public sealed class PdfExportService
+public sealed partial class PdfExportService
 {
     // PDFium retains modified page resources until the document is saved and reopened.
     // Periodic compact checkpoints keep native memory bounded for large, image-heavy books.
@@ -588,6 +589,7 @@ public sealed class PdfExportService
             var textSpacingRequests = new List<TextSpacingRequest>();
             var textRedactionRequests = new List<TextRedactionRequest>();
             var outputLinks = project.InternalLinks;
+            var preserveVisibleForReadings = HasPdfReadings(project);
             var modifiedRegions = 0;
             var modifiedPages = 0;
 
@@ -783,7 +785,8 @@ public sealed class PdfExportService
                                 page,
                                 textPage,
                                 pageRedactions,
-                                cancellationToken);
+                                cancellationToken,
+                                preserveVisibleForReadings);
                             NativeMethods.FPDFText_ClosePage(textPage);
                             textPage = IntPtr.Zero;
 
@@ -902,7 +905,8 @@ public sealed class PdfExportService
                 NativeMethods.FPDFFont_Close(decorationFont);
                 decorationFont = IntPtr.Zero;
             }
-            SaveDocument(document, temporaryPath);
+            if (modifiedPages == 0 && ReadingNative.FPDF_GetSecurityHandlerRevision(document) == -1) File.Copy(sourcePath, temporaryPath, true);
+            else SaveDocument(document, temporaryPath);
             NativeMethods.FPDF_CloseDocument(document);
             document = IntPtr.Zero;
             progress?.Report(new PdfExportProgress("redacting", 0, 0, "文字選択の墨消しを元のPDF構造へ確定しています..."));
@@ -912,7 +916,7 @@ public sealed class PdfExportService
                 progress,
                 cancellationToken);
             progress?.Report(new PdfExportProgress("calibrating", 0, 0, "文字位置と選択範囲を校正しています..."));
-            CalibrateSavedDocument(temporaryPath, project, progress, cancellationToken);
+            var readingPlan = CalibrateSavedDocument(temporaryPath, project, progress, cancellationToken);
             progress?.Report(new PdfExportProgress("spacing", 0, 0, "文字送りを出力PDFへ反映しています..."));
             ApplyCharacterSpacing(
                 temporaryPath,
@@ -938,16 +942,21 @@ public sealed class PdfExportService
                     outputLinks,
                     project.Pages,
                     cancellationToken,
-                    project.PageSequence)
+                    project.PageSequence,
+                    removeDocumentStructure: appliedRedactions > 0, pronunciationPlan: readingPlan)
                 .GetAwaiter()
                 .GetResult();
+            if (readingPlan is not null) VerifyReadingOutput(temporaryPath, readingPlan);
+            if (appliedRedactions > 0)
+                warnings.Add(readingPlan is null ? "墨消し情報の残存を防ぐため、文書全体の既存アクセシビリティ構造ツリーを除去しました。本文の範囲外テキストは保持しますが、タグ構造・代替テキストは失われます。" : "墨消し情報の残存を防ぐため既存のタグ構造を除去し、墨消し範囲外の文字と登録済みの読み方で構造を再構築しました。");
             return new PdfExportResult(
                 modifiedRegions,
                 modifiedPages,
                 warnings,
                 optimizedImages,
                 appliedRedactions,
-                redactedPages);
+                redactedPages,
+                readingPlan?.ReadingCount ?? 0);
         }
         finally
         {
@@ -958,12 +967,17 @@ public sealed class PdfExportService
         }
     }
 
-    private static void CalibrateSavedDocument(
+    private static PdfReadingPlan? CalibrateSavedDocument(
         string pdfPath,
         PdfCorrectoriumProject project,
         IProgress<PdfExportProgress>? progress,
         CancellationToken cancellationToken)
     {
+        var includeReadings = HasPdfReadings(project);
+        var redactedPageIds = project.Redactions.Select(item => item.PageId).ToHashSet();
+        var calibrationPages = project.Pages.Where(page => !redactedPageIds.Contains(page.Id) &&
+            page.TextRegions.Any(region => ShouldApplyToPdf(region) && !region.IsDeleted && RequiresPerCharacterObjects(region))).ToArray();
+        if (!includeReadings && calibrationPages.Length == 0) return null;
         var calibratedPath = pdfPath + ".selection-calibrated";
         var utf8Path = Marshal.StringToCoTaskMemUTF8(pdfPath);
         var document = IntPtr.Zero;
@@ -976,14 +990,7 @@ public sealed class PdfExportService
 
             var pageCount = NativeMethods.FPDF_GetPageCount(document);
             var changed = false;
-            var redactedPageIds = project.Redactions.Select(item => item.PageId).ToHashSet();
-            var calibrationPages = project.Pages.Where(page =>
-                    !redactedPageIds.Contains(page.Id) &&
-                    page.TextRegions.Any(region =>
-                        ShouldApplyToPdf(region) &&
-                        !region.IsDeleted &&
-                        RequiresPerCharacterObjects(region)))
-                .ToArray();
+
             var calibratedPages = 0;
             var pagesSinceCheckpoint = 0;
             foreach (var projectPage in calibrationPages)
@@ -1055,11 +1062,18 @@ public sealed class PdfExportService
                 }
             }
 
-            if (!changed) return;
+            PdfReadingPlan? readings = null;
+            if (includeReadings)
+            {
+                readings = CollectPdfReadings(document, project, progress, cancellationToken, out var marked);
+                changed |= marked;
+            }
+            if (!changed) return readings;
             SaveDocument(document, calibratedPath);
             NativeMethods.FPDF_CloseDocument(document);
             document = IntPtr.Zero;
             File.Move(calibratedPath, pdfPath, true);
+            return readings;
         }
         finally
         {
@@ -3150,7 +3164,15 @@ public sealed class PdfExportService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
-                if (preservationPlan.WholeObjects.Contains(pageObject)) continue;
+                if (preservationPlan.WholeObjects.Contains(pageObject))
+                {
+                    // Visible text has already been painted into the replacement
+                    // image. Retain its original text/position only as invisible
+                    // content so outside-range pronunciation stays associated.
+                    if (NativeMethods.FPDFTextObj_SetTextRenderMode(pageObject, 3) == 0)
+                        throw new InvalidDataException("墨消し範囲外の文字を安全な不可視テキストとして保持できませんでした。");
+                    continue;
+                }
                 if (pageObject == IntPtr.Zero || NativeMethods.FPDFPage_RemoveObject(page, pageObject) == 0)
                     throw new InvalidDataException("墨消し対象ページの元オブジェクトを除去できませんでした。");
                 NativeMethods.FPDFPageObj_Destroy(pageObject);
@@ -3199,14 +3221,15 @@ public sealed class PdfExportService
         IntPtr page,
         IntPtr textPage,
         IReadOnlyList<PdfRedaction> redactions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveVisibleText = false)
     {
         var transparentObjects = new HashSet<IntPtr>();
         var objectCount = NativeMethods.FPDFPage_CountObjects(page);
         for (var index = 0; index < objectCount; index++)
         {
             var pageObject = NativeMethods.FPDFPage_GetObject(page, index);
-            if (IsTransparentTextObject(pageObject)) transparentObjects.Add(pageObject);
+            if (IsTransparentTextObject(pageObject) || preserveVisibleText && pageObject != IntPtr.Zero && NativeMethods.FPDFPageObj_GetType(pageObject) == 1) transparentObjects.Add(pageObject);
         }
 
         var charactersByObject = transparentObjects.ToDictionary(
@@ -3529,38 +3552,7 @@ public sealed class PdfExportService
                byte.TryParse(value.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out blue);
     }
 
-    private static string? ResolveQpdfPath()
-    {
-        var configured = Environment.GetEnvironmentVariable("PDFOCR_QPDF_PATH");
-        var candidates = new[]
-        {
-            configured,
-            Path.Combine(AppContext.BaseDirectory, "components", "qpdf", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "tools", "qpdf", "bin", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "qpdf", "bin", "qpdf.exe"),
-            Path.Combine(AppContext.BaseDirectory, "qpdf.exe"),
-        };
-        foreach (var candidate in candidates)
-            if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
-                return Path.GetFullPath(candidate);
-
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path)) return null;
-        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            try
-            {
-                var candidate = Path.Combine(directory.Trim(), "qpdf.exe");
-                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
-            }
-            catch
-            {
-                // Ignore malformed PATH entries.
-            }
-        }
-        return null;
-    }
-
+    private static string? ResolveQpdfPath() => QpdfExecutableResolver.Resolve();
     private static void CompactDocumentWithQpdf(string pdfPath, CancellationToken cancellationToken)
     {
         var qpdfPath = ResolveQpdfPath();

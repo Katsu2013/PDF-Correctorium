@@ -27,6 +27,9 @@ public partial class App
                     .Any(path => !string.Equals(Path.GetFileName(path), ".appstate", StringComparison.OrdinalIgnoreCase)))
                 throw new IOException("Use a new output directory to avoid overwriting test results.");
             Directory.CreateDirectory(directory);
+            window.ShowActivated = false; window.ShowInTaskbar = false;
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -10000; window.Top = -10000;
             window.Show();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
@@ -332,7 +335,10 @@ public partial class App
                     mainToolbar.Parent is not LayoutAnchorablePane mainPane ||
                     !ReferenceEquals(pagePane.Parent, mainPane.Parent) ||
                     pagePane.Parent is not LayoutPanel repeatedBand)
-                    throw new InvalidOperationException($"Toolbar rows could not be restacked in cycle {cycle + 1}.");
+                    throw new InvalidOperationException($"Toolbar rows could not be restacked in cycle {cycle + 1}. " +
+                        $"mainModelCurrent={ReferenceEquals(mainToolbar, window.AvalonMainToolbar)}, pageModelCurrent={ReferenceEquals(pageToolbar, window.AvalonPageToolbar)}, " +
+                        $"pageFloating={pageToolbar.IsFloating}, mainParent={mainToolbar.Parent?.GetType().Name}, pageParent={pageToolbar.Parent?.GetType().Name}, " +
+                        $"mainBand={(mainToolbar.Parent as LayoutAnchorablePane)?.Parent?.GetType().Name}, pageBand={(pageToolbar.Parent as LayoutAnchorablePane)?.Parent?.GetType().Name}");
                 repeatedBand.Orientation = Orientation.Vertical;
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 pageToolbar.Float();

@@ -55,7 +55,7 @@ public sealed record CharacterAdvanceEstimationOptions(
 /// rotated regions, projects foreground contrast onto the writing axis, and chooses the set
 /// of low-energy boundaries that best fits the known number of Unicode text elements.
 /// </summary>
-public static class CharacterAdvanceEstimator
+public static partial class CharacterAdvanceEstimator
 {
     /// <summary>
     /// OCR文字列の文字数とページ画像の濃淡を使い、書字方向に沿う文字送りを推定します。
@@ -97,9 +97,9 @@ public static class CharacterAdvanceEstimator
         if (primaryLength < elementCount * 2 || crossLength < 2)
             throw new InvalidOperationException("文字数に対してOCR領域が小さすぎるため、自動判別できません。");
 
-        var pixels = new byte[checked(bitmap.PixelWidth * bitmap.PixelHeight * 4)];
-        bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
-        var rectified = SampleRectifiedRegion(pixels, bitmap.PixelWidth, bitmap.PixelHeight, region, localWidth, localHeight);
+        var crop = ReadRegionPixels(bitmap, region);
+        var rectified = SampleRectifiedRegion(crop.Pixels, crop.Width, crop.Height,
+            region, localWidth, localHeight, crop.Left, crop.Top);
         var background = EstimateDominantColor(rectified, localWidth, localHeight);
         // projectionは書字方向の各位置に、背景と異なる画素がどれだけ存在するかを集計した配列です。
         var projection = BuildForegroundProjection(rectified, localWidth, localHeight, region.IsVertical, background);
@@ -109,11 +109,19 @@ public static class CharacterAdvanceEstimator
 
         // contentSpanはOCR枠のうち、実際に文字画素が存在すると推定した先頭から末尾までの範囲です。
         var contentSpan = FindContentSpan(normalized, elementCount, crossLength);
+        // A prolonged-sound mark, bracket or comma can be much fainter than the
+        // adjacent full glyph. Global contrast trimming must not discard that
+        // first/last text element as blank space before boundary fitting starts.
+        if (IsLowInkFullWidthGlyph(elements[0])) contentSpan.Start = 0;
+        if (IsLowInkFullWidthGlyph(elements[^1])) contentSpan.End = primaryLength;
         // 小さな端余白は通常の字面にも含まれるため、枠が明確に過大な場合だけ外端を詰めます。
         if (contentSpan.End - contentSpan.Start >= primaryLength * 0.94)
             contentSpan = (0, primaryLength);
         var analysisEnergy = normalized[contentSpan.Start..contentSpan.End];
-        var boundaries = FindBoundaries(analysisEnergy, elements, crossLength, options);
+        var rawEnergy = projection[contentSpan.Start..contentSpan.End];
+        var hasLeader = TryFindLeaderBoundaries(analysisEnergy, rawEnergy, elements,
+            crossLength, options, out var boundaries, out var leader);
+        if (!hasLeader) boundaries = FindBoundaries(analysisEnergy, elements, crossLength, options);
         var pixelAdvances = new double[elementCount];
         for (var index = 0; index < elementCount; index++)
             pixelAdvances[index] = boundaries[index + 1] - boundaries[index];
@@ -129,6 +137,23 @@ public static class CharacterAdvanceEstimator
 
         var confidence = CalculateConfidence(analysisEnergy, boundaries);
         var inkCoverages = CalculateInkCoverages(analysisEnergy, boundaries);
+        if (leader is not null)
+        {
+            // Dot leaders can be much fainter than adjacent text. Global smoothing
+            // must not report their independently confirmed cells as empty text.
+            var leaderStart = boundaries[leader.TextStart];
+            var leaderEnd = boundaries[leader.TextStart + leader.TextCount];
+            var leaderCoverage = rawEnergy[leaderStart..leaderEnd].Count(value => value >= leader.InkThreshold) /
+                                 (double)(leaderEnd - leaderStart);
+            for (var index = leader.TextStart; index < leader.TextStart + leader.TextCount; index++)
+            {
+                var ink = 0;
+                for (var pixel = boundaries[index]; pixel < boundaries[index + 1]; pixel++)
+                    if (rawEnergy[pixel] >= leader.InkThreshold) ink++;
+                inkCoverages[index] = leader.TextCount == leader.ImageCount
+                    ? ink / (double)(boundaries[index + 1] - boundaries[index]) : leaderCoverage;
+            }
+        }
         var leadingOffset = contentSpan.Start * pixelScale;
         var adjustedExtent = estimatedExtent < targetExtent * 0.94;
         var message = confidence switch
@@ -140,6 +165,9 @@ public static class CharacterAdvanceEstimator
         if (adjustedExtent) message += " 画像中の実文字範囲に合わせて行端も補正しました。";
         if (options.GlyphPriorStrength > 0)
             message += " OCR文字種による字幅補正を適用しました。";
+        if (hasLeader) message += " 点線の実測間隔を基準に、前後の文字幅を独立して補正しました。";
+        if (leader is not null && leader.TextCount != leader.ImageCount)
+            message += $" 点数が文字列{leader.TextCount}個・画像{leader.ImageCount}個で異なります。点線の実範囲へ配置し、文字列は変更していません。";
         var emptyNonWhitespace = elements
             .Select((element, index) => (element, index))
             .Count(item => !IsWhitespace(item.element) &&
@@ -193,7 +221,9 @@ public static class CharacterAdvanceEstimator
         int sourceHeight,
         OverlayRegionViewModel region,
         int localWidth,
-        int localHeight)
+        int localHeight,
+        int sourceLeft,
+        int sourceTop)
     {
         var result = new byte[checked(localWidth * localHeight * 4)];
         var radians = region.RotationDegrees * Math.PI / 180d;
@@ -209,8 +239,12 @@ public static class CharacterAdvanceEstimator
                 var localX = (x + 0.5) / localWidth * region.Width - region.Width / 2d;
                 var pageX = centerX + cos * localX - sin * localY;
                 var pageY = centerY + sin * localX + cos * localY;
-                var sampleX = Math.Clamp((int)Math.Round(pageX), 0, sourceWidth - 1);
-                var sampleY = Math.Clamp((int)Math.Round(pageY), 0, sourceHeight - 1);
+                // Page coordinates describe pixel edges; centers are n + 0.5.
+                // Round(n + 0.5) duplicates alternating columns and tiny geometry
+                // round-off flips those ties on a second run. Floor selects the
+                // nearest pixel center and keeps an unrotated raster unchanged.
+                var sampleX = Math.Clamp((int)Math.Floor(pageX) - sourceLeft, 0, sourceWidth - 1);
+                var sampleY = Math.Clamp((int)Math.Floor(pageY) - sourceTop, 0, sourceHeight - 1);
                 var sourceOffset = (sampleY * sourceWidth + sampleX) * 4;
                 var targetOffset = (y * localWidth + x) * 4;
                 Buffer.BlockCopy(source, sourceOffset, result, targetOffset, 4);
@@ -325,6 +359,8 @@ public static class CharacterAdvanceEstimator
         var expectedWidths = advanceWeights.Select(weight => length * weight / weightTotal).ToArray();
         var expectedPrefix = new double[count + 1];
         for (var index = 0; index < count; index++) expectedPrefix[index + 1] = expectedPrefix[index] + expectedWidths[index];
+        var remainingWeights = new double[count + 1];
+        for (var index = count - 1; index >= 0; index--) remainingWeights[index] = remainingWeights[index + 1] + advanceWeights[index];
         var minimumWidths = elements.Select((element, index) =>
         {
             var expected = expectedWidths[index];
@@ -337,7 +373,7 @@ public static class CharacterAdvanceEstimator
                     ? expected * (0.50 + options.GlyphPriorStrength * glyphPrior * 0.25)
                 : IsEastAsianFullWidth(element)
                     ? expected * 0.40
-                    : expected * 0.28;
+                    : expected * 0.60;
             var feasibleMinimum = Math.Max(1, (int)Math.Floor(expected * 0.78));
             return Math.Clamp(Math.Max((int)Math.Ceiling(shapeMinimum), aspectMinimum), 1, feasibleMinimum);
         }).ToArray();
@@ -358,6 +394,8 @@ public static class CharacterAdvanceEstimator
         }).ToArray();
         var minimumPrefix = new int[count + 1];
         for (var index = 0; index < count; index++) minimumPrefix[index + 1] = minimumPrefix[index] + minimumWidths[index];
+        var maximumPrefix = new int[count + 1];
+        for (var index = 0; index < count; index++) maximumPrefix[index + 1] = maximumPrefix[index] + maximumWidths[index];
         var energyPrefix = new double[length + 1];
         var inkPrefix = new int[length + 1];
         for (var index = 0; index < length; index++)
@@ -372,25 +410,33 @@ public static class CharacterAdvanceEstimator
         for (var character = 1; character < count; character++)
         {
             var current = Enumerable.Repeat(double.PositiveInfinity, length + 1).ToArray();
-            var minimumPosition = minimumPrefix[character];
-            var maximumPosition = length - (minimumPrefix[count] - minimumPrefix[character]);
+            // A bounded search ribbon permits accumulated local corrections without
+            // scanning every position on long lines. Unlike the old sub-character
+            // cutoff, it does not force each boundary back to the line-head prior.
+            var searchRadius = Math.Max(crossLength * 2, average * 3);
+            var minimumPosition = Math.Max(minimumPrefix[character],
+                Math.Max(length - (maximumPrefix[count] - maximumPrefix[character]),
+                    (int)Math.Floor(expectedPrefix[character] - searchRadius)));
+            var maximumPosition = Math.Min(maximumPrefix[character],
+                Math.Min(length - (minimumPrefix[count] - minimumPrefix[character]),
+                    (int)Math.Ceiling(expectedPrefix[character] + searchRadius)));
             for (var position = minimumPosition; position <= maximumPosition; position++)
             {
                 var previousStart = Math.Max(minimumPrefix[character - 1], position - maximumWidths[character - 1]);
                 var previousEnd = position - minimumWidths[character - 1];
                 var boundaryEnergy = BoundaryEnergy(energy, position, average);
-                var boundaryPrior = BoundaryGlyphPrior(elements[character - 1], elements[character]);
                 var boundaryScale = Math.Max(1, (expectedWidths[character - 1] + expectedWidths[character]) / 2d);
                 var boundaryOffset = (position - expectedPrefix[character]) / boundaryScale;
-                var maximumExpectedOffset = 0.60 - options.GlyphPriorStrength * boundaryPrior * 0.40;
-                if (Math.Abs(boundaryOffset) > maximumExpectedOffset) continue;
                 var cumulativePenalty =
-                    (0.04 + options.UniformityStrength * 0.12 + options.GlyphPriorStrength * boundaryPrior * 0.95) *
+                    (0.035 + options.UniformityStrength * 0.060) *
                     Square(boundaryOffset);
                 for (var prior = previousStart; prior <= previousEnd; prior++)
                 {
                     if (!double.IsFinite(previous[prior])) continue;
-                    var targetWidth = Math.Max(1, expectedWidths[character - 1]);
+                    // Rebase the width on this candidate boundary and remaining
+                    // text, sharing one projection and one final application.
+                    var targetWidth = Math.Max(1, (length - prior) * advanceWeights[character - 1] /
+                        remainingWeights[character - 1]);
                     var widthRatio = (position - prior) / targetWidth;
                     var widthPenalty =
                         (0.025 + options.UniformityStrength * 0.18 +
@@ -527,9 +573,6 @@ public static class CharacterAdvanceEstimator
         return 0.72;
     }
 
-    private static double BoundaryGlyphPrior(string left, string right) =>
-        Math.Max(ElementGlyphPrior(left), ElementGlyphPrior(right));
-
     private static double ElementGlyphPrior(string element)
     {
         if (IsWhitespace(element)) return 0.15;
@@ -550,7 +593,7 @@ public static class CharacterAdvanceEstimator
             // font-derived expected positions instead of the internal gap.
             if (character == 'm') return 0.95;
             if (character is 'u' or 'n' or 'h') return 0.88;
-            return 0.32;
+            return 0.58;
         }
         return 0.50;
     }

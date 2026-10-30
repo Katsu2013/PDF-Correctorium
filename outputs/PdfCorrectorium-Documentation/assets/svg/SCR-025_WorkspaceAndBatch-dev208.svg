@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1120" viewBox="0 0 1000 1120">
+  <title>dev.208 ワークスペース・候補確認・状態保存の模式図</title>
+  <desc>実画面のスクリーンショットではなく、現行の配置と操作・保存範囲を示す設計図。</desc>
+  <style>
+    text { font-family: Meiryo, sans-serif; fill: #263746; font-size: 18px; }
+    .title { font-size: 28px; font-weight: bold; }
+    .section { font-size: 23px; font-weight: bold; }
+    .small { font-size: 16px; }
+    .red { fill: #c62828; }
+    .white { fill: white; }
+    .line { stroke: #bac5d1; stroke-width: 1.5; }
+  </style>
+  <rect width="1000" height="1120" fill="white"/>
+  <text x="30" y="42" class="title">PDF Correctorium - 現行構成（dev.208）</text>
+  <text x="30" y="70" class="small">2026-10-03 / 主要部品・操作を示す模式図（スクリーンショットではない）</text>
+  <text x="30" y="110" class="section">1. ツールバー領域と編集ワークスペースを分離</text>
+  <rect x="30" y="126" width="940" height="42" fill="#f1f4f8" class="line"/>
+  <text x="45" y="153">ファイル　編集　表示　しおり　OCR　ページ　検証　ヘルプ</text>
+  <rect x="30" y="168" width="940" height="52" fill="#fff" class="line"/>
+  <text x="45" y="200">メイン：開く・保存・出力・OCR／リンク表示・編集モード</text>
+  <rect x="30" y="220" width="940" height="52" fill="#fff" class="line"/>
+  <text x="45" y="252">ページ表示：前／次・番号・倍率／フィット・単一／見開き・連続</text>
+  <rect x="30" y="272" width="205" height="265" fill="#f8fafc" class="line"/>
+  <rect x="235" y="272" width="470" height="265" fill="#343e49" class="line"/>
+  <rect x="705" y="272" width="265" height="265" fill="#f8fafc" class="line"/>
+  <text x="45" y="305">ページ ｜ しおり</text>
+  <text x="45" y="340" class="small">独立パネル</text>
+  <text x="45" y="370" class="small">タブ／分割／浮動</text>
+  <text x="45" y="400" class="small">位置と表示を保存</text>
+  <rect x="295" y="304" width="350" height="201" fill="white"/>
+  <text x="330" y="348">PDF編集</text>
+  <rect x="330" y="370" width="270" height="36" fill="#eaf1ff" stroke="#2563eb"/>
+  <text x="340" y="395" class="small">Ctrl：複数選択</text>
+  <text x="330" y="441" class="small">Alt：リンク移動</text>
+  <text x="330" y="474" class="small">見開き × 連続も可能</text>
+  <text x="720" y="305">プロパティ　［説明］</text>
+  <text x="720" y="337" class="small">5モードで説明切替を共通化</text>
+  <text x="720" y="368" class="small">選択・リンク先・警告は残す</text>
+  <text x="720" y="411" class="small">リンク：サイズ → 左右 → 上下</text>
+  <text x="720" y="442" class="small">最初の矩形が整列基準</text>
+  <text x="720" y="473" class="small">ロック：削除も禁止</text>
+  <text x="720" y="504" class="small">移動先の変更は可能</text>
+  <rect x="30" y="537" width="940" height="35" fill="#f1f4f8" class="line"/>
+  <text x="45" y="561" class="small">操作メッセージ　　　PDF保存：通常／ポータブル　　　倍率（中央100%）</text>
+  <text x="30" y="605" class="small">ツールバー2本は上下左右・浮動配置、右クリックチェックでボタン／入力の表示を変更。</text>
+  <text x="30" y="643" class="section">2. 自動リンク・一括墨消しは、候補を見てから適用</text>
+  <rect x="30" y="658" width="940" height="208" rx="6" fill="#f8fafc" class="line"/>
+  <text x="50" y="687">対象ページ・番号差／検索語 → 候補生成（中止可能、最大10,000件）</text>
+  <rect x="50" y="704" width="460" height="110" fill="white" class="line"/>
+  <text x="65" y="731" class="small">チェック　元ページ　移動先／対象文字　理由</text>
+  <text x="65" y="764" class="small">確認済み候補のみ適用／重複は既定で除外</text>
+  <text x="65" y="795" class="small">サイズ・回転差／文書外は適用不可</text>
+  <rect x="530" y="704" width="420" height="110" fill="#eaf1ff" class="line"/>
+  <text x="550" y="742">選択ページのプレビュー</text>
+  <text x="550" y="777" class="small">画像を全ページ分保持しない</text>
+  <text x="50" y="846" class="small">条件変更は候補を無効化 → チェック済み適用 → 1回のUndoで取り消し</text>
+  <text x="30" y="905" class="section">3. 保存する状態を混同しない</text>
+  <rect x="30" y="919" width="940" height="128" fill="#fff" class="line"/>
+  <line x1="330" y1="919" x2="330" y2="1047" class="line"/>
+  <line x1="645" y1="919" x2="645" y2="1047" class="line"/>
+  <text x="50" y="947">プロジェクト（形式1.11）</text>
+  <text x="50" y="978" class="small">編集モード・ページ表示上書き</text>
+  <text x="50" y="1008" class="small">リンク／ロック・墨消し指定</text>
+  <text x="350" y="947">アプリ設定（形式19）</text>
+  <text x="350" y="978" class="small">初期モード・項目表示・説明</text>
+  <text x="350" y="1008" class="small">ドッキング・共通操作設定</text>
+  <text x="665" y="947">出力PDF</text>
+  <text x="665" y="978" class="small">標準リンク・文字装飾</text>
+  <text x="665" y="1008" class="small">検証後に墨消しを確定</text>
+  <text x="30" y="1080" class="small red">元PDF・プロジェクト・バックアップには元情報が残る。墨消し済みPDFとは別。</text>
+  <text x="30" y="1106" class="small">自動リンクは行末整数の候補化。検索墨消しは新たなOCRや個人情報自動検出ではない。</text>
+</svg>

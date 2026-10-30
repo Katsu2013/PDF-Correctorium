@@ -41,13 +41,14 @@ public sealed partial class MainWindowViewModel
             if (!Set(ref _linkInputModeIndex, Math.Clamp(value, 0, 2))) return;
             OnPropertyChanged(nameof(CanHitLinkAreas));
             OnPropertyChanged(nameof(LinkEditingHint));
+            NotifyLinkSelection();
         }
     }
     public string LinkEditingHint => LinkInputModeIndex switch
     {
         1 => "文字をドラッグして選択します。複数行は一つのリンクとして設定されます。",
         2 => "ページ上をドラッグしてリンク範囲を指定します。",
-        _ => "リンク枠または一覧を選択して編集します。Ctrl＋クリックでリンク先を確認できます。",
+        _ => "Ctrl＋クリックで枠を複数選択（最初の枠が基準）。Alt＋クリックでリンク先へ移動します。",
     };
     internal event Action<PdfInternalLink>? LinkNavigationRequested;
     public long LinkOverlayVersion { get; private set; }
@@ -56,7 +57,7 @@ public sealed partial class MainWindowViewModel
         ? $"{area.DestinationSummary}\n{area.Description}\n{(area.Link.SourceAnnotationReference is null ? "追加したリンク" : "元PDFのリンク")}"
         : "リンク枠または一覧から選択してください。";
     public bool CanTransformSelectedLink => CanHitLinkAreas && SelectedLinkArea is { IsEditable: true } area &&
-        area.Link.SourceAreas.Count <= 1 && area.Link.SourceRegionId is null;
+        SelectedLinkCount <= 1 && !area.Link.IsGeometryLocked && area.Link.SourceAreas.Count <= 1 && area.Link.SourceRegionId is null;
 
     public void ActivateLinkEditMode()
     {
@@ -80,7 +81,7 @@ public sealed partial class MainWindowViewModel
             if (existing.SourceAnnotationReference is { } reference &&
                 sourceLinks.TryGetValue((existing.SourcePageId, reference), out var imported))
                 return !existing.IsModified
-                    ? imported with { Id = existing.Id, IsEnabled = existing.IsEnabled }
+                    ? imported with { Id = existing.Id, IsEnabled = existing.IsEnabled, IsGeometryLocked = existing.IsGeometryLocked }
                     : existing with { SourceAnnotations = imported.SourceAnnotations };
             // Prior rectangle links used displayed-page coordinates. Migrate once to raw PDF coordinates.
             if (project.SourceLinkImportVersion < 2 && existing.SourceAnnotationReference is null && existing.SourceRegionId is null &&
@@ -115,12 +116,21 @@ public sealed partial class MainWindowViewModel
     private int LinkRotation(int pageNumber) => ProjectPageSequence.NormalizeRotation(
         (_project?.PageSequence.ElementAtOrDefault(pageNumber - 1)?.RotationDegrees ?? 0) + LinkSourceCoordinates(pageNumber).Rotation);
 
-    private PdfRectangle LinkFromPreview(Rect bounds, PageMetrics metrics, int pageNumber)
+    private readonly record struct LinkCoordinateTransform(int Rotation, PdfPoint Origin);
+
+    private LinkCoordinateTransform CaptureLinkCoordinates(int pageNumber) =>
+        new(LinkRotation(pageNumber), LinkSourceCoordinates(pageNumber).Origin);
+
+    private PdfRectangle LinkFromPreview(Rect bounds, PageMetrics metrics, int pageNumber) =>
+        LinkFromPreview(bounds, metrics, CaptureLinkCoordinates(pageNumber));
+
+    // Background scans use a page-local value, never UI-owned mutable dictionaries.
+    private static PdfRectangle LinkFromPreview(Rect bounds, PageMetrics metrics, LinkCoordinateTransform coordinates)
     {
         var displayed = ToPdfRectangle(bounds, metrics);
         var sourceBounds = RotateLinkBounds(displayed, metrics.WidthPoints, metrics.HeightPoints,
-            (360 - LinkRotation(pageNumber)) % 360);
-        var origin = LinkSourceCoordinates(pageNumber).Origin;
+            (360 - coordinates.Rotation) % 360);
+        var origin = coordinates.Origin;
         return sourceBounds with { Origin = new PdfPoint(sourceBounds.Left + origin.X, sourceBounds.Bottom + origin.Y) };
     }
 
@@ -146,10 +156,14 @@ public sealed partial class MainWindowViewModel
 
     internal IReadOnlyList<PdfSelectableTextCharacter> LinkCharactersForDiagnostics => GetLinkSelectableCharacters();
     private IReadOnlyList<PdfSelectableTextCharacter> GetLinkSelectableCharacters()
+        => CollectSelectableCharacters(_currentSelectableCharacters, OverlayItems);
+
+    private static IReadOnlyList<PdfSelectableTextCharacter> CollectSelectableCharacters(
+        IReadOnlyList<PdfSelectableTextCharacter> nativeCharacters, IEnumerable<OverlayRegionViewModel> regions)
     {
         // Edited OCR cells replace the original invisible layer. Native visible text remains selectable.
-        var result = _currentSelectableCharacters.Where(character => !character.IsInvisible).ToList();
-        foreach (var region in OverlayItems.Where(region => !region.IsDeleted))
+        var result = nativeCharacters.Where(character => !character.IsInvisible).ToList();
+        foreach (var region in regions.Where(region => !region.IsDeleted))
         {
             var radians = region.RotationDegrees * Math.PI / 180;
             var cos = Math.Cos(radians); var sin = Math.Sin(radians);
@@ -233,7 +247,7 @@ public sealed partial class MainWindowViewModel
                 !string.IsNullOrWhiteSpace(link.ExternalUri) ? $"Web：{link.ExternalUri}" :
                 _project.PageSequence.Select((page, index) => (page, index)).Where(pair => pair.page.PageId == link.DestinationPageId)
                     .Select(pair => $"文書内：{pair.index + 1}ページ").FirstOrDefault() ?? "移動先なし";
-            if (link.SourceRegionId is { } regionId && _pageOverlays.TryGetValue(pageNumber, out var regions) &&
+            if (!link.IsGeometryLocked && link.SourceRegionId is { } regionId && _pageOverlays.TryGetValue(pageNumber, out var regions) &&
                 regions.FirstOrDefault(region => region.Id == regionId) is { } region)
             {
                 if (region.IsDeleted) continue;
@@ -284,14 +298,23 @@ public sealed partial class MainWindowViewModel
             new PdfSize(.01, .01)), metrics, pageNumber);
     }
 
-    private void SynchronizeRegionLinkBounds()
+    private void SynchronizeRegionLinkBounds(IReadOnlySet<Guid>? linkIds = null)
     {
         if (_project is null) return;
         var pages = _project.Pages.ToDictionary(page => page.Id);
         _project = _project with { InternalLinks = _project.InternalLinks.Select(link =>
         {
-            if (link.SourceRegionId is not { } regionId || !pages.TryGetValue(link.SourcePageId, out var page) ||
+            if ((linkIds is not null && !linkIds.Contains(link.Id)) || link.IsGeometryLocked ||
+                link.SourceRegionId is not { } regionId || !pages.TryGetValue(link.SourcePageId, out var page) ||
                 !_pageMetrics.TryGetValue(page.PageNumber, out var metrics)) return link;
+            // Overlay edits are not written to the project until ordinary synchronization.
+            // Capture the displayed position when locking, without serializing every OCR page.
+            if (_pageOverlays.TryGetValue(page.PageNumber, out var overlays) &&
+                overlays.FirstOrDefault(region => region.Id == regionId) is { } overlay)
+                return overlay.IsDeleted ? link : link with
+                {
+                    SourceBounds = LinkFromPreview(new Rect(overlay.Left, overlay.Top, overlay.Width, overlay.Height), metrics, page.PageNumber)
+                };
             var region = page.TextRegions.FirstOrDefault(region => region.Id == regionId);
             if (region is null || region.IsDeleted) return link;
             return link with { SourceBounds = LinkFromPreview(ToPreviewRectangle(region.EditedGeometry.LocalBounds, metrics), metrics, page.PageNumber) };
@@ -302,5 +325,11 @@ public sealed partial class MainWindowViewModel
     {
         OnPropertyChanged(nameof(SelectedLinkSummary));
         OnPropertyChanged(nameof(CanTransformSelectedLink));
+        OnPropertyChanged(nameof(SelectedLinkCount));
+        OnPropertyChanged(nameof(LinkSelectionSummary));
+        OnPropertyChanged(nameof(CanAlignLinks));
+        OnPropertyChanged(nameof(CanLockLinks));
+        OnPropertyChanged(nameof(AreSelectedLinksLocked));
+        OnPropertyChanged(nameof(CanDeleteLinkSelection));
     }
 }

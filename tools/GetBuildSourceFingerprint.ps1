@@ -5,14 +5,25 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $inputs = @()
-foreach ($name in @('Directory.Build.props', 'Directory.Build.targets', 'global.json', 'NuGet.Config',
+foreach ($name in @('.gitattributes', '.gitignore', 'Directory.Build.props', 'Directory.Build.targets', 'global.json', 'NuGet.Config',
     'PdfCorrectorium.sln', 'LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'FILE-ASSOCIATIONS.md',
     'DEPENDENCIES.lock.json')) {
     $inputs += Get-Item -LiteralPath (Join-Path $repositoryRoot $name)
 }
 $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -File -Recurse |
-    Where-Object { $_.FullName.Substring($repositoryRoot.Length) -notmatch '[\\/](bin|obj)[\\/]' }
-$inputs += Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File
+    Where-Object { $_.FullName.Substring($repositoryRoot.Length) -notmatch '[\\/](bin|obj)[\\/]' -and $_.Name -notlike '*_wpftmp.csproj' }
+$inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tests') -File -Recurse |
+    Where-Object { $_.FullName.Substring($repositoryRoot.Length) -notmatch '[\\/](bin|obj)[\\/]' -and $_.Name -notlike '*_wpftmp.csproj' }
+if (Test-Path -LiteralPath (Join-Path $repositoryRoot '.github/workflows')) {
+    $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot '.github/workflows') -File
+}
+$inputs += Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in @('.ps1','.py') }
+if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'packaging')) {
+    $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'packaging') -File -Recurse
+}
+if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'licenses')) {
+    $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'licenses') -File -Recurse
+}
 if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'qpdf')) {
     $inputs += Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'qpdf') -File -Recurse
 }
@@ -24,8 +35,15 @@ if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'local-packages')) {
         }
     }
 }
-$lines = foreach ($inputFile in ($inputs | Sort-Object FullName -Unique)) {
+$byPath = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+foreach ($inputFile in $inputs) {
     $relativePath = $inputFile.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+    $byPath[$relativePath] = $inputFile
+}
+$paths = [string[]]@($byPath.Keys)
+[Array]::Sort($paths, [StringComparer]::Ordinal)
+$lines = foreach ($relativePath in $paths) {
+    $inputFile = $byPath[$relativePath]
     $hash = (Get-FileHash -LiteralPath $inputFile.FullName -Algorithm SHA256).Hash
     "$relativePath=$hash"
 }

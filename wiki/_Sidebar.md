@@ -1,4 +1,4 @@
-### 📖 [PDF Correctorium](Home)
+### 📖 [[PDF Correctorium|Home]]
 > **PDF総合校正・編集・墨消しツール**
 
 ---
@@ -34,3 +34,8 @@
 * [📦 リリース（ダウンロード）](https://github.com/Katsu2013/PDF-Correctorium/releases)
 * [💻 GitHubリポジトリ](https://github.com/Katsu2013/PDF-Correctorium)
 * [💬 ディスカッション・質問](https://github.com/Katsu2013/PDF-Correctorium/discussions)
+* [[dev.199からの更新|Release-Changes]]
+* [[選択行のRapidOCR再認識|RapidOCR]]
+* [[OCR品質分析と資料の辞書|OCR-Quality-And-Lexicon]]
+* [[読み上げ・段落・読み方|Read-Aloud]]
+* [[作業文字・コメント・完成画像|Data-Exports]]

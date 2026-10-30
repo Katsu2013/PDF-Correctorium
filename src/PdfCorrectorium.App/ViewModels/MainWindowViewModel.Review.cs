@@ -103,8 +103,10 @@ public sealed partial class MainWindowViewModel
         {
             EditUnitIndex = (int)OcrEditUnit.Line;
         }
-        if (IsRedactionMode)
-            ConsolidateCurrentPageTextRedactions();
+        // Mode changes are view preferences, not document edits. Never consolidate
+        // redactions merely by restoring/switching the editing mode.
+        if (_project is not null && HasDocument)
+            _project = _project with { EditingMode = (PdfCorrectorium.Core.Documents.ProjectEditingMode)EditorMode };
         OnPropertyChanged(nameof(EditorMode));
         OnPropertyChanged(nameof(IsOcrEditMode));
         OnPropertyChanged(nameof(IsReadingOrderMode));

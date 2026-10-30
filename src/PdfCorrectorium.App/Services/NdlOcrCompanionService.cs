@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
-using System.Text.RegularExpressions;
+using System.Text;
 using System.Xml;
-using System.Xml.Linq;
+using PdfCorrectorium.Core.IO;
 
 namespace PdfCorrectorium.App.Services;
 
@@ -95,6 +95,16 @@ public sealed class NdlOcrCompanionService
     public int MaximumLineCount { get; init; } = 2_000_000;
     /// <summary>1行の認識文字列に許可する最大文字数です。</summary>
     public int MaximumLineTextCharacters { get; init; } = 32_768;
+    /// <summary>XML専用のバイト数上限。全体上限より大きい値は使用しません。</summary>
+    public long MaximumXmlImportBytes { get; init; } = 32L * 1024 * 1024;
+    public int MaximumJsonTokenCount { get; init; } = 8_000_000;
+    public int MaximumJsonDepth { get; init; } = 64;
+    public int MaximumJsonTokenBytes { get; init; } = 1024 * 1024;
+    public int MaximumBoundingBoxPoints { get; init; } = 64;
+    public int MaximumCoordinateElements { get; init; } = 8;
+    public int MaximumXmlNodeCount { get; init; } = 1_000_000;
+    public int MaximumXmlDepth { get; init; } = 64;
+    public long MaximumTotalTextCharacters { get; init; } = 16L * 1024 * 1024;
     /// <summary>NDLOCR-Liteが生成PDF名へ付加し得る接尾辞の候補です。</summary>
     private static readonly string[] GeneratedPdfSuffixes =
     [
@@ -229,164 +239,144 @@ public sealed class NdlOcrCompanionService
     private async Task<IReadOnlyDictionary<int, NdlOcrPage>> ReadJsonAsync(string path, CancellationToken cancellationToken)
     {
         EnsureFileWithinLimits(path);
-        await using var stream = File.OpenRead(path);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var root = document.RootElement;
-        if (!root.TryGetProperty("contents", out var contents) || contents.ValueKind != JsonValueKind.Array)
-            throw new InvalidDataException("The NDLOCR JSON does not contain a contents array.");
-
-        var pageInfos = root.TryGetProperty("pages", out var pagesElement) && pagesElement.ValueKind == JsonValueKind.Array
-            ? pagesElement.EnumerateArray().ToArray()
-            : [];
-        JsonElement? imageInfo = root.TryGetProperty("imginfo", out var imgInfoElement) ? imgInfoElement : null;
-        var result = new Dictionary<int, NdlOcrPage>();
-        var pageIndex = 0;
-        var totalLines = 0;
-        foreach (var pageContents in contents.EnumerateArray())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (pageIndex >= MaximumPageCount)
-                throw new InvalidDataException($"OCRページ数が上限 {MaximumPageCount:N0} を超えています。");
-            var lines = new List<NdlOcrLine>();
-            if (pageContents.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var lineElement in pageContents.EnumerateArray())
-                {
-                    if (!TryReadJsonLine(lineElement, out var line)) continue;
-                    lines.Add(line);
-                    if (++totalLines > MaximumLineCount)
-                        throw new InvalidDataException($"OCR行数が上限 {MaximumLineCount:N0} を超えています。");
-                }
-            }
-
-            var info = pageIndex < pageInfos.Length ? pageInfos[pageIndex] : imageInfo;
-            var width = info.HasValue ? ReadDouble(info.Value, "img_width") : 0;
-            var height = info.HasValue ? ReadDouble(info.Value, "img_height") : 0;
-            if (width <= 0) width = lines.Count == 0 ? 1 : lines.Max(line => line.X + line.Width);
-            if (height <= 0) height = lines.Count == 0 ? 1 : lines.Max(line => line.Y + line.Height);
-            result[pageIndex + 1] = new NdlOcrPage(pageIndex + 1, width, height, lines);
-            pageIndex++;
-        }
-        return result;
-    }
-
-    private bool TryReadJsonLine(JsonElement element, out NdlOcrLine line)
-    {
-        line = default!;
-        if (!element.TryGetProperty("boundingBox", out var box) || box.ValueKind != JsonValueKind.Array) return false;
-        var points = new List<(double X, double Y)>();
-        foreach (var point in box.EnumerateArray())
-        {
-            if (point.ValueKind != JsonValueKind.Array) continue;
-            var values = point.EnumerateArray().ToArray();
-            if (values.Length >= 2 && values[0].TryGetDouble(out var x) && values[1].TryGetDouble(out var y)) points.Add((x, y));
-        }
-        if (points.Count < 2) return false;
-        var left = points.Min(point => point.X);
-        var top = points.Min(point => point.Y);
-        var right = points.Max(point => point.X);
-        var bottom = points.Max(point => point.Y);
-        var text = element.TryGetProperty("text", out var textElement) ? textElement.GetString() ?? string.Empty : string.Empty;
-        if (text.Length > MaximumLineTextCharacters)
-            throw new InvalidDataException($"OCR行の文字数が上限 {MaximumLineTextCharacters:N0} を超えています。");
-        var hasVertical = element.TryGetProperty("isVertical", out var verticalElement);
-        var isVertical = hasVertical
-            ? ReadBoolean(verticalElement)
-            : WritingDirectionDetector.IsLikelyVertical(text, right - left, bottom - top);
-        var confidence = element.TryGetProperty("confidence", out var confidenceElement) && confidenceElement.TryGetDouble(out var value) ? value : 0;
-        line = new NdlOcrLine(text, left, top, right - left, bottom - top, isVertical, confidence);
-        return true;
+        await using var stream = new BoundedReadStream(File.OpenRead(path), MaximumImportBytes);
+        return await new NdlOcrJsonParser(this).ReadAsync(stream, cancellationToken);
     }
 
     private async Task<IReadOnlyDictionary<int, NdlOcrPage>> ReadXmlAsync(string path, CancellationToken cancellationToken)
     {
         EnsureFileWithinLimits(path);
-        var xml = await File.ReadAllTextAsync(path, cancellationToken);
-        XDocument document;
-        try { document = await ParseXmlAsync(xml, cancellationToken); }
-        catch (XmlException)
+        var maximumBytes = Math.Min(MaximumImportBytes, MaximumXmlImportBytes);
+        if (new FileInfo(path).Length > maximumBytes)
+            throw new InvalidDataException($"OCR XMLが上限 {maximumBytes:N0} バイトを超えています。");
+        await using var stream = new BoundedReadStream(File.OpenRead(path), maximumBytes);
+        using var textReader = new OcrXmlFragmentReader(new StreamReader(stream));
+        using var reader = XmlReader.Create(textReader, new XmlReaderSettings
         {
-            var withoutDeclaration = Regex.Replace(xml, @"<\?xml[^?]*\?>", string.Empty, RegexOptions.IgnoreCase);
-            document = await ParseXmlAsync("<NDLOCR>" + withoutDeclaration + "</NDLOCR>", cancellationToken);
+            Async = true,
+            ConformanceLevel = ConformanceLevel.Fragment,
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = maximumBytes,
+        });
+        var result = new Dictionary<int, NdlOcrPage>();
+        var lines = new List<NdlOcrLine>();
+        var pageDepth = -1;
+        var pageWidth = 0d;
+        var pageHeight = 0d;
+        var totalLines = 0;
+        long totalText = 0;
+        long nodes = 0;
+        XmlLineState? line = null;
+        var valueBuffer = new char[4096];
+
+        void FinishLine()
+        {
+            var current = line!;
+            var value = current.AttributeText ?? current.Text.ToString();
+            totalText = checked(totalText + value.Length);
+            if (totalText > MaximumTotalTextCharacters)
+                throw new InvalidDataException("OCR本文の合計文字数が上限を超えています。");
+            if (current.Width > 0 && current.Height > 0)
+                lines.Add(new NdlOcrLine(value, current.X, current.Y, current.Width, current.Height,
+                    current.Vertical ?? WritingDirectionDetector.IsLikelyVertical(value, current.Width, current.Height), current.Confidence));
+            line = null;
         }
 
-        var result = new Dictionary<int, NdlOcrPage>();
-        var pageNumber = 1;
-        var totalLines = 0;
-        foreach (var pageElement in document.Descendants().Where(element => element.Name.LocalName.Equals("PAGE", StringComparison.OrdinalIgnoreCase)))
+        void FinishPage()
         {
-            if (pageNumber > MaximumPageCount)
-                throw new InvalidDataException($"OCRページ数が上限 {MaximumPageCount:N0} を超えています。");
-            var lines = pageElement.Descendants().Where(element => element.Name.LocalName.Equals("LINE", StringComparison.OrdinalIgnoreCase))
-                .Select(ReadXmlLine)
-                .Where(line => line is not null)
-                .Cast<NdlOcrLine>()
-                .ToArray();
-            totalLines = checked(totalLines + lines.Length);
-            if (totalLines > MaximumLineCount)
-                throw new InvalidDataException($"OCR行数が上限 {MaximumLineCount:N0} を超えています。");
-            var width = ReadAttribute(pageElement, "WIDTH");
-            var height = ReadAttribute(pageElement, "HEIGHT");
-            if (width <= 0) width = lines.Length == 0 ? 1 : lines.Max(line => line.X + line.Width);
-            if (height <= 0) height = lines.Length == 0 ? 1 : lines.Max(line => line.Y + line.Height);
-            result[pageNumber] = new NdlOcrPage(pageNumber, width, height, lines);
-            pageNumber++;
+            var width = pageWidth > 0 ? pageWidth : lines.Count == 0 ? 1 : lines.Max(item => item.X + item.Width);
+            var height = pageHeight > 0 ? pageHeight : lines.Count == 0 ? 1 : lines.Max(item => item.Y + item.Height);
+            var number = result.Count + 1;
+            result.Add(number, new NdlOcrPage(number, width, height, lines.ToArray()));
+            lines.Clear();
+            pageDepth = -1;
+        }
+
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            nodes = checked(nodes + 1 + reader.AttributeCount);
+            if (nodes > MaximumXmlNodeCount || reader.Depth > MaximumXmlDepth)
+                throw new InvalidDataException("OCR XMLのノード数または深さが上限を超えています。");
+            if (reader.NodeType == XmlNodeType.Element)
+            {
+                if (reader.LocalName.Equals("PAGE", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (pageDepth >= 0) throw new InvalidDataException("OCR PAGE要素の入れ子には対応していません。");
+                    if (result.Count >= MaximumPageCount)
+                        throw new InvalidDataException($"OCRページ数が上限 {MaximumPageCount:N0} を超えています。");
+                    pageDepth = reader.Depth;
+                    pageWidth = ReadAttribute(reader, "WIDTH");
+                    pageHeight = ReadAttribute(reader, "HEIGHT");
+                    if (reader.IsEmptyElement) FinishPage();
+                }
+                else if (pageDepth >= 0 && reader.LocalName.Equals("LINE", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (line is not null) throw new InvalidDataException("OCR LINE要素の入れ子には対応していません。");
+                    if (++totalLines > MaximumLineCount)
+                        throw new InvalidDataException($"OCR行数が上限 {MaximumLineCount:N0} を超えています。");
+                    var attributeText = reader.GetAttribute("STRING");
+                    if (attributeText?.Length > MaximumLineTextCharacters)
+                        throw new InvalidDataException($"OCR行の文字数が上限 {MaximumLineTextCharacters:N0} を超えています。");
+                    line = new XmlLineState(reader.Depth, ReadAttribute(reader, "X"), ReadAttribute(reader, "Y"),
+                        ReadAttribute(reader, "WIDTH"), ReadAttribute(reader, "HEIGHT"), ReadAttribute(reader, "CONF"),
+                        ReadOptionalBooleanAttribute(reader, "IS_VERTICAL") ?? ReadOptionalBooleanAttribute(reader, "VERTICAL"), attributeText);
+                    if (reader.IsEmptyElement) FinishLine();
+                }
+            }
+            else if (reader.NodeType == XmlNodeType.EndElement)
+            {
+                if (line is not null && reader.Depth == line.Depth) FinishLine();
+                if (pageDepth >= 0 && reader.Depth == pageDepth) FinishPage();
+            }
+            else if (line is not null && line.AttributeText is null &&
+                     reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA or XmlNodeType.Whitespace or XmlNodeType.SignificantWhitespace)
+            {
+                int read;
+                while ((read = await reader.ReadValueChunkAsync(valueBuffer, 0, valueBuffer.Length).ConfigureAwait(false)) > 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (line.Text.Length + read > MaximumLineTextCharacters)
+                        throw new InvalidDataException($"OCR行の文字数が上限 {MaximumLineTextCharacters:N0} を超えています。");
+                    line.Text.Append(valueBuffer, 0, read);
+                }
+            }
         }
         return result;
     }
 
-    private NdlOcrLine? ReadXmlLine(XElement element)
+    private sealed record XmlLineState(int Depth, double X, double Y, double Width, double Height,
+        double Confidence, bool? Vertical, string? AttributeText)
     {
-        var x = ReadAttribute(element, "X");
-        var y = ReadAttribute(element, "Y");
-        var width = ReadAttribute(element, "WIDTH");
-        var height = ReadAttribute(element, "HEIGHT");
-        if (width <= 0 || height <= 0) return null;
-        var text = element.Attribute("STRING")?.Value ?? element.Value;
-        if (text.Length > MaximumLineTextCharacters)
-            throw new InvalidDataException($"OCR行の文字数が上限 {MaximumLineTextCharacters:N0} を超えています。");
-        var explicitVertical = ReadOptionalBooleanAttribute(element, "IS_VERTICAL") ??
-                               ReadOptionalBooleanAttribute(element, "VERTICAL");
-        return new NdlOcrLine(
-            text,
-            x,
-            y,
-            width,
-            height,
-            explicitVertical ?? WritingDirectionDetector.IsLikelyVertical(text, width, height),
-            ReadAttribute(element, "CONF"));
+        public StringBuilder Text { get; } = new();
     }
 
-    private static bool? ReadOptionalBooleanAttribute(XElement element, string name)
+    private static bool? ReadOptionalBooleanAttribute(XmlReader reader, string name)
     {
-        var value = element.Attributes().FirstOrDefault(attribute =>
-            attribute.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;
+        string? value = null;
+        if (reader.MoveToFirstAttribute())
+        {
+            do
+            {
+                if (reader.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase)) { value = reader.Value; break; }
+            } while (reader.MoveToNextAttribute());
+            reader.MoveToElement();
+        }
         if (value is null) return null;
         if (bool.TryParse(value, out var parsed)) return parsed;
         return value.Trim() switch { "1" => true, "0" => false, _ => null };
     }
-
-    private static double ReadDouble(JsonElement element, string propertyName) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var value) && value.TryGetDouble(out var number)
-            ? number
-            : 0;
-
-    private static bool ReadBoolean(JsonElement element) => element.ValueKind switch
-    {
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        JsonValueKind.String => bool.TryParse(element.GetString(), out var value) && value,
-        JsonValueKind.Number => element.TryGetInt32(out var value) && value != 0,
-        _ => false,
-    };
-
-    private static double ReadAttribute(XElement element, string name) =>
-        double.TryParse(element.Attribute(name)?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0;
+    private static double ReadAttribute(XmlReader reader, string name) =>
+        double.TryParse(reader.GetAttribute(name), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0;
 
     private void ValidateCompanions(IReadOnlyList<string> companions)
     {
         if (MaximumImportBytes <= 0 || MaximumCompanionCount <= 0 || MaximumPageCount <= 0 ||
-            MaximumLineCount <= 0 || MaximumLineTextCharacters <= 0)
+            MaximumLineCount <= 0 || MaximumLineTextCharacters <= 0 || MaximumXmlImportBytes <= 0 ||
+            MaximumXmlNodeCount <= 0 || MaximumXmlDepth <= 0 || MaximumTotalTextCharacters <= 0 ||
+            MaximumJsonTokenCount <= 0 || MaximumJsonDepth <= 0 || MaximumJsonDepth > 128 || MaximumJsonTokenBytes < 16 ||
+            MaximumBoundingBoxPoints < 2 || MaximumCoordinateElements < 2)
             throw new InvalidOperationException("OCR取込上限は正の値で指定してください。");
         if (companions.Count > MaximumCompanionCount)
             throw new InvalidDataException($"OCR付随ファイル数が上限 {MaximumCompanionCount:N0} を超えています。");
@@ -400,16 +390,4 @@ public sealed class NdlOcrCompanionService
             throw new InvalidDataException($"OCR付随ファイルが上限 {MaximumImportBytes:N0} バイトを超えています: {Path.GetFileName(path)}");
     }
 
-    private async Task<XDocument> ParseXmlAsync(string xml, CancellationToken cancellationToken)
-    {
-        using var textReader = new StringReader(xml);
-        using var reader = XmlReader.Create(textReader, new XmlReaderSettings
-        {
-            Async = true,
-            DtdProcessing = DtdProcessing.Prohibit,
-            XmlResolver = null,
-            MaxCharactersInDocument = MaximumImportBytes,
-        });
-        return await XDocument.LoadAsync(reader, LoadOptions.None, cancellationToken);
-    }
 }

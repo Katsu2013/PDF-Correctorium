@@ -1,6 +1,6 @@
 namespace PdfCorrectorium.App.Services;
 
-/// <summary>固定パネルの幅・表示状態だけを保持します。文書、倍率、編集・復旧設定は含みません。</summary>
+/// <summary>パネルとツールバーの配置・幅・表示状態を保持します。文書、倍率、編集・復旧設定は含みません。</summary>
 public sealed record WorkspacePreset
 {
     public const int MaximumCount = 20;
@@ -13,6 +13,7 @@ public sealed record WorkspacePreset
     public WorkspaceDockPosition BookmarkDockPosition { get; init; } = WorkspaceDockPosition.Left;
     public WorkspaceDockPosition PropertiesDockPosition { get; init; } = WorkspaceDockPosition.Right;
     public WorkspacePaneGroupMode PaneGroupMode { get; init; } = WorkspacePaneGroupMode.Tabbed;
+    public string? WorkspaceLayoutXml { get; init; }
     public ToolbarDockSide MainToolbarDockSide { get; init; } = ToolbarDockSide.Top;
     public ToolbarDockSide PageToolbarDockSide { get; init; } = ToolbarDockSide.Top;
     public int MainToolbarBand { get; init; }
@@ -41,6 +42,7 @@ public sealed record WorkspacePreset
             BookmarkDockPosition = normalized.BookmarkDockPosition,
             PropertiesDockPosition = normalized.PropertiesDockPosition,
             PaneGroupMode = normalized.PaneGroupMode,
+            WorkspaceLayoutXml = normalized.WorkspaceLayoutXml,
             MainToolbarDockSide = normalized.MainToolbarDockSide,
             PageToolbarDockSide = normalized.PageToolbarDockSide,
             MainToolbarBand = normalized.MainToolbarBand,
@@ -63,6 +65,7 @@ public sealed record WorkspacePreset
         BookmarkDockPosition = BookmarkDockPosition,
         PropertiesDockPosition = PropertiesDockPosition,
         PaneGroupMode = PaneGroupMode,
+        WorkspaceLayoutXml = WorkspaceLayoutXml,
         MainToolbarDockSide = MainToolbarDockSide,
         PageToolbarDockSide = PageToolbarDockSide,
         MainToolbarBand = MainToolbarBand,
@@ -88,6 +91,7 @@ public sealed record WorkspacePreset
                 PropertiesDockPosition = Enum.IsDefined(p.PropertiesDockPosition)
                     ? p.PropertiesDockPosition : WorkspaceDockPosition.Right,
                 PaneGroupMode = Enum.IsDefined(p.PaneGroupMode) ? p.PaneGroupMode : WorkspacePaneGroupMode.Tabbed,
+                WorkspaceLayoutXml = WorkspaceDockLayout.Normalize(p.WorkspaceLayoutXml),
                 MainToolbarDockSide = Enum.IsDefined(p.MainToolbarDockSide) ? p.MainToolbarDockSide : ToolbarDockSide.Top,
                 PageToolbarDockSide = Enum.IsDefined(p.PageToolbarDockSide) ? p.PageToolbarDockSide : ToolbarDockSide.Top,
                 MainToolbarBand = Math.Clamp(p.MainToolbarBand, 0, 1),

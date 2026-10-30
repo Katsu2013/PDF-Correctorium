@@ -20,6 +20,10 @@ internal static class ExternalProcessRunner
         if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
         if (maximumOutputCharacters <= 0) throw new ArgumentOutOfRangeException(nameof(maximumOutputCharacters));
 
+        if (!WindowsSandboxProcess.IsAppContainer)
+            return await RunSandboxedAsync(executablePath, arguments, timeout, cancellationToken, maximumOutputCharacters);
+
+        // Already inside an AppContainer: descendants inherit the same capability-free token.
         // stdoutとstderrを待機前に読み始め、子プロセスの出力バッファ詰まりによるデッドロックを避ける。
         var startInfo = new ProcessStartInfo(executablePath)
         {
@@ -68,6 +72,55 @@ internal static class ExternalProcessRunner
             TryTerminate(process);
             try { await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
             throw;
+        }
+    }
+
+    private static async Task<Result> RunSandboxedAsync(string executable, IEnumerable<string> arguments,
+        TimeSpan timeout, CancellationToken cancellationToken, int maximumOutputCharacters)
+    {
+        using var sandbox = new WindowsSandboxProcess();
+        var stagedExecutable = Path.GetFileName(executable).Equals("qpdf.exe", StringComparison.OrdinalIgnoreCase)
+            ? sandbox.StageTool(executable) : sandbox.StageApplication(executable);
+        var inputMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var outputMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var stagedArguments = new List<string>();
+        foreach (var argument in arguments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var equals = argument.StartsWith("--", StringComparison.Ordinal) ? argument.IndexOf('=') : -1;
+            var value = equals >= 0 ? argument[(equals + 1)..] : argument;
+            if (!Path.IsPathFullyQualified(value)) { stagedArguments.Add(argument); continue; }
+            var full = Path.GetFullPath(value);
+            if (!inputMap.TryGetValue(full, out var staged) && !outputMap.TryGetValue(full, out staged))
+            {
+                if (File.Exists(full)) { staged = sandbox.StageInput(full); inputMap[full] = staged; }
+                else { staged = Path.Combine(sandbox.WorkDirectory, Guid.NewGuid().ToString("N") + Path.GetExtension(full)); outputMap[full] = staged; }
+            }
+            stagedArguments.Add(equals >= 0 ? argument[..(equals + 1)] + staged : staged);
+        }
+        sandbox.Start(stagedExecutable, stagedArguments);
+        sandbox.StandardInput.Close();
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeoutSource.Token, cancellationToken);
+        var output = ReadToEndWithLimitAsync(sandbox.StandardOutput, maximumOutputCharacters, linked.Token);
+        var error = ReadToEndWithLimitAsync(sandbox.StandardError, maximumOutputCharacters, linked.Token);
+        var failure = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        MonitorFailure(output, failure); MonitorFailure(error, failure);
+        try
+        {
+            var exited = sandbox.Process.WaitForExitAsync(linked.Token);
+            if (await Task.WhenAny(exited, failure.Task).ConfigureAwait(false) == failure.Task) throw await failure.Task;
+            await exited.ConfigureAwait(false);
+            var result = new Result(sandbox.Process.ExitCode, await output, await error);
+            if (result.ExitCode is 0 or 3)
+                foreach (var pair in outputMap)
+                    if (File.Exists(pair.Value)) sandbox.CopyOutput(pair.Value, pair.Key, 16L * 1024 * 1024 * 1024);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+            throw new TimeoutException($"外部処理 {Path.GetFileName(executable)} が制限時間 {timeout.TotalSeconds:N0} 秒以内に完了しませんでした。");
         }
     }
 

@@ -6,11 +6,32 @@ using PdfCorrectorium.Core;
 using PdfCorrectorium.Core.Analysis;
 using PdfCorrectorium.Core.Documents;
 using PdfCorrectorium.Core.Geometry;
+using PdfCorrectorium.Core.IO;
 using PdfCorrectorium.Infrastructure;
 using PdfCorrectorium.ProjectFormat;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Word pronunciation editor preserves legacy parsing and rejects invalid rules", WordReadingContractTests.ParseAsync),
+    ("Ruby and speech share exact longest Unicode matches without cascading", WordReadingContractTests.MatchesAsync),
+    ("Project pronunciations share defaults while preserving local exceptions", WordReadingContractTests.SharedRulesAsync),
+    ("Shared pronunciations survive bounded versioned project packages", WordReadingContractTests.SharedPersistenceAsync),
+    ("Explicit paragraph overrides share editing/speech boundaries", ParagraphContractTests.OverridesAsync),
+    ("Speech navigation switches paragraph/line units and page boundaries", ParagraphContractTests.NavigationAsync),
+    ("Project packages preserve explicit paragraph states and compatibility", ParagraphContractTests.PersistenceAsync),
+    ("Speech preserves corrections, reading order and output exclusions", SpeechContractTests.EligibilityAsync),
+    ("Speech excludes planned redactions including rotated and invalid geometry", SpeechContractTests.RedactionsAsync),
+    ("Speech handles Unicode selection, exact readings and literal document text", SpeechContractTests.UnicodeAndReadingsAsync),
+    ("Speech joins Japanese, Latin and vertical paragraph wraps with source spans", SpeechContractTests.ParagraphsAsync),
+    ("Speech preserves paragraphs, columns, selections and redaction boundaries", SpeechContractTests.ParagraphBoundariesAsync),
+    ("Speech paragraph assembly scales and preserves Unicode progress positions", SpeechContractTests.ParagraphScaleAsync),
+    ("Shared OCR lexicon reuses Latin evidence and registered Japanese phrases", OcrLexiconContractTests.SharedIndexAsync),
+    ("Shared OCR lexicon restricts automatic correction to approved exact rules", OcrLexiconContractTests.RulesAsync),
+    ("Shared OCR lexicon rejects ambiguity, overlaps and cycles without cascading", OcrLexiconContractTests.AmbiguityAsync),
+    ("Shared OCR lexicon respects Unicode counts and bounded inputs", OcrLexiconContractTests.UnicodeAndLimitsAsync),
+    ("Shared OCR lexicon incrementally subtracts actual contributions", OcrLexiconContractTests.IncrementalAsync),
+    ("Shared OCR lexicon and optional frequency cache round-trip safely", OcrLexiconContractTests.PersistenceAsync),
+    ("Shared OCR lexicon warms line queries without document scans", OcrLexiconContractTests.PerformanceAsync),
     ("Geometry validation accepts vertical rotated text", GeometryValidationAsync),
     ("OCR text edit preserves the original value", TextEditAsync),
     ("FR-400 empty edits and legacy text sentinels round-trip", EmptyTextCompatibilityAsync),
@@ -19,13 +40,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Project package round-trips and validates", ProjectRoundTripAsync),
     ("Project format 1.8 preserves safe external URI links", ExternalUriLinkRoundTripAsync),
     ("Project format 1.10 preserves grouped links and destination views", GroupedLinkRoundTripAsync),
+    ("Project format 1.11 preserves editor mode and link geometry locks", EditorPreferencesRoundTripAsync),
     ("Project format 1.8 preserves imported links and text decorations", TextDecorationRoundTripAsync),
     ("Project format 1.4 supports external relative PDF paths", ExternalRelativeSourceAsync),
     ("Project formats 1.5 and 1.6 validate without duplicate source entries", CanonicalLegacyVersionsAsync),
     ("Moved source PDF can be relinked only to identical content", RelinkMovedSourceAsync),
     ("Project autosave restores a damaged package", ProjectAutoSaveRecoveryAsync),
     ("Project format 1.4 omits regenerable duplicate caches", ProjectThumbnailCacheAsync),
+    ("Legacy and current project pages are bounded before normalization", PageBudgetsAsync),
+    ("Untrusted source references require selection before network or link access", AutomaticSourceAccessAsync),
     ("Project package rejects excessive JSON entries", ProjectJsonLimitAsync),
+    ("Project package rejects forged stored ZIP sizes", ForgedZipSizesAsync),
+    ("Bounded reads reject excess bytes and truncated declarations", BoundedReadsAsync),
     ("Project package rejects excessive entry counts", ProjectEntryCountLimitAsync),
     ("Project package rejects excessive archive files", ProjectArchiveSizeLimitAsync),
     ("Project package rejects drive-qualified entries", ProjectUnsafeEntryNameAsync),
@@ -39,12 +65,60 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Project validator rejects a missing manifest", MissingManifestAsync),
     ("Source fingerprint detects source changes", SourceFingerprintAsync),
     ("Portable marker selects portable storage", PortablePathsAsync),
+    ("MSIX identity overrides a portable marker without writing to the package", PackagedPathsAsync),
+    ("Updates use the install channel and reject executable or insecure redirects", DistributionUpdatesAsync),
+    ("Installer feeds bind package identity and reject unsafe XML, redirects and downgrade policies", AppInstallerUpdateContractTests.FeedValidationAsync),
+    ("Installer update checks are asynchronous, bounded and cancellable", AppInstallerUpdateContractTests.NetworkAsync),
+    ("Installer handoff stages checked metadata without replacing application files", AppInstallerUpdateContractTests.StagingAsync),
     ("OCR quality analyzer finds character-count outliers", CharacterCountAnomalyAsync),
+    ("OCR density distinguishes CJK, Latin, halfwidth and mixed text", OcrDensityContractTests.MixedAsync),
+    ("OCR density respects Unicode graphemes and padding", OcrDensityContractTests.UnicodeAsync),
+    ("OCR density normalizes length, scale and writing direction", OcrDensityContractTests.GeometryAsync),
+    ("OCR density declines sparse, unstable and invalid references", OcrDensityContractTests.SafetyAsync),
+    ("OCR density sliding quantiles agree with an independent oracle", OcrDensityContractTests.OracleAsync),
+    ("OCR density scales to large books and cancels without partial results", OcrDensityContractTests.BudgetAsync),
     ("OCR quality analyzer finds keyword-width outliers", KeywordWidthAnomalyAsync),
+    ("Similar words detect book-local OCR confusions and exact offsets", SimilarWordContractTests.DetectionAsync),
+    ("Similar words respect dictionary, ignored terms and frequency evidence", SimilarWordContractTests.DictionaryAsync),
+    ("Similar words preserve token boundaries and rank ambiguous suggestions", SimilarWordContractTests.TokenBoundariesAsync),
+    ("Similar words cancel and reject oversized inputs without partial results", SimilarWordContractTests.LimitsAsync),
+    ("RapidOCR auto-completes only unambiguous missing graphemes", RapidOcrContractTests.AutomaticAsync),
+    ("RapidOCR respects single-result evidence, locks and reviewed text", RapidOcrContractTests.SafetyAsync),
+    ("RapidOCR reconciliation preserves line bounds and distant widths", RapidOcrContractTests.GeometryAsync),
     ("PDF viewer settings map to Acrobat facing-page layouts", ViewerSettingsMappingAsync),
     ("PDF output versions map and reject unsafe downgrades", OutputVersionMappingAsync),
     ("Project format 1.7 preserves and validates shaped redactions", RedactionRoundTripAsync),
 };
+
+static async Task EditorPreferencesRoundTripAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "preferences.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var packages = new ProjectPackageService();
+        var pageId = Guid.NewGuid();
+        var project = new PdfCorrectoriumProject
+        {
+            SourcePdf = await packages.CreateSourceReferenceAsync(pdf, directory),
+            Pages = [new OcrPage { Id = pageId, PageNumber = 1, WidthPoints = 595, HeightPoints = 842 }],
+            InternalLinks = [new() { SourcePageId = pageId, DestinationPageId = pageId,
+                SourceBounds = new(new PdfPoint(10, 20), new PdfSize(30, 40)), IsGeometryLocked = true }],
+        };
+        foreach (var mode in Enum.GetValues<ProjectEditingMode>())
+        {
+            var path = Path.Combine(directory, mode + ".pdfocrproj");
+            await packages.SaveAsync(path, project with { EditingMode = mode });
+            var opened = await packages.OpenAsync(path);
+            Equal<ProjectEditingMode?>(mode, opened.EditingMode, "Every editing mode round-trips.");
+            True(opened.InternalLinks.Single().IsGeometryLocked, "A link remains locked after reopening.");
+        }
+        True(ProjectManifest.IsSupportedVersion("1.10"), "The previous grouped-link format remains readable.");
+        True(project.EditingMode is null && !new PdfInternalLink().IsGeometryLocked, "Legacy preferences default safely.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
 
 static async Task GroupedLinkRoundTripAsync()
 {
@@ -122,7 +196,7 @@ static async Task ExternalUriLinkRoundTripAsync()
         var reopened = await packages.OpenAsync(path);
         Equal("https://example.com/reference?q=pdf", reopened.InternalLinks.Single().ExternalUri,
             "External URI links must round-trip without requiring a destination page.");
-        Equal("1.10", ProjectManifest.CurrentVersion, "Grouped links require project format 1.10.");
+        Equal("1.14", ProjectManifest.CurrentVersion, "Current containers preserve dictionary and explicit paragraph metadata.");
     }
     finally { Directory.Delete(directory, recursive: true); }
 }
@@ -497,8 +571,8 @@ static Task BuildVersionAsync()
         Equal(ApplicationBuildInfo.Version, assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0], "Product revision must match.");
     }
     Equal(ApplicationBuildInfo.Version, new ProjectManifest().ApplicationVersion, "Saved application version must track the build.");
-    Equal("1.10", ProjectManifest.CurrentVersion, "Grouped links require project format 1.10.");
-    Equal("1.0.0-dev.200", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.10 names its first compatible reader.");
+    Equal("1.14", ProjectManifest.CurrentVersion, "Current containers preserve dictionary and explicit paragraph metadata.");
+    Equal("1.0.0-dev.262", ProjectManifest.MinimumCompatibleApplicationVersion, "Format 1.14 requires a shared-pronunciation-aware reader.");
     Equal(ProjectManifest.MinimumCompatibleApplicationVersion, new ProjectManifest().MinimumApplicationVersion, "Saved minimum reader must describe data-format compatibility, not the saving build.");
     return Task.CompletedTask;
 }
@@ -552,7 +626,7 @@ static async Task PackageVersionGateAsync()
             var entry = zip.GetEntry("manifest.json")!;
             JsonObject manifest;
             using (var input = entry.Open()) manifest = (JsonObject)(await JsonNode.ParseAsync(input))!;
-            Equal("1.10", manifest["formatVersion"]!.GetValue<string>(), "New containers require grouped-link support.");
+            Equal("1.14", manifest["formatVersion"]!.GetValue<string>(), "New containers preserve shared dictionary and explicit paragraphs.");
             Equal(ApplicationBuildInfo.Version, manifest["applicationVersion"]!.GetValue<string>(), "Manifest follows the build version.");
             manifest["formatVersion"] = "99.0";
             entry.Delete();
@@ -642,7 +716,7 @@ static Task OutputVersionMappingAsync()
 static Task CharacterCountAnomalyAsync()
 {
     var samples = new List<OcrQualitySample>();
-    foreach (var text in new[] { "abcdefghij", "1234567890", "ABCDEFGHIJ", "あいうえおかきくけこ" })
+    foreach (var text in new[] { "abcdefghij", "1234567890", "ABCDEFGHIJ", "あいうえおか" })
         samples.Add(CreateQualitySample(text, 100, 20));
     var outlier = CreateQualitySample("ab", 100, 20);
     samples.Add(outlier);
@@ -653,6 +727,7 @@ static Task CharacterCountAnomalyAsync()
 
     True(results.Any(result => result.RegionId == outlier.RegionId && result.Kind == OcrCharacterCountAnomalyKind.TooFew),
         "A same-sized region with far fewer characters must be reported.");
+    True(results.All(result => result.RegionId == outlier.RegionId), "Normal CJK must not inherit the raw English character count.");
     return Task.CompletedTask;
 }
 
@@ -1070,6 +1145,44 @@ static async Task PortablePathsAsync()
     finally { Directory.Delete(directory, recursive: true); }
 }
 
+static async Task PackagedPathsAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        await File.WriteAllTextAsync(Path.Combine(directory, "portable.marker"), string.Empty);
+        var paths = ApplicationPathResolver.Resolve(directory, packaged: true);
+        Equal(StorageMode.Installed, paths.Mode, "An MSIX payload is never portable.");
+        True(!paths.ConfigurationDirectory.StartsWith(directory, StringComparison.OrdinalIgnoreCase), "Do not write package settings into its immutable directory.");
+        True(!paths.WorkspaceDirectory.StartsWith(directory, StringComparison.OrdinalIgnoreCase), "Workspaces stay outside WindowsApps.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static Task DistributionUpdatesAsync()
+{
+    UpdateDestination Read(string json)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+        return DistributionUpdates.ReadPackageDestination(stream);
+    }
+    Equal(DistributionUpdates.ReleasesPage, DistributionUpdates.GetDestination("unused", packaged: false).Address!, "Portable updates never trust dropped metadata.");
+    Equal(DistributionUpdates.StoreUpdatesPage, Read("{\"schemaVersion\":1,\"channel\":\"Store\"}").Address!, "Store owns Store updates.");
+    True(Read("{\"schemaVersion\":1,\"channel\":\"Development\"}").Address is null, "Do not claim an unconfigured development package can update.");
+    Equal(new Uri("https://example.invalid/app.appinstaller"), Read("{\"schemaVersion\":1,\"channel\":\"Direct\",\"appInstallerUri\":\"https://example.invalid/app.appinstaller\"}").Address!, "Direct updates delegate to App Installer.");
+    foreach (var uri in new[] { "http://example.invalid/app.appinstaller", "file:///C:/evil.appinstaller", "https://example.invalid/evil.exe", "https://user:pass@example.invalid/a.appinstaller", "https://example.invalid/a.appinstaller#other" })
+    {
+        var rejected = false;
+        try { Read(JsonSerializer.Serialize(new { schemaVersion = 1, channel = "Direct", appInstallerUri = uri })); }
+        catch (InvalidDataException) { rejected = true; }
+        True(rejected, "Reject an executable, local path, credentials, fragment or plaintext URL.");
+    }
+    var oversizedRejected = false;
+    try { Read(new string(' ', 20_000)); } catch (InvalidDataException) { oversizedRejected = true; }
+    True(oversizedRejected, "Bound update metadata reads even before parsing JSON.");
+    return Task.CompletedTask;
+}
+
 static async Task RedactionRoundTripAsync()
 {
     var directory = CreateTempDirectory();
@@ -1202,4 +1315,220 @@ static void Equal<T>(T expected, T actual, string message)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
         throw new InvalidOperationException($"{message} Expected: {expected}; actual: {actual}");
+}
+
+static async Task BoundedReadsAsync()
+{
+    using (var exact = new BoundedReadStream(new MemoryStream(new byte[4]), 4, 4))
+    {
+        using var output = new MemoryStream();
+        await exact.CopyToAsync(output);
+        Equal(4L, output.Length, "An exact-limit input must be readable through EOF.");
+    }
+    using (var excess = new BoundedReadStream(new MemoryStream(new byte[5]), 4))
+    {
+        var rejected = false;
+        try { await excess.CopyToAsync(Stream.Null); } catch (InvalidDataException) { rejected = true; }
+        True(rejected, "An actual input larger than its byte policy must be rejected.");
+    }
+    using (var shortInput = new BoundedReadStream(new MemoryStream(new byte[3]), 4, 4))
+    {
+        Equal(3, shortInput.Read(new byte[16]), "Existing bytes must be readable synchronously.");
+        var rejected = false;
+        try { shortInput.ReadByte(); } catch (InvalidDataException) { rejected = true; }
+        True(rejected, "A short declared entry must be rejected at EOF.");
+    }
+    using var cancelled = new BoundedReadStream(new MemoryStream(new byte[4]), 4);
+    using var cancellation = new CancellationTokenSource();
+    cancellation.Cancel();
+    var cancellationObserved = false;
+    try { await cancelled.ReadExactlyAsync(new byte[1], cancellation.Token); } catch (OperationCanceledException) { cancellationObserved = true; }
+    True(cancellationObserved, "Cancellation must be observed before consuming input.");
+}
+
+static async Task ForgedZipSizesAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var pdf = Path.Combine(directory, "source.pdf");
+        await File.WriteAllTextAsync(pdf, "%PDF-1.4\n%%EOF");
+        var writer = new ProjectPackageService();
+        var path = Path.Combine(directory, "forged-json.pdfocrproj");
+        await writer.SaveAsync(path, new PdfCorrectoriumProject { SourcePdf = await writer.CreateSourceReferenceAsync(pdf, directory) });
+        using (var archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var projectEntry = archive.GetEntry("project.json")!;
+            JsonObject model;
+            using (var input = projectEntry.Open()) model = (JsonObject)(await JsonNode.ParseAsync(input))!;
+            model["name"] = new string('x', 65536);
+            projectEntry.Delete();
+            using var output = archive.CreateEntry("project.json", CompressionLevel.NoCompression).Open();
+            await JsonSerializer.SerializeAsync(output, model);
+        }
+        await ForgeZipLengthAsync(path, "project.json", 128);
+        var limited = new ProjectPackageService { Limits = new ProjectPackageLimits { MaximumJsonEntryBytes = 1024 } };
+        True(!(await limited.ValidateAsync(path)).IsValid, "Forged stored JSON must fail the normal validation path.");
+        var rejected = false;
+        try { await limited.OpenAsync(path); } catch (InvalidDataException) { rejected = true; }
+        True(rejected, "Forged stored JSON must also fail direct OpenAsync.");
+
+        foreach (var compression in new[] { CompressionLevel.NoCompression, CompressionLevel.Optimal })
+        {
+            var thumbnailPath = Path.Combine(directory, $"thumbnails-{compression}.pdfocrproj");
+            using (var file = File.Create(thumbnailPath))
+            using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+            using (var output = archive.CreateEntry("thumbnails/page-1.jpg", compression).Open())
+                output.Write(new byte[65536]);
+            await ForgeZipLengthAsync(thumbnailPath, "thumbnails/page-1.jpg", 128);
+            var package = new ProjectPackageService { Limits = new ProjectPackageLimits { MaximumThumbnailEntryBytes = 1024 } };
+            try
+            {
+                var result = await package.ReadThumbnailCacheAsync(thumbnailPath);
+                True(compression == CompressionLevel.Optimal && result[1].Length <= 128,
+                    "A runtime that truncates Deflate output may return only bounded declared bytes.");
+            }
+            catch (InvalidDataException) { }
+        }
+        var normalPath = Path.Combine(directory, "normal-thumbnails.pdfocrproj");
+        using (var file = File.Create(normalPath))
+        using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
+            foreach (var number in new[] { 1, 2 })
+                using (var output = archive.CreateEntry($"thumbnails/page-{number}.jpg").Open()) output.Write(new byte[4]);
+        var exact = new ProjectPackageService { Limits = new ProjectPackageLimits {
+            MaximumThumbnailEntryBytes = 4, MaximumTotalThumbnailBytes = 8 } };
+        Equal(2, (await exact.ReadThumbnailCacheAsync(normalPath)).Count, "Exact individual and total thumbnail limits remain readable.");
+        var tooSmall = new ProjectPackageService { Limits = new ProjectPackageLimits { MaximumTotalThumbnailBytes = 7 } };
+        rejected = false;
+        try { await tooSmall.ReadThumbnailCacheAsync(normalPath); } catch (InvalidDataException) { rejected = true; }
+        True(rejected, "The thumbnail total policy must reject a larger cache.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task ForgeZipLengthAsync(string path, string entryName, uint declaredLength)
+{
+    var bytes = await File.ReadAllBytesAsync(path);
+    var end = bytes.Length - 22;
+    while (end >= 0 && BitConverter.ToUInt32(bytes, end) != 0x06054b50) end--;
+    True(end >= 0, "The fixture needs an end-of-central-directory record.");
+    var position = checked((int)BitConverter.ToUInt32(bytes, end + 16));
+    while (BitConverter.ToUInt32(bytes, position) == 0x02014b50)
+    {
+        var nameLength = BitConverter.ToUInt16(bytes, position + 28);
+        var name = System.Text.Encoding.UTF8.GetString(bytes, position + 46, nameLength);
+        if (name == entryName)
+        {
+            var local = checked((int)BitConverter.ToUInt32(bytes, position + 42));
+            BitConverter.GetBytes(declaredLength).CopyTo(bytes, position + 24);
+            BitConverter.GetBytes(declaredLength).CopyTo(bytes, local + 22);
+            await File.WriteAllBytesAsync(path, bytes);
+            return;
+        }
+        position += 46 + nameLength + BitConverter.ToUInt16(bytes, position + 30) + BitConverter.ToUInt16(bytes, position + 32);
+    }
+    throw new InvalidOperationException("The fixture entry was not found.");
+}
+
+static async Task PageBudgetsAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var packages = new ProjectPackageService { Limits = new() { MaximumPageCount = 2 } };
+        var source = new SourcePdfReference { FileName = "document.pdf", RelativePath = "document.pdf", Sha256 = new string('0', 64), PageCount = 2 };
+        var project = new PdfCorrectoriumProject { SourcePdf = source };
+        foreach (var version in new[] { "1.1", "1.3", "1.11" })
+        foreach (var count in new[] { 2, 3, int.MaxValue })
+        {
+            var candidate = project with { SourcePdf = source with { PageCount = count } };
+            if (version == "1.11") candidate = candidate with { PageSequence = [new() { SourcePageNumber = 1 }] };
+            var path = Path.Combine(directory, $"pages-{version}-{count}.pdfocrproj");
+            await WriteLegacySecurityProjectAsync(path, candidate, version);
+            var validation = await packages.ValidateAsync(path);
+            Equal(count == 2, validation.IsValid, "All formats enforce the same page-count budget.");
+            var rejected = false;
+            try { var loaded = await packages.OpenAsync(path); True(loaded.PageSequence.Count <= 2, "Normalization must remain bounded."); }
+            catch (InvalidDataException) { rejected = true; }
+            Equal(count > 2, rejected, "OpenAsync rejects excessive counts without generating pages.");
+        }
+        foreach (var candidate in new[] {
+            project with { Pages = [new() { PageNumber = int.MaxValue }] },
+            project with { PageSequence = [new() { SourcePageNumber = int.MaxValue }] },
+            project with { SourcePdf = source with { PageCount = -1 } }
+        })
+        {
+            var path = Path.Combine(directory, Guid.NewGuid() + ".pdfocrproj");
+            await WriteLegacySecurityProjectAsync(path, candidate, "1.1");
+            True(!(await packages.ValidateAsync(path)).IsValid, "Extreme OCR/sequence page numbers and negative page counts are rejected.");
+        }
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        var stopped = false;
+        try { ProjectPageSequence.Normalize(null, [], 2, 2, cancelled.Token); } catch (OperationCanceledException) { stopped = true; }
+        True(stopped, "Page normalization observes cancellation.");
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task AutomaticSourceAccessAsync()
+{
+    var directory = CreateTempDirectory();
+    try
+    {
+        var packages = new ProjectPackageService();
+        foreach (var remote in new[] { @"\\audit.invalid\share\document.pdf", "//audit.invalid/share/document.pdf", @"\\?\UNC\audit.invalid\share\document.pdf", @"\\.\pipe\audit-invalid" })
+        {
+            var source = new SourcePdfReference { FileName = "document.pdf", AbsolutePathHint = remote, Sha256 = new string('0', 64) };
+            True(!await packages.VerifySourceAsync(source, directory), "Remote references are unresolved without probing the remote host.");
+            var denied = false;
+            try { packages.ResolveSourcePath(source, directory); } catch (SourcePdfSelectionRequiredException) { denied = true; }
+            True(denied, "Network/device namespaces require explicit selection.");
+        }
+        var pdf = Path.Combine(directory, "source.pdf"); await File.WriteAllTextAsync(pdf, "%PDF local synthetic source");
+        var original = await packages.CreateSourceReferenceAsync(pdf, directory);
+        True(await packages.VerifySourceAsync(original, directory), "Ordinary local references remain automatic.");
+        var targetDirectory = Path.Combine(directory, "actual"); Directory.CreateDirectory(targetDirectory);
+        var actual = Path.Combine(targetDirectory, "source.pdf"); File.Copy(pdf, actual);
+        var link = Path.Combine(directory, "link");
+        // A local junction does not need symlink privilege and never points at a remote host.
+        using (var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe") {
+            Arguments = $"/c mklink /J \"{link}\" \"{targetDirectory}\"", UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardOutput = true, RedirectStandardError = true }))
+        {
+            await process!.WaitForExitAsync(); Equal(0, process.ExitCode, "The bounded local junction fixture was created.");
+        }
+        var viaLink = original with { RelativePath = "link/source.pdf" };
+        True(!await packages.VerifySourceAsync(viaLink, directory), "Automatic resolution stops at a reparse point.");
+        var selected = await packages.RelinkSourceAsync(viaLink, Path.Combine(link, "source.pdf"), directory);
+        True(await packages.VerifySourceAsync(selected, directory), "Explicit selection authorizes only the content-verified source for this session.");
+        True(!await new ProjectPackageService().VerifySourceAsync(selected, directory), "Selection authorization is not serialized or inherited by a new session.");
+        var directPackages = new ProjectPackageService();
+        var directlyOpened = await directPackages.CreateSourceReferenceAsync(Path.Combine(link, "source.pdf"), directory);
+        var embeddedPath = Path.Combine(directory, "direct-selected-embedded.pdfocrproj");
+        await directPackages.SaveAsync(embeddedPath, new PdfCorrectoriumProject { SourcePdf = directlyOpened }, embedSourcePdf: true);
+        True((await directPackages.ValidateAsync(embeddedPath)).IsValid,
+            "A directly selected PDF through a link remains usable when saved in embedded mode.");
+        True(!await new ProjectPackageService().VerifySourceAsync(directlyOpened, directory),
+            "Direct file selection does not authorize the same saved external reference in a new session.");
+        var ordinaryReference = await directPackages.CreateSourceReferenceAsync(pdf, directory);
+        Equal(pdf, directPackages.ResolveSourcePath(ordinaryReference, directory),
+            "Approval for identical bytes at another path cannot redirect an ordinary local reference.");
+        Equal(Path.Combine(link, "source.pdf"), directPackages.ResolveSourcePath(directlyOpened, directory),
+            "The explicitly selected link path remains bound to its original source hint.");
+        Directory.Delete(link);
+    }
+    finally { Directory.Delete(directory, recursive: true); }
+}
+
+static async Task WriteLegacySecurityProjectAsync(string path, PdfCorrectoriumProject project, string version)
+{
+    using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+    await Add("manifest.json", new ProjectManifest { ProjectId = project.ProjectId, FormatVersion = version });
+    await Add("project.json", project);
+    if (version is "1.1" or "1.3") await Add("source/source-reference.json", project.SourcePdf);
+    async Task Add<T>(string name, T value)
+    {
+        await using var entry = archive.CreateEntry(name).Open();
+        await JsonSerializer.SerializeAsync(entry, value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+    }
 }

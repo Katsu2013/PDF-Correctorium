@@ -21,7 +21,15 @@ public sealed partial class MainWindowViewModel
     private bool _isDocumentMetadataLoading;
     private bool _isDocumentInspectionLoading;
     public bool IsDocumentMetadataLoading => _isDocumentMetadataLoading;
-    public bool NeedsDocumentLoadingNotice => _isDocumentMetadataLoading || _isDocumentInspectionLoading || _documentMetadataError is not null;
+    // Only an actionable failure belongs in the top notification area.
+    public bool NeedsDocumentLoadingNotice => _documentMetadataError is not null;
+    public bool IsDocumentLoadingProgressVisible => _documentMetadataError is null &&
+        (_isDocumentMetadataLoading || _isDocumentInspectionLoading) && !IsBackgroundOperationVisible;
+    public bool IsDocumentLoadingProgressIndeterminate => !_isDocumentMetadataLoading || _linkPageCount == 0;
+    public double DocumentLoadingProgress => _linkPageCount == 0 ? 0 : 100d * _readyLinkPages.Count / _linkPageCount;
+    public string DocumentLoadingStatusText => _isDocumentMetadataLoading
+        ? $"{LocalizationService.Translate("リンク確認中")} ({_readyLinkPages.Count}/{_linkPageCount})"
+        : LocalizationService.Translate("PDFの特性を確認中");
     public bool CanEditDocument => HasDocument && _documentMetadataError is null &&
         (!_isDocumentMetadataLoading || IsLinkPageReady(SelectedPage?.PageNumber ?? 0));
     public string DocumentLoadingSummary => _documentMetadataError is not null
@@ -52,6 +60,10 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(CanEditDocument));
         OnPropertyChanged(nameof(DocumentLoadingSummary));
         OnPropertyChanged(nameof(NeedsDocumentLoadingNotice));
+        OnPropertyChanged(nameof(IsDocumentLoadingProgressVisible));
+        OnPropertyChanged(nameof(IsDocumentLoadingProgressIndeterminate));
+        OnPropertyChanged(nameof(DocumentLoadingProgress));
+        OnPropertyChanged(nameof(DocumentLoadingStatusText));
         OnPropertyChanged(nameof(CanEditGeometry));
         OnPropertyChanged(nameof(CanAddOcrRegion));
         OnPropertyChanged(nameof(CanUseOcrEditControls));
@@ -205,16 +217,19 @@ public sealed partial class MainWindowViewModel
     }
 
     // Internal navigation needs the destination's coordinates, not all links or font inspection.
-    private async Task EnsureLinkPageReadyAsync(int pageNumber)
+    private async Task EnsureLinkPageReadyAsync(int pageNumber, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var generation = _documentMetadataGeneration;
         RequestLinkPage(pageNumber);
         while (_isDocumentMetadataLoading && !IsLinkPageReady(pageNumber))
         {
-            await _linkMetadataProgress.Task;
+            // Cancel this waiter, not the shared document reader or other consumers.
+            await _linkMetadataProgress.Task.WaitAsync(cancellationToken);
             if (generation != _documentMetadataGeneration)
                 throw new OperationCanceledException("Document changed while waiting for page coordinates.");
         }
+        cancellationToken.ThrowIfCancellationRequested();
         if (_documentMetadataError is not null)
             throw new InvalidOperationException("リンクの座標情報を読み込めませんでした。", _documentMetadataError);
     }

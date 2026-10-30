@@ -23,7 +23,9 @@ public partial class App
         {
             if (arguments.Length <= optionIndex + 1) throw new ArgumentException("A new test output directory is required.");
             var requestedDirectory = Path.GetFullPath(arguments[optionIndex + 1]);
-            if (Directory.Exists(requestedDirectory)) throw new IOException("Test output directory already exists.");
+            if (Directory.Exists(requestedDirectory) && Directory.EnumerateFileSystemEntries(requestedDirectory)
+                    .Any(path => !string.Equals(Path.GetFileName(path), ".appstate", StringComparison.OrdinalIgnoreCase)))
+                throw new IOException("Test output directory already exists.");
             Directory.CreateDirectory(requestedDirectory);
             directory = requestedDirectory;
             var vm = (MainWindowViewModel)window.DataContext;
@@ -32,6 +34,11 @@ public partial class App
             vm.ErrorDialogOverride = (message, exception) => throw new InvalidOperationException(message, exception);
             var root = (FrameworkElement)window.Content;
             var checks = new List<string>();
+            window.ShowActivated = false; window.ShowInTaskbar = false;
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -10000; window.Top = -10000;
+            window.Show();
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
             void Check(bool condition, string message)
             {
                 if (!condition) throw new InvalidOperationException(message);

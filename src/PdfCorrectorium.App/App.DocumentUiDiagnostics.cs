@@ -25,7 +25,8 @@ public partial class App
             if (arguments.Length <= optionIndex + 1)
                 throw new ArgumentException("--document-ui-test requires a new output directory.");
             var directory = Path.GetFullPath(arguments[optionIndex + 1]);
-            if (Directory.Exists(directory))
+            if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory)
+                .Any(path => Path.GetFileName(path) != ".appstate"))
                 throw new IOException("Use a new output directory to avoid overwriting test results.");
             Directory.CreateDirectory(directory);
             var viewModel = (MainWindowViewModel)window.DataContext;
@@ -37,6 +38,7 @@ public partial class App
                 if (!condition) throw new InvalidOperationException(message);
                 checks.Add(message);
             }
+            Check(viewModel.ShowOcrFrames, "Isolated default settings keep OCR frames enabled for the selection-handle test.");
             FrameworkElement Control(string name) =>
                 window.FindName(name) as FrameworkElement ?? throw new InvalidOperationException($"Missing control: {name}");
             Check(window.Title == PdfCorrectorium.Core.ApplicationBuildInfo.WindowTitle,
@@ -47,6 +49,19 @@ public partial class App
             Check(PdfCorrectorium.Core.ApplicationBuildInfo.AboutText.Contains(
                 typeof(MainWindow).Assembly.GetName().Version!.ToString(4)),
                 "About text contains all four numeric build components.");
+            if (!PdfCorrectorium.Infrastructure.ApplicationPackageIdentity.IsPackaged)
+            {
+                Uri? updateTarget = null;
+                var statusBeforeUpdate = viewModel.StatusMessage;
+                var dirtyBeforeUpdate = viewModel.HasUnsavedChanges;
+                window.UpdateLaunchOverride = uri => updateTarget = uri;
+                ((MenuItem)Control("CheckForUpdatesMenuItem")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                Check(updateTarget == PdfCorrectorium.Infrastructure.DistributionUpdates.ReleasesPage &&
+                      viewModel.HasUnsavedChanges == dirtyBeforeUpdate && !viewModel.IsBackgroundOperationVisible,
+                    "Update menu delegates to the portable release page without modifying documents or starting a blocking operation.");
+                window.UpdateLaunchOverride = null;
+                viewModel.StatusMessageForInteraction(statusBeforeUpdate);
+            }
             async Task LayoutAsync()
             {
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
@@ -85,6 +100,7 @@ public partial class App
                 "RedactionMenuItem", "OcrEditToolbarButton", "RedactionToolbarButton", "EditorModeSelector",
                 "RedactionInputModeComboBox",
                 "SinglePageToolbarButton", "FacingPagesToolbarButton", "ContinuousScrollToolbarButton",
+                "ReadAloudToolbarButton",
             };
             ICommand[] documentCommands =
             [
@@ -111,6 +127,8 @@ public partial class App
             window.Show();
             await LayoutAsync();
             Check(!viewModel.HasDocument && !viewModel.CanUsePreview, "Startup has no document or usable preview.");
+            Check(viewModel.EditUnit == OcrEditUnit.Line && ((ComboBox)Control("EditUnitSelector")).SelectedIndex == 1,
+                "The reordered unit selector preserves Line as the startup default at its new display position.");
             Check(Control("ProjectStorageModeStatusItem").Visibility == Visibility.Collapsed,
                 "Startup hides project PDF storage information from the status bar.");
             foreach (var name in documentControls)
@@ -245,7 +263,8 @@ public partial class App
                   ((ComboBox)Control("EditorModeSelector")).SelectedIndex == (int)EditorInteractionMode.Redaction,
                 "Toolbar buttons and the editor-mode selector show the same active redaction mode.");
             Check(Control("RedactionPanel").Visibility == Visibility.Visible &&
-                  ((TextBlock)Control("PropertiesPaneTitle")).Text == LocalizationService.Translate("墨消しプロパティ"),
+                  window.PropertyPanes["redaction-properties"].IsSelected &&
+                  window.PropertyPanes["redaction-properties"].Title == LocalizationService.Translate("墨消し"),
                 "Redaction mode shows its dedicated property controls.");
             var redactionInputModes = (ComboBox)Control("RedactionInputModeComboBox");
             Check(redactionInputModes.Items.Count == 4 && redactionInputModes.SelectedIndex == 0,
@@ -395,7 +414,8 @@ public partial class App
                 "Document properties offers continuous facing pages as an exported-PDF initial view.");
             propertiesWindow.Close();
             foreach (var name in documentControls)
-                Check(Control(name).IsEnabled, $"PDF load enables {name}.");
+                Check(Control(name).IsEnabled == (name != "RedactionInputModeComboBox"),
+                    $"PDF load enables document controls, but redaction inputs require redaction mode: {name}.");
             Check(saveAsNotifications > 0 && viewModel.SaveProjectAsCommand.CanExecute(null), "Save As notifies the UI when a document is loaded.");
             Check(!viewModel.PreviousPageCommand.CanExecute(null) && viewModel.NextPageCommand.CanExecute(null), "First page has correct navigation availability.");
             viewModel.SelectedPage = viewModel.PageItems[1];

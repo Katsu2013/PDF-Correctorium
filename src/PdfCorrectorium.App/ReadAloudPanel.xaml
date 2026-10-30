@@ -1,0 +1,47 @@
+<UserControl x:Class="PdfCorrectorium.App.ReadAloudPanel" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:icons="clr-namespace:PdfCorrectorium.App.Resources" xmlns:kb="clr-namespace:PdfCorrectorium.App.Services" Loaded="Panel_OnLoaded" KeyDown="Panel_OnKeyDown">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <StackPanel x:Name="SpeechContent" Margin="8" VerticalAlignment="Top">
+            <DockPanel>
+                <Label Content="範囲(_R)" Target="{Binding ElementName=ScopeBox}" VerticalAlignment="Center" Padding="0,0,4,0" />
+                <ComboBox x:Name="ScopeBox" SelectedIndex="1" IsEnabled="False" VerticalAlignment="Center" AutomationProperties.AccessKey="Alt+R" SelectionChanged="Scope_OnChanged">
+                    <ComboBoxItem Content="選択部分" />
+                    <ComboBoxItem Content="現在ページ" />
+                    <ComboBoxItem Content="現在ページから最後まで" />
+                </ComboBox>
+            </DockPanel><WrapPanel Margin="0,4,0,0"><Button x:Name="PreviousButton" Content="前へ" Style="{StaticResource IconOnlyActionButtonStyle}" icons:ActionIcon.Key="PreviousPage" kb:KeyboardAccess.Key="B" ToolTip="前の段落" IsEnabled="False" Click="Previous_OnClick" Margin="0" AutomationProperties.Name="前へ" />
+                <Button x:Name="PlayButton" Grid.Column="3" Content="再生" Style="{StaticResource IconOnlyActionButtonStyle}" icons:ActionIcon.Key="Play" kb:KeyboardAccess.Key="P" ToolTip="再生" IsEnabled="False" Click="Play_OnClick" Margin="2,0" AutomationProperties.Name="再生" />
+                <Button x:Name="PauseButton" Grid.Column="4" Content="一時停止・再開" Style="{StaticResource IconOnlyActionButtonStyle}" icons:ActionIcon.Key="Pause" kb:KeyboardAccess.Key="A" ToolTip="一時停止・再開" IsEnabled="False" Click="Pause_OnClick" AutomationProperties.Name="一時停止・再開" />
+                <Button x:Name="StopButton" Grid.Column="5" Content="停止" Style="{StaticResource IconOnlyActionButtonStyle}" icons:ActionIcon.Key="Stop" kb:KeyboardAccess.Key="T" ToolTip="停止" IsEnabled="False" Click="Stop_OnClick" AutomationProperties.Name="停止" />
+                <Button x:Name="NextButton" Grid.Column="6" Content="次へ" Style="{StaticResource IconOnlyActionButtonStyle}" icons:ActionIcon.Key="NextPage" kb:KeyboardAccess.Key="N" ToolTip="次の段落" IsEnabled="False" Click="Next_OnClick" AutomationProperties.Name="次へ" /></WrapPanel>
+            <DockPanel Margin="0,4,0,0">
+                <Label Content="移動単位(_U)" Target="{Binding ElementName=NavigationUnitBox}" Padding="0,0,6,0" VerticalAlignment="Center" />
+                <ComboBox x:Name="NavigationUnitBox" SelectedIndex="0" Width="88" HorizontalAlignment="Left" SelectionChanged="NavigationUnit_OnChanged" AutomationProperties.AccessKey="Alt+U">
+                    <ComboBoxItem Content="段落" /><ComboBoxItem Content="行" />
+                </ComboBox>
+                <TextBlock x:Name="PositionText" Foreground="{DynamicResource SecondaryTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+            </DockPanel>
+            <TextBlock x:Name="PlaybackStatus" Text="音声を確認しています…" Margin="0,6,0,0" TextWrapping="Wrap" />
+            <TextBlock x:Name="SpokenText" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource SecondaryTextBrush}" MaxHeight="42">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <Expander x:Name="SpeechOptionsExpander" Header="音声と速度" Margin="0,6,0,0">
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Label Content="音声(_V)" Target="{Binding ElementName=VoiceBox}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="VoiceBox" Grid.Column="1" Grid.ColumnSpan="2" DisplayMemberPath="Name" SelectedValuePath="Name" SelectionChanged="Voice_OnChanged" AutomationProperties.AccessKey="Alt+V"
+                              ToolTip="Windowsの標準音声APIで利用できる音声を表示します。ナレーター専用の自然音声は含まれません。" />
+                    <Label Grid.Row="1" Content="速度(_S)" Target="{Binding ElementName=RateSlider}" Padding="0,0,6,0" VerticalAlignment="Center"/>
+                    <Slider x:Name="RateSlider" Grid.Row="1" Grid.Column="1" Minimum="-5" Maximum="5" TickFrequency="0.5" SmallChange="0.5" LargeChange="1" IsSnapToTickEnabled="True" ValueChanged="Rate_OnChanged" Margin="0,3" AutomationProperties.AccessKey="Alt+S" ToolTip="0が標準です。0.5刻みで調整し、次の読み上げから反映します。" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding ElementName=RateSlider, Path=Value, StringFormat={}{0:+0.#;-0.#;0}}" Width="34" TextAlignment="Right" VerticalAlignment="Center" />
+                </Grid>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

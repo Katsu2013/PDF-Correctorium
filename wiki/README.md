@@ -1,4 +1,4 @@
-﻿# PDF Correctorium GitHub Wiki ソース
+# PDF Correctorium GitHub Wiki ソース
 
 このフォルダーには、[GitHub Wiki](https://github.com/Katsu2013/PDF-Correctorium/wiki) 用の Markdown ソースファイル一式が格納されています。
 
@@ -47,3 +47,10 @@ git add .
 git commit -m "Initial wiki documentation"
 git push origin master
 ```
+## 追加した現行ガイド
+
+- [dev.199からの更新](Release-Changes.md)
+- [RapidOCR](RapidOCR.md)
+- [OCR品質と資料の辞書](OCR-Quality-And-Lexicon.md)
+- [読み上げ](Read-Aloud.md)
+- [作業データと完成画像](Data-Exports.md)

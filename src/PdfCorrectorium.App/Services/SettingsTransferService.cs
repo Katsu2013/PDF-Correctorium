@@ -71,6 +71,16 @@ public static class SettingsTransferService
 
     internal static void Validate(ApplicationSettings settings)
     {
+        if (!Enum.IsDefined(settings.Theme) || settings.SpeechRate is < -5 or > 5 ||
+            settings.FineSpeechRate is { } fine && (!double.IsFinite(fine) || fine < -5 || fine > 5) ||
+            settings.SpeechVoiceName is null or { Length: > 256 })
+            throw new InvalidDataException("Theme or speech settings are invalid.");
+        if (settings.WorkspaceLayoutXml is { } xml && WorkspaceDockLayout.Normalize(xml) is null ||
+            settings.WorkspacePresets?.Any(preset => preset?.WorkspaceLayoutXml is { } layout && WorkspaceDockLayout.Normalize(layout) is null) == true)
+            throw new InvalidDataException("Workspace layout is invalid or exceeds its size limit.");
+        if (!Enum.IsDefined(settings.DefaultEditingMode) || settings.HiddenToolbarItems is null ||
+            settings.HiddenToolbarItems.Count > 100 || settings.HiddenToolbarItems.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > 100))
+            throw new InvalidDataException("Editor mode or toolbar visibility settings are invalid.");
         if (!Enum.IsDefined(settings.NavigationDockPosition) || !Enum.IsDefined(settings.BookmarkDockPosition) ||
             !Enum.IsDefined(settings.PropertiesDockPosition) ||
             !Enum.IsDefined(settings.PaneGroupMode) ||

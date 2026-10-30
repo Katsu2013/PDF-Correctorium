@@ -23,6 +23,7 @@ namespace PdfCorrectorium.App.ViewModels;
 /// <param name="IsVertical">縦書き・横書きの明示指定。未指定の場合は<c>null</c>。</param>
 /// <param name="IsGeometryLocked">領域全体の位置、寸法、回転を固定するか。</param>
 /// <param name="CharacterLocksText">各Unicodeテキスト要素の固定状態をセミコロン区切りで表した値。</param>
+/// <param name="ParagraphGroupId">段落の明示指定。nullは自動、空GUIDは行ごとの区切り。</param>
 public sealed record OverlayRegionSnapshot(
     string Text,
     double Left,
@@ -37,7 +38,8 @@ public sealed record OverlayRegionSnapshot(
     bool IsDeleted = false,
     bool? IsVertical = null,
     bool IsGeometryLocked = false,
-    string CharacterLocksText = "");
+    string CharacterLocksText = "",
+    Guid? ParagraphGroupId = null);
 
 /// <summary>
 /// 文字編集モードで表示する、1テキスト要素分のローカル座標セルです。
@@ -70,7 +72,7 @@ public sealed record CharacterOverlayCell(
 /// 結合文字やサロゲートペアを分断しないよう、文字境界の計算には
 /// <see cref="StringInfo.ParseCombiningCharacters(string)"/> を使用します。
 /// </remarks>
-public sealed class OverlayRegionViewModel : INotifyPropertyChanged
+public sealed partial class OverlayRegionViewModel : INotifyPropertyChanged
 {
     /// <summary>利用者が修正できる現在のOCR文字列です。</summary>
     private string _text;
@@ -88,6 +90,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     private int _readingOrder;
     /// <summary>「表記=よみ」を1行ずつ保持する編集用文字列です。</summary>
     private string _wordReadingsText;
+    private Guid? _paragraphGroupId;
     /// <summary>複数領域の整列とサイズ統一でこの領域を基準にするかを示します。</summary>
     private bool _isAlignmentReference;
     /// <summary>文字選択のうち、プロパティ編集対象になる主文字のインデックスです。</summary>
@@ -175,6 +178,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         _rotationDegrees = current.RotationDegrees;
         _readingOrder = current.ReadingOrder;
         _wordReadingsText = current.WordReadingsText;
+        _paragraphGroupId = current.ParagraphGroupId;
         _reviewStatus = current.ReviewStatus;
         _isGeometryLocked = current.IsGeometryLocked;
         IsInvisible = isInvisible;
@@ -215,6 +219,11 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     public string ProviderId { get; }
     public double? Confidence { get; }
     public bool IsAdded { get; }
+    public Guid? ParagraphGroupId
+    {
+        get => _paragraphGroupId;
+        set { if (Set(ref _paragraphGroupId, value)) OnPropertyChanged(nameof(IsModified)); }
+    }
     /// <summary>領域全体の移動、サイズ変更、回転、および自動調整を禁止するかを示します。</summary>
     public bool IsGeometryLocked
     {
@@ -252,11 +261,15 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
             var previousAdvances = _characterAdvances.ToArray();
             var previousLocks = _characterLocks.ToArray();
             _text = normalized;
+            _wordReadingMatches = null;
             _searchHighlightStart = -1;
             _searchHighlightLength = 0;
             ReconcileCharacterStateAfterTextEdit(previousText, previousAdvances, previousLocks);
             ClampCharacterSelection();
             OnPropertyChanged();
+            // Derived display notifications must follow the complete text/geometry edit,
+            // or the shared history observer can capture an intermediate snapshot.
+            OnPropertyChanged(nameof(WordReadingMatches));
             OnPropertyChanged(nameof(IsModified));
             NotifyCharacterSelection();
         }
@@ -300,12 +313,17 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         get => _wordReadingsText;
         set
         {
-            if (!Set(ref _wordReadingsText, value ?? string.Empty)) return;
+            var text = value ?? string.Empty;
+            if (_wordReadingsText == text) return;
+            _wordReadingDefinitions = null; _wordReadingMatches = null;
+            Set(ref _wordReadingsText, text);
+            OnPropertyChanged(nameof(WordReadingDefinitions));
+            OnPropertyChanged(nameof(WordReadingMatches));
             OnPropertyChanged(nameof(WordReadingsValidationMessage));
             OnPropertyChanged(nameof(HasWordReadingErrors));
         }
     }
-    public string WordReadingsValidationMessage => ValidateWordReadings(WordReadingsText);
+    public string WordReadingsValidationMessage => ReadingDefinitionState.Error;
     public bool HasWordReadingErrors => WordReadingsValidationMessage.Length > 0;
     public bool IsAlignmentReference { get => _isAlignmentReference; set => Set(ref _isAlignmentReference, value); }
     public ReviewStatus ReviewStatus { get => _reviewStatus; set => Set(ref _reviewStatus, value); }
@@ -564,7 +582,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
     /// <summary>
     /// 現在の編集状態をUndo/Redo用の不変スナップショットとして取得します。
     /// </summary>
-    public OverlayRegionSnapshot Capture() => new(Text, Left, Top, Width, Height, RotationDegrees, ReadingOrder, WordReadingsText, SerializeCharacterAdvances(), ReviewStatus, IsDeleted, IsVertical, IsGeometryLocked, SerializeCharacterLocks());
+    public OverlayRegionSnapshot Capture() => new(Text, Left, Top, Width, Height, RotationDegrees, ReadingOrder, WordReadingsText, SerializeCharacterAdvances(), ReviewStatus, IsDeleted, IsVertical, IsGeometryLocked, SerializeCharacterLocks(), ParagraphGroupId);
 
     /// <summary>主選択文字を後半領域の先頭として、この領域を安全に2分割できるかを示します。</summary>
     public bool CanSplitAtSelectedCharacter =>
@@ -628,7 +646,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
                 false,
                 IsVertical,
                 false,
-                SerializeCharacterLocks(partLocks));
+                SerializeCharacterLocks(partLocks), ParagraphGroupId);
         }
 
         return (
@@ -716,7 +734,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
             false,
             IsVertical,
             false,
-            SerializeCharacterLocks(mergedLocks));
+            SerializeCharacterLocks(mergedLocks), first.ParagraphGroupId == second.ParagraphGroupId ? first.ParagraphGroupId : null);
     }
 
     /// <summary>
@@ -734,6 +752,7 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         RotationDegrees = snapshot.RotationDegrees;
         ReadingOrder = snapshot.ReadingOrder;
         WordReadingsText = snapshot.WordReadingsText;
+        ParagraphGroupId = snapshot.ParagraphGroupId;
         ReviewStatus = snapshot.ReviewStatus;
         IsDeleted = snapshot.IsDeleted;
         // Apply the lock map before advances for the same reason as construction:
@@ -1264,21 +1283,6 @@ public sealed class OverlayRegionViewModel : INotifyPropertyChanged
         if (normalized > 180) normalized -= 360;
         if (normalized <= -180) normalized += 360;
         return Math.Round(normalized, 2);
-    }
-
-    private static string ValidateWordReadings(string value)
-    {
-        var lineNumber = 0;
-        foreach (var rawLine in value.Replace("\r\n", "\n").Split('\n'))
-        {
-            lineNumber++;
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-            var separator = line.IndexOf('=');
-            if (separator <= 0 || separator == line.Length - 1)
-                return $"{lineNumber}行目は「表記=よみ」で入力してください。";
-        }
-        return string.Empty;
     }
 
     private void ClampCharacterSelection()
