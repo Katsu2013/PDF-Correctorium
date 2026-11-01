@@ -60,3 +60,5 @@
 ## dev.281開発版の配布
 
 ソース反映後の追加承認に基づき、CI検証済みZIPを再ビルドせずdev.281の新規タグで配布する。[変更内容・検証範囲・未解決事項](releases/v1.0.0-dev.281-publication.md)を明記し、dev.274の資源は保持する。Issue #1は解決として閉じない。
+
+2026-11-02 08:55 JST、[dev.281の開発版リリースを公開](https://github.com/Katsu2013/PDF-Correctorium/releases/tag/v1.0.0-dev.281)。CI検証済みZIPを再ビルドせず添付し、5資源のハッシュ・タグを公開後に再照合した。Wikiの配布案内も更新した。Issue #1の再現資料待ちは継続する。
