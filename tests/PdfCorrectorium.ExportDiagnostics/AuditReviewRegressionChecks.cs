@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using PdfCorrectorium.App.Services;
 using State = PdfCorrectorium.App.Services.IsolatedPdfExportService.ExportWorkerState;
@@ -55,21 +57,39 @@ internal static class AuditReviewRegressionChecks
             var parent = Path.Combine(root, "managed-sandboxes"); Directory.CreateDirectory(parent);
             var now = DateTimeOffset.UtcNow;
             var sid = SandboxLifetime.CurrentOwnerSid();
+            // Elevated Windows runners can assign Administrators as the default
+            // owner of new files. These fixtures explicitly represent roots owned
+            // by this user; do not relax the production ownership checks for CI.
+            var fixtureSid = new SecurityIdentifier(sid);
             string Fixture(string label, Func<SandboxLifetime.Owner, SandboxLifetime.Owner>? change = null, bool metadata = true)
             {
                 var path = Path.Combine(parent, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+                var directory = new DirectoryInfo(path);
+                var directoryOwner = directory.GetAccessControl(AccessControlSections.Owner);
+                directoryOwner.SetOwner(fixtureSid);
+                directory.SetAccessControl(directoryOwner);
                 File.WriteAllText(Path.Combine(path, "input.pdf"), label);
                 var id = Path.GetFileName(path);
                 var owner = new SandboxLifetime.Owner(1, id, SandboxLifetime.ProfilePrefix + id, sid, int.MaxValue,
                     now.AddDays(-3).UtcTicks, now.AddDays(-2));
-                if (metadata) File.WriteAllText(Path.Combine(path, SandboxLifetime.LeaseName), JsonSerializer.Serialize(change?.Invoke(owner) ?? owner));
+                if (metadata)
+                {
+                    var leaseFile = new FileInfo(Path.Combine(path, SandboxLifetime.LeaseName));
+                    File.WriteAllText(leaseFile.FullName, JsonSerializer.Serialize(change?.Invoke(owner) ?? owner));
+                    var fileOwner = leaseFile.GetAccessControl(AccessControlSections.Owner);
+                    fileOwner.SetOwner(fixtureSid);
+                    leaseFile.SetAccessControl(fileOwner);
+                }
                 return path;
             }
             var stale = Fixture("owned orphan");
             var profiles = new List<string>();
+            Check(new DirectoryInfo(stale).GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier))?.Value == sid &&
+                new FileInfo(Path.Combine(stale, SandboxLifetime.LeaseName)).GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier))?.Value == sid,
+                "The orphan fixture's actual directory and lease owner match the current user independently of runner elevation.");
             var cleaned = SandboxLifetime.Cleanup(parent, now, profiles.Add);
             Check(cleaned.Removed == 1 && !Directory.Exists(stale) && profiles.Single() == SandboxLifetime.ProfilePrefix + Path.GetFileName(stale),
-                "An aged, unlocked, same-owner dead-process sandbox and only its matching profile are reclaimed.");
+                $"An aged, unlocked, same-owner dead-process sandbox and only its matching profile are reclaimed. Result={cleaned}; plainParent={SandboxLifetime.IsPlainPath(parent)}");
             var legacy = Fixture("untagged legacy", metadata: false);
             var young = Fixture("recent", o => o with { CreatedUtc = now });
             var foreign = Fixture("foreign", o => o with { OwnerSid = "S-1-0-0" });

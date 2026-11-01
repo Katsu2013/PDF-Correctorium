@@ -1,13 +1,13 @@
 # PDF Correctorium 設計書
 
-現行ソース **1.0.0-dev.277**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
+現行ソース **1.0.0-dev.278**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
 
 - アプリ版はDirectory.Build.propsの2つの入力から導出します。
 - 新規保存のプロジェクト形式は1.14、最小読取版dev.262。設定形式21とは別です。
 - [dev.199からの変更と現行検証](../../docs/releases/v1.0.0-dev.274.md)
 - [機能と文書の追跡・確認表](../../docs/Release-Documentation-Coverage.md)
 - [利用者向け操作ガイド原稿](../../wiki/Home.md)
-- [設計PDF](PDF-Correctorium-Design-Documentation-dev277-20261102.pdf)
+- [設計PDF](PDF-Correctorium-Design-Documentation-dev278-20261102.pdf)
 
 ## まず全体像を確認
 
@@ -50,3 +50,9 @@ Mermaidコードは公式CLIで図へ変換します。初回は`npm ci --prefix
 - CIの固定ランタイム解決と、公開用のクリーンなコミット検査を追加。
 - 診断は明示的に有効化した場合だけ実行する。通常のPDFワーカーは維持する。
 - 公開版はdev.274。GitHubでの反映状況と未完了条件は[対応表](../../docs/External-Review-Response-2026-11-02.md)を参照する。
+
+## dev.278の監査データ修正
+
+- CIで本人所有の回収テストが停止したため、監査用フォルダーと所有者記録のNTFS所有者を明示する。
+- 本番の所有者・経路・ロック検査は維持する。アプリの編集機能・保存形式の変更ではない。
+- [検証記録](../../docs/releases/v1.0.0-dev.278.md)と[CI](https://github.com/Katsu2013/PDF-Correctorium/actions/workflows/verify.yml)を区別して確認する。公開済みアプリは引き続きdev.274。

@@ -1,6 +1,10 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.277
+## Current repository snapshot: v1.0.0-dev.278
+
+CI audit fixture correction: explicitly assign the current user as owner of synthetic orphan directories and leases. Production cleanup still rejects foreign ownership and reparse points. Local verification PASSED: seven-project Release (0 warnings/errors), 76 contracts, exact self-contained payload, 29 audit checks, document UI/version display and 32 versioning checks. Final GitHub CI remains a separate result: docs/releases/v1.0.0-dev.278.md.
+
+## Previous repository snapshot: v1.0.0-dev.277
 
 External-review remediation: offline locked runtime resolution, clean-source publication gate, documentation checks and Wiki staging. Diagnostic CLI handlers require explicit developer opt-in; operational PDF workers remain available. Verification PASSED locally: SDK 10.0.403, seven-project Release (0 warnings/errors), 76 contracts, 125 security checks, 28 audit checks, AppContainer/export-state, all 21 app diagnostics, 32 version checks and complete ZIP verification. A second empty package cache also restores the self-contained desktop payload. GitHub CI and Wiki publication remain separate. Details: docs/releases/v1.0.0-dev.277.md.
 
