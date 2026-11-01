@@ -66,3 +66,13 @@ Remove-Item Env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS
 - 公開済みの履歴・過去PDFに記録された情報をGitの履歴改変で消す処理は行わない。
 - プレリリースの導線はReleases一覧を使う。安定版専用の`/releases/latest`へ依存しない。
 - API最低条件（Windows 10 2004以降）と、実機検証（Windows 11 x64）と、MicrosoftのOSサポートを区別する。
+
+## 音声の検証範囲
+
+| プロファイル | 使用場所 | 確認範囲 |
+|---|---|---|
+| NativePlayback（既定） | 音声出力可能なローカルWindows | 実WAV、実再生、進行キュー、一時停止・再開、取消、速度差 |
+| SynthesisOnly | GitHub CI | 同じWindows音声生成処理で実WAV、速度差、取消と再利用。実再生は確認済みと扱わない |
+
+- CIの生成専用プロファイルも、段落・読み方・PDF出力とUIの論理検証を行う。
+- 検証JSONのspeechVerificationModeとnativeSpeechPlaybackVerifiedを必ず区別する。CIの成功だけで実機の音声出力を確認済みと表現しない。

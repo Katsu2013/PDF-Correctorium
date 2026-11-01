@@ -1,13 +1,14 @@
 # PDF Correctorium 設計書
 
-現行ソース **1.0.0-dev.278**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
+現行ソース **1.0.0-dev.281**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
 
-- アプリ版はDirectory.Build.propsの2つの入力から導出します。
+- アプリ版はDirectory.Build.propsの2つの入力から導出します。CIでもコミットIDを版番号へ自動付加しません。
+- [公開・CI運用の最新追記](../../docs/releases/v1.0.0-dev.281.md)。公開版dev.274と開発ソースの検証は区別します。
 - 新規保存のプロジェクト形式は1.14、最小読取版dev.262。設定形式21とは別です。
 - [dev.199からの変更と現行検証](../../docs/releases/v1.0.0-dev.274.md)
 - [機能と文書の追跡・確認表](../../docs/Release-Documentation-Coverage.md)
 - [利用者向け操作ガイド原稿](../../wiki/Home.md)
-- [設計PDF](PDF-Correctorium-Design-Documentation-dev278-20261102.pdf)
+- [設計PDF](PDF-Correctorium-Design-Documentation-dev281-20261102.pdf)
 
 ## まず全体像を確認
 

@@ -2,7 +2,7 @@
 
 ## Current repository snapshot: v1.0.0-dev.281
 
-Explicit speech verification profiles separate native playback (local default) from CI synthesis-only operation. Both use the same Windows synthesis path; CI verifies real WAV/rate/cancellation/reuse and retains Japanese reading/paragraph/PDF checks. CI never claims native playback coverage. The dev.280 CI passed the other 20 app groups and failed in MediaPlayer playback; the precise renderer cause is not established. Playback errors now include error kind/HRESULT. Local Release, 76 contracts, 29 audit, 34 versioning, NativePlayback 275, SynthesisOnly 276 and document UI 211 PASSED. GitHub CI is a separate pending result: docs/releases/v1.0.0-dev.281.md.
+Explicit speech verification profiles separate native playback (local default) from CI synthesis-only operation. Both use the same Windows synthesis path; CI verifies real WAV/rate/cancellation/reuse and retains Japanese reading/paragraph/PDF checks. CI never claims native playback coverage. The dev.280 CI passed the other 20 app groups and failed in MediaPlayer playback; the precise renderer cause is not established. Playback errors now include error kind/HRESULT. Local Release, 76 contracts, 29 audit, 34 versioning, NativePlayback 275, SynthesisOnly 276 and document UI 211 PASSED. GitHub CI PASSED all 21 groups for clean commit 0b1e84f (run 41333224499), with SynthesisOnly / nativeSpeechPlaybackVerified=false. Artifact and ZIP digests and Git-normalized source inputs were verified. Native playback remains the separate successful local result. Details: docs/releases/v1.0.0-dev.281.md.
 
 ## Previous repository snapshot: v1.0.0-dev.280
 
