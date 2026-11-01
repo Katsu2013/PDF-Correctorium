@@ -221,7 +221,7 @@ OCR訂正からリンク作成まで選択文字と同じ範囲を再利用す�
 - [現行機能索引](../outputs/PdfCorrectorium-Documentation/docs/00_Project/00-04_CurrentImplementation.md)
 - [現行UX](../outputs/PdfCorrectorium-Documentation/docs/02_UIUX/02-01_UXAndWorkflows.md)
 - [アイコンの正本](../outputs/PdfCorrectorium-Documentation/docs/02_UIUX/02-02_IconDesignAndUsage.md)
-- [実PDFのOCR修正記録](releases/v1.0.0-dev.215.md)
+- [実PDFのOCR修正記録](archive/releases/v1.0.0-dev.215.md)
 - [Microsoft：コマンドの基本](https://learn.microsoft.com/en-us/windows/apps/design/basics/commanding-basics)
 - [Microsoft：ツールチップ](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tooltips)
 - [Microsoft：アクセシビリティ確認項目](https://learn.microsoft.com/en-us/windows/apps/design/accessibility/accessibility-checklist)

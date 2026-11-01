@@ -1,7 +1,7 @@
 # NDLOCR-Lite 連携
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 現行仕様（v1.0.0-dev.274・コミット前確認）
+## 公開アプリの仕様（v1.0.0-dev.274）
 
 NDLOCR-liteは外部で実行した結果を取り込む。本体やPython環境はアプリへ同梱していない。一方、選択した横書き行は同梱RapidOCRで再認識できる。未OCRページ／PDF全体の新規認識、縦書き・混在検出を実装済みと扱わない。[行の再認識](RapidOCR.md)。
 <!-- END-CURRENT-RELEASE-SNAPSHOT -->

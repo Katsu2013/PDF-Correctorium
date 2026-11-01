@@ -1,6 +1,6 @@
 # .NET 10 互換性監査（2026-10-27）
 
-> 以下はdev.247を対象にした移行前監査の記録です。その後、dev.248で更新に着手し、dev.249で診断・連続表示の修正と最終配布検証を行っています。現在の採用版・結果は[dev.249の記録](releases/v1.0.0-dev.249.md)を参照してください。本文中の「現行」は監査時点を指します。
+> 以下はdev.247を対象にした移行前監査の記録です。その後、dev.248で更新に着手し、dev.249で診断・連続表示の修正と最終配布検証を行っています。現在の採用版・結果は[dev.249の記録](archive/releases/v1.0.0-dev.249.md)を参照してください。本文中の「現行」は監査時点を指します。
 
 ## 結論
 
@@ -14,7 +14,7 @@
 
 | 項目 | 確認内容 |
 | --- | --- |
-| 現行リポジトリ | `C:\Users\katsu\Documents\Codex\PDF-Correctorium` |
+| 現行リポジトリ | `<repo>` |
 | 現行版 | `Directory.Build.props` の dev.247 / 1.0.0.247 |
 | 現行対象 | 本体・診断2件が net8.0-windows7.0、共通3ライブラリ・契約テストが net8.0 |
 | SDK | global.json は 10.0.302 / latestFeature、実際の選択は **10.0.403** |
@@ -278,7 +278,7 @@ qpdf 12.4.2には不正なオブジェクトID等の検査改善、線形化時�
 
 証跡ルート：
 
-`C:\Users\katsu\Documents\Codex\PDF-Correctorium\outputs\net10-compatibility-audit-20261027-114925`
+`<repo>\outputs\net10-compatibility-audit-20261027-114925`
 
 主なファイル：
 

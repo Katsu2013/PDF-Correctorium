@@ -11,3 +11,10 @@
 - Never claim verification or Git tracking that did not succeed. A missing/unusable Git repository must be reported, not silently reinitialized. Do not commit, push, tag or modify Git history unless requested.
 
 See [VERSIONING.md](VERSIONING.md) for the operational policy and limitations of the local publication checks.
+
+## Documentation and PDF presentation (mandatory)
+
+- Render every Mermaid fenced block as a diagram embedded in exported PDFs. Never substitute its source code or silently omit it. Missing renderers, syntax failures and blank diagrams must fail conversion and preserve the existing output.
+- Use `tools/BuildDocumentationPdf.py` and its pinned local Mermaid CLI for design PDFs. Give fenced code blocks a light background, contrasting outline and padding, including fragments split across pages. Keep indentation and readable CJK wrapping.
+- Start substantial chapters with a short decision-oriented overview. Use bullets for parallel requirements, tables for comparisons, and diagrams for flows and relationships. Distinguish implemented behavior, planned behavior and historical verification. Do not turn historical results into current success claims.
+- Keep historical evidence in archive with working references. Regenerate and visually inspect PDFs after changes; check diagrams, code panels, page breaks and links. Do not rebuild or publish application binaries solely to refresh documentation.

@@ -37,6 +37,15 @@ internal static class AuditReviewRegressionChecks
             Check(StartupArgumentRouting.FilesTakePriority(["--similar-word-test", "--smoke-test"]), "File priority is decided before any competing diagnostic handler.");
             await File.WriteAllTextAsync(Path.Combine(input, "input.pdf"), "fixture");
             Check(!StartupArgumentRouting.FilesTakePriority(["--pdf-export-test", "input.pdf", "out.pdf"]), "Ordinary input paths do not disable explicitly invoked diagnostics.");
+            Check(StartupArgumentRouting.IsDiagnosticRequest(["--smoke-test"]) &&
+                StartupArgumentRouting.IsDiagnosticRequest(["--file-launch-tests"]) &&
+                StartupArgumentRouting.IsDiagnosticRequest(["--diagnostic-delay-worker"]) &&
+                StartupArgumentRouting.IsDiagnosticRequest(["--sandbox-probe"]), "Developer diagnostic handlers require explicit opt-in.");
+            Check(!StartupArgumentRouting.IsDiagnosticRequest([PdfNativeWorkerClient.WorkerOption]) &&
+                !StartupArgumentRouting.IsDiagnosticRequest(["--isolated-pdf-export"]) &&
+                !StartupArgumentRouting.IsDiagnosticRequest(["document.pdf"]), "Operational workers and document opening do not require diagnostic opt-in.");
+            Check(!StartupArgumentRouting.DiagnosticsEnabled(null) && !StartupArgumentRouting.DiagnosticsEnabled("true") &&
+                StartupArgumentRouting.DiagnosticsEnabled("1"), "Only the explicit diagnostic environment value enables tests.");
             var probed = new List<string>();
             Check(!StartupArgumentRouting.FilesTakePriority([@"\\invalid.example\share\input.pdf", "C:\\input.pdf"],
                 value => { probed.Add(value); return false; }, _ => false) && probed.Count == 0,

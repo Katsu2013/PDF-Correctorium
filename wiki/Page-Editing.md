@@ -1,7 +1,7 @@
 # ページ編集・回転・並べ替え
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 現行仕様（v1.0.0-dev.274・コミット前確認）
+## 公開アプリの仕様（v1.0.0-dev.274）
 
 ファイル→作業データ・ページ画像の出力から、OCR作業文字TXT、コメントCSV、完成ページPNG／JPEGを選べる。TXT・CSVには墨消し予定の情報が残り得るため、機密共有用の完成PDF・完成画像とは区別する。[書き出し](Data-Exports.md)。
 <!-- END-CURRENT-RELEASE-SNAPSHOT -->

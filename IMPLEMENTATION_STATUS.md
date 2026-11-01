@@ -1,6 +1,18 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.274
+## Current repository snapshot: v1.0.0-dev.277
+
+External-review remediation: offline locked runtime resolution, clean-source publication gate, documentation checks and Wiki staging. Diagnostic CLI handlers require explicit developer opt-in; operational PDF workers remain available. Verification PASSED locally: SDK 10.0.403, seven-project Release (0 warnings/errors), 76 contracts, 125 security checks, 28 audit checks, AppContainer/export-state, all 21 app diagnostics, 32 version checks and complete ZIP verification. A second empty package cache also restores the self-contained desktop payload. GitHub CI and Wiki publication remain separate. Details: docs/releases/v1.0.0-dev.277.md.
+
+## Previous documentation snapshot: v1.0.0-dev.276
+
+Documentation tooling and readability only: shaded/outlined code panels, mandatory Mermaid images, chapter maps and archived historical test records. Application binaries have not been rebuilt or republished.
+
+## Previous documentation snapshot: v1.0.0-dev.275
+
+Documentation tooling only: render Mermaid fences as diagrams with a pinned official CLI, reject render failures, archive old release records/PDFs/figures and repair relative links. Application binaries have not been rebuilt or republished.
+
+## Previous repository snapshot: v1.0.0-dev.274
 
 The user has approved committing this snapshot and publishing an unsigned GitHub prerelease. Public distribution status and actual asset hashes are recorded on GitHub Releases; the following pre-commit verification history is retained as dated evidence. Signing, Store/MSIX publication and independent approval are separate.
 

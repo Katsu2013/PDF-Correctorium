@@ -98,7 +98,7 @@ private async Task<T> ReadJsonAsync<T>(ZipArchive archive, string name, Cancella
 private void OpenLogFolderMenuItem_OnClick(object sender, RoutedEventArgs e) =>
     Process.Start(new ProcessStartInfo("explorer.exe", _applicationPaths.LogDirectory) { UseShellExecute = true });
 ```
-Windows の `explorer.exe` に `UseShellExecute = true` で引数を渡す際、パス文字列が二重引用符で囲まれていない場合、パスに空白が含まれていると（例: `C:\Users\John Doe\AppData\...`）、`explorer.exe` が空白で引数を分割して認識します。
+Windows の `explorer.exe` に `UseShellExecute = true` で引数を渡す際、パス文字列が二重引用符で囲まれていない場合、パスに空白が含まれていると（例: `C:\Users\<user> Doe\AppData\...`）、`explorer.exe` が空白で引数を分割して認識します。
 
 #### 影響
 空白を含むユーザー環境において、意図したフォルダが開かない、あるいは別のフォルダ（ドキュメントフォルダ等）が開いてしまう誤作動が発生します。

@@ -57,3 +57,9 @@ qpdf-*.zip
 
 # Local conversation scratch data; never part of source or release assets.
 /scratch_inputs.txt
+
+# Documentation renderer dependencies are restored from package-lock.json.
+tools/documentation-renderer/node_modules/
+
+# Original user-supplied review is retained locally, not auto-published.
+/pdf-correctorium-review-2026-11-01.md

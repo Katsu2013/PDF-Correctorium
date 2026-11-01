@@ -1,6 +1,6 @@
 # アイコン5種類の見直し案
 
-2026-10-03。比較元はdev.211のソース。初回案を履歴として保存する。2026-10-04に幅／高さ合わせの再検討案だけが承認され、dev.212へ反映。他3案は未採用・未反映。正式なデザイン基準は[02-02](../outputs/PdfCorrectorium-Documentation/docs/02_UIUX/02-02_IconDesignAndUsage.md)、実装と検証は[dev.212](releases/v1.0.0-dev.212.md)を参照。
+2026-10-03。比較元はdev.211のソース。初回案を履歴として保存する。2026-10-04に幅／高さ合わせの再検討案だけが承認され、dev.212へ反映。他3案は未採用・未反映。正式なデザイン基準は[02-02](../outputs/PdfCorrectorium-Documentation/docs/02_UIUX/02-02_IconDesignAndUsage.md)、実装と検証は[dev.212](archive/releases/v1.0.0-dev.212.md)を参照。
 
 ![現行と初回見直し案](../outputs/Icon-Refinement-Proposal-dev211/comparison.png)
 

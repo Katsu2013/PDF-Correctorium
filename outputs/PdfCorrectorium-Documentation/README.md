@@ -1,13 +1,19 @@
 # PDF Correctorium 設計書
 
-現行ソース **1.0.0-dev.274**（コミット前候補）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
+現行ソース **1.0.0-dev.277**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
 
 - アプリ版はDirectory.Build.propsの2つの入力から導出します。
 - 新規保存のプロジェクト形式は1.14、最小読取版dev.262。設定形式21とは別です。
 - [dev.199からの変更と現行検証](../../docs/releases/v1.0.0-dev.274.md)
 - [機能と文書の追跡・確認表](../../docs/Release-Documentation-Coverage.md)
 - [利用者向け操作ガイド原稿](../../wiki/Home.md)
-- [設計PDF](PDF-Correctorium-Design-Documentation-dev274-20261030.pdf)
+- [設計PDF](PDF-Correctorium-Design-Documentation-dev277-20261102.pdf)
+
+## まず全体像を確認
+
+- [目的別の読み方・状態表・全体フロー](docs/00_Project/00-00_ReadingGuide.md)
+- [文書の書式とPDF生成ルール](../../docs/Documentation-Authoring.md)
+- 長い説明は要点・図・詳細の順に読む。版別の検証記録は履歴へ分離する。
 
 ## 読み方
 
@@ -32,4 +38,15 @@
 
 `tools/BuildDocumentationPdf.py` はこのREADMEとdocs配下のMarkdown、assets/svgの図からPDFを生成します。表紙・フッター・互換性はソースの値を使います。図の欠落や空画像はエラーにし、生成後はページ画像と本文・リンクを確認します。
 
-[旧READMEの更新履歴](ARCHIVE-README-through-dev272.md)と過去の設計PDFは保持しています。旧版の図・PDFを最新化済みの成果物と誤認させないでください。設計書の更新は、独立レビューや実機での署名・更新テストの代わりにはなりません。
+[旧READMEの更新履歴](archive/records/ARCHIVE-README-through-dev272.md)と過去の設計PDFは保持しています。旧版の図・PDFを最新化済みの成果物と誤認させないでください。設計書の更新は、独立レビューや実機での署名・更新テストの代わりにはなりません。
+
+## Mermaidと履歴の扱い
+
+Mermaidコードは公式CLIで図へ変換します。初回は`npm ci --prefix tools/documentation-renderer --ignore-scripts`で固定依存を復元してください（PUPPETEER_SKIP_DOWNLOAD=true）。変換には既存Chromeを指定し、文書の生成中は外部サービスへ送信しません。描画失敗はエラーで停止します。旧PDF・更新記録・旧図はarchive配下に保持し、現行PDFへ旧図を列挙しません。
+
+## dev.277の外部レビュー対応（未公開候補）
+
+- 公開入口、動作環境、個人パス、Wiki同期手順を整理。
+- CIの固定ランタイム解決と、公開用のクリーンなコミット検査を追加。
+- 診断は明示的に有効化した場合だけ実行する。通常のPDFワーカーは維持する。
+- 公開版はdev.274。GitHubでの反映状況と未完了条件は[対応表](../../docs/External-Review-Response-2026-11-02.md)を参照する。

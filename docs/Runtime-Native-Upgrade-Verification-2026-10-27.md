@@ -1,6 +1,6 @@
 # .NET 10・PDFium・qpdf更新の検証記録
 
-2026-10-27。最終対象は`Directory.Build.props`のv1.0.0-dev.249 / 1.0.0.249。全19種類の配布版アプリ診断が成功（5,267項目＋文書構成の集約検査）。内訳と配布情報は[リリース記録](releases/v1.0.0-dev.249.md)を参照。
+2026-10-27。最終対象は`Directory.Build.props`のv1.0.0-dev.249 / 1.0.0.249。全19種類の配布版アプリ診断が成功（5,267項目＋文書構成の集約検査）。内訳と配布情報は[リリース記録](archive/releases/v1.0.0-dev.249.md)を参照。
 
 ## 更新順と確認範囲
 
@@ -18,7 +18,7 @@ PDFiumは初めに8111で検証した後、公式公開情報を再確認して2
 
 配布フォルダー：
 
-`C:\Users\katsu\Documents\Codex\PDF-Correctorium\outputs\PdfCorrectorium-Builds\PdfCorrectorium-v1.0.0-dev.249-win-x64-20261027-133457`
+`<repo>\outputs\PdfCorrectorium-Builds\PdfCorrectorium-v1.0.0-dev.249-win-x64-20261027-133457`
 
 入力指紋：`F78E1E44C0B81F4C043B47E76530418260913B87877C02892F524D0B797A198F`。
 

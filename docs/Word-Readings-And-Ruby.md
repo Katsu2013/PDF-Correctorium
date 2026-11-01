@@ -28,4 +28,4 @@ WordReadingRulesで構文と完全一致範囲を共通化し、読み上げと�
 
 OcrCharacterLayer内で描画し、語ごと・文字ごとのWPF要素を追加しない。文字描画キャッシュは各レイヤー128件を上限とし、フォント・DPI変更で破棄する。ルビはヒットテスト対象にせず、選択・移動操作を妨げない。
 
-保存は既存WordReadingsを使い、プロジェクト1.13／最小読込dev.257を維持する。設定21へ任意のShowWordReadingRubyを追加し、欠落時はtrueとする。表示設定の移出入にも保持する。実施結果は[リリース検証](releases/v1.0.0-dev.261.md)に記録する。
+保存は既存WordReadingsを使い、プロジェクト1.13／最小読込dev.257を維持する。設定21へ任意のShowWordReadingRubyを追加し、欠落時はtrueとする。表示設定の移出入にも保持する。実施結果は[リリース検証](archive/releases/v1.0.0-dev.261.md)に記録する。

@@ -70,7 +70,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 - ライト／ダーク／Windowsに合わせる自動テーマ。既存の操作寸法とドッキング配置を保ち、共通配色へ統合する。
 - Windows標準音声エンジンによる読み上げ。修正後のOCR、読み順、読み仮名を利用し、必要ページだけを遅延取得する。
 
-利用者回答で、PDF紙面は元の色を保ち、読み上げは選択部分／現在ページ／現在ページから最後までの3範囲に確定し、実装した。[影響範囲・確定仕様](docs/Themes-And-Read-Aloud-Plan.md)と[検証・配布記録](docs/releases/v1.0.0-dev.253.md)を参照。Store等の正式公開には、登録・署名・実導入／更新試験などの条件が残る。
+利用者回答で、PDF紙面は元の色を保ち、読み上げは選択部分／現在ページ／現在ページから最後までの3範囲に確定し、実装した。[影響範囲・確定仕様](docs/Themes-And-Read-Aloud-Plan.md)と[検証・配布記録](docs/archive/releases/v1.0.0-dev.253.md)を参照。Store等の正式公開には、登録・署名・実導入／更新試験などの条件が残る。
 
 ### dev.206で実装した追加要望（2026-10-02）
 
@@ -80,7 +80,7 @@ PDF Correctorium は、**「完全無料 (OSS)」「完全ローカル処理（�
 - 設定による初期編集モードの変更とプロジェクトへの保存・復元（編集モードのみ。新規PDFは設定の初期値、プロジェクトは保存モードを優先）
 - ツールバー右クリックのチェック付き項目による、ボタン単位の表示／非表示（アプリ全体の共通設定として保存）
 
-利用者回答で仕様を確定して実装しました。ロック中の削除は禁止、編集モードのみの変更は未保存扱いにしません。[確定仕様・操作方法・制限](docs/Next-Implementation-Plan.md) と [dev.206検証ノート](docs/releases/v1.0.0-dev.206.md) を参照してください。コマンド検索とショートカット専用プリセットは保留です。既存のページ表示状態保存は変更しません。
+利用者回答で仕様を確定して実装しました。ロック中の削除は禁止、編集モードのみの変更は未保存扱いにしません。[確定仕様・操作方法・制限](docs/Next-Implementation-Plan.md) と [dev.206検証ノート](docs/archive/releases/v1.0.0-dev.206.md) を参照してください。コマンド検索とショートカット専用プリセットは保留です。既存のページ表示状態保存は変更しません。
 
 ### 公開済みdev.199の実装機能（比較元の履歴）
 * [x] **画質無劣化のページ編集**: ドラッグ＆ドロップでの並べ替え、90度回転、不要ページ削除、別PDFからのページ差し込み
@@ -191,7 +191,7 @@ configurable initial editor modes and project-restored modes; and app-wide per-i
 visibility. Mode-only changes do not dirty projects; ordinary saves record the mode.
 Existing page-view restoration is unchanged. Command search and shortcut-only presets remain
 on hold. See [confirmed specifications and limitations](docs/Next-Implementation-Plan.md)
-and [verification notes](docs/releases/v1.0.0-dev.206.md) (Japanese).
+and [verification notes](docs/archive/releases/v1.0.0-dev.206.md) (Japanese).
 
 ### Current Features (v1.0.0-dev.196)
 * [x] **Lossless Page Editing**: Reorder, 90-degree rotate, delete, and merge pages without image degradation.

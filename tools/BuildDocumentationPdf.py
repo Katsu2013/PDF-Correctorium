@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime
 import html
 import re
@@ -43,7 +44,44 @@ LINK_RE = re.compile(r"\[([^]]+)]\(([^)]+)\)")
 INLINE_CODE_RE = re.compile(r"`([^`]+)`")
 EMPHASIS_RE = re.compile(r"\*\*([^*]+)\*\*")
 CURRENT_SOURCE: Path | None = None
+MERMAID_IMAGES: dict[tuple[str, int], Path] = {}
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+
+
+class CodeBlock(Preformatted):
+    """Draw a padded code panel, including each fragment across page breaks."""
+
+    padding = 6
+
+    def wrap(self, availWidth, availHeight):
+        super().wrap(availWidth, availHeight)
+        self.height += 2 * self.padding
+        return self.width, self.height
+
+    def split(self, availWidth, availHeight):
+        count = int((availHeight - 2 * self.padding) / self.style.leading)
+        if count <= 0:
+            return []
+        if count >= len(self.lines):
+            return [self]
+        return [CodeBlock("\n".join(self.lines[:count]), self.style),
+                CodeBlock("\n".join(self.lines[count:]), self.style)]
+
+    def draw(self):
+        self.canv.saveState()
+        try:
+            self.canv.setFillColor(colors.HexColor("#F1F5F9"))
+            self.canv.setStrokeColor(colors.HexColor("#94A3B8"))
+            self.canv.setLineWidth(0.6)
+            self.canv.roundRect(0, 0, self.width, self.height, 3, fill=1, stroke=1)
+            self.canv.translate(0, self.padding)
+            self.height -= 2 * self.padding
+            try:
+                super().draw()
+            finally:
+                self.height += 2 * self.padding
+        finally:
+            self.canv.restoreState()
 
 
 def document_link(target: str) -> str:
@@ -76,7 +114,7 @@ def inline_markup(value: str) -> str:
         value,
     )
     value = INLINE_CODE_RE.sub(
-        lambda match: preserve(f'<font name="DocMono" color="#7A2533">{html.escape(match.group(1))}</font>'),
+        lambda match: preserve(f'<font name="DocMono" color="#7A2533" backColor="#F1F5F9">{html.escape(match.group(1))}</font>'),
         value,
     )
     value = EMPHASIS_RE.sub(
@@ -180,7 +218,8 @@ def paragraph(text: str, style: ParagraphStyle) -> Paragraph:
 
 def wrap_code(text: str, style: ParagraphStyle) -> str:
     """Wrap by rendered width: a character limit alone clips CJK comments."""
-    limit = A4[0] - 36 * mm - 16
+    # Account for the frame's default padding and both code-panel insets.
+    limit = A4[0] - 36 * mm - 12 - 6 * mm
     result: list[str] = []
     for line in text.expandtabs(4).splitlines():
         current = ""
@@ -206,6 +245,7 @@ def markdown_story(path: Path, styles: dict[str, ParagraphStyle]) -> list:
             index += 1
             continue
         if stripped.startswith("```"):
+            fence_line = index + 1
             language = stripped[3:].strip()
             index += 1
             code: list[str] = []
@@ -213,8 +253,18 @@ def markdown_story(path: Path, styles: dict[str, ParagraphStyle]) -> list:
                 code.append(lines[index])
                 index += 1
             index += 1
+            if language.lower() == "mermaid":
+                rendered = MERMAID_IMAGES.get((str(path.resolve()), fence_line))
+                if rendered is None:
+                    raise RuntimeError(f"Mermaid diagram was not rendered: {path}:{fence_line}")
+                with PillowImage.open(rendered) as picture:
+                    width, height = picture.size
+                scale = min((A4[0] - 36 * mm) / width, (A4[1] - 55 * mm) / height)
+                story.append(Image(str(rendered), width=width * scale, height=height * scale))
+                story.append(Spacer(1, 3 * mm))
+                continue
             prefix = f"[{language}]\n" if language else ""
-            story.append(Preformatted(wrap_code(prefix + "\n".join(code), styles["Code"]), styles["Code"]))
+            story.append(CodeBlock(wrap_code(prefix + "\n".join(code), styles["Code"]), styles["Code"]))
             continue
         if stripped.startswith("#"):
             level = len(stripped) - len(stripped.lstrip("#"))
@@ -255,7 +305,7 @@ def markdown_story(path: Path, styles: dict[str, ParagraphStyle]) -> list:
             while index < len(lines) and re.match(pattern, lines[index].strip()):
                 items.append(ListItem(paragraph(re.sub(pattern, "", lines[index].strip()), styles["Body"]), leftIndent=3 * mm))
                 index += 1
-            story.append(ListFlowable(items, bulletType="1" if ordered else "bullet", start="1", leftIndent=6 * mm, bulletFontName="DocSans"))
+            story.append(ListFlowable(items, bulletType="1" if ordered else "bullet", start="1" if ordered else "bulletchar", leftIndent=6 * mm, bulletFontName="DocSans", bulletFontSize=8.6))
             story.append(Spacer(1, 1.5 * mm))
             continue
         if stripped.startswith(">"):
@@ -294,7 +344,32 @@ def render_svg(svg: Path, destination: Path, chrome: Path) -> bool:
     return False
 
 
-def build(source_root: Path, output: Path, chrome: Path) -> None:
+def render_mermaid_sources(sources: list[Path], chrome: Path, cli: Path, cache: Path) -> None:
+    MERMAID_IMAGES.clear()
+    config = cache / "puppeteer.json"
+    config.write_text(json.dumps({"executablePath": str(chrome), "args": ["--no-sandbox"], "userDataDir": str(cache / "chrome-profile")}), encoding="utf-8")
+    mermaid_config = cache / "mermaid.json"
+    mermaid_config.write_text('{"securityLevel":"strict","theme":"neutral","fontFamily":"Meiryo","flowchart":{"htmlLabels":false}}', encoding="utf-8")
+    for source in sources:
+        content = source.read_text(encoding="utf-8")
+        for match in re.finditer(r"^[ \t]*```[ \t]*mermaid[ \t]*\n(.*?)^[ \t]*```[ \t]*$", content, re.M | re.S | re.I):
+            line = content.count("\n", 0, match.start()) + 1
+            name = f"mermaid-{len(MERMAID_IMAGES) + 1}"
+            input_path, image_path = cache / (name + ".mmd"), cache / (name + ".png")
+            input_path.write_text(match.group(1), encoding="utf-8")
+            if not cli.is_file():
+                raise FileNotFoundError("Install the pinned renderer: npm ci --prefix tools/documentation-renderer --ignore-scripts (PUPPETEER_SKIP_DOWNLOAD=true).")
+            run = subprocess.run(["node", str(cli), "-i", str(input_path), "-o", str(image_path), "-p", str(config), "-c", str(mermaid_config), "-b", "white", "-s", "2"], capture_output=True, timeout=120)
+            if run.returncode or not image_path.exists():
+                raise RuntimeError(f"Mermaid render failed: {source}:{line}\n" + run.stderr.decode("utf-8", errors="replace")[-2000:])
+            with PillowImage.open(image_path).convert("RGB") as picture:
+                if not ImageChops.difference(picture, PillowImage.new("RGB", picture.size, "white")).getbbox():
+                    raise RuntimeError(f"Blank Mermaid diagram: {source}:{line}")
+            MERMAID_IMAGES[(str(source.resolve()), line)] = image_path
+            print(f"Rendered Mermaid: {source.name}:{line}")
+
+
+def build(source_root: Path, output: Path, chrome: Path, mermaid_cli: Path) -> None:
     repository = Path(__file__).resolve().parent.parent
     properties = ET.parse(repository / "Directory.Build.props").getroot()
     prefix = properties.findtext("PropertyGroup/ApplicationVersionPrefix")
@@ -330,12 +405,14 @@ def build(source_root: Path, output: Path, chrome: Path) -> None:
     ]
     toc = TableOfContents()
     toc.levelStyles = [
-        ParagraphStyle("TOC1", fontName="DocSans", fontSize=9, leading=14, leftIndent=0, firstLineIndent=0, textColor=colors.HexColor("#1F2937")),
+        ParagraphStyle("TOC1", fontName="DocSans", fontSize=8.5, leading=11, leftIndent=0, firstLineIndent=0, textColor=colors.HexColor("#1F2937")),
         ParagraphStyle("TOC2", fontName="DocSans", fontSize=8, leading=12, leftIndent=8 * mm, firstLineIndent=0, textColor=colors.HexColor("#475569")),
     ]
     story.extend([toc, PageBreak()])
 
     sources = [source_root / "README.md"] + sorted((source_root / "docs").rglob("*.md"))
+    diagram_temporary = tempfile.TemporaryDirectory(prefix="pdf-mermaid-", dir=repository / "outputs")
+    render_mermaid_sources(sources, chrome, mermaid_cli, Path(diagram_temporary.name))
     for source_index, source in enumerate(sources):
         if source_index:
             story.append(PageBreak())
@@ -381,8 +458,16 @@ def main() -> None:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--chrome", type=Path, required=True)
+    parser.add_argument("--mermaid-cli", type=Path, default=REPOSITORY_ROOT / "tools/documentation-renderer/node_modules/@mermaid-js/mermaid-cli/src/cli.js")
     arguments = parser.parse_args()
-    build(arguments.source_root.resolve(), arguments.output.resolve(), arguments.chrome.resolve())
+    output = arguments.output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="pdf-build-", dir=output.parent) as work:
+        candidate = Path(work) / "document.pdf"
+        build(arguments.source_root.resolve(), candidate, arguments.chrome.resolve(), arguments.mermaid_cli.resolve())
+        if candidate.stat().st_size == 0 or candidate.read_bytes()[:5] != b"%PDF-":
+            raise RuntimeError("The generated PDF is invalid; the previous output was retained.")
+        candidate.replace(output)
 
 
 if __name__ == "__main__":

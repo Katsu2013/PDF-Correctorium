@@ -18,4 +18,4 @@ dev.266で収納操作を左右別の一括、固定操作を個別へ統一す�
 
 調査対象は同梱4.74.1に対応する[LayoutAutoHideWindowControl](https://github.com/Dirkster99/AvalonDock/blob/028a5f328eb86a7abfb2195bbaae37683c818d1e/source/Components/AvalonDock/Controls/LayoutAutoHideWindowControl.cs)と[LayoutAnchorable](https://github.com/Dirkster99/AvalonDock/blob/028a5f328eb86a7abfb2195bbaae37683c818d1e/source/Components/AvalonDock/Layout/LayoutAnchorable.cs)。ライブラリ自体の変更や更新は行わない。
 
-dev.263の配布版で実表示・幅復元を含むパネル診断203項目と、既存機能の回帰を通過した。[検証結果・配布先](releases/v1.0.0-dev.263.md)。
+dev.263の配布版で実表示・幅復元を含むパネル診断203項目と、既存機能の回帰を通過した。[検証結果・配布先](archive/releases/v1.0.0-dev.263.md)。

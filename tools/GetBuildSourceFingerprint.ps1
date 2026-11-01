@@ -18,6 +18,10 @@ if (Test-Path -LiteralPath (Join-Path $repositoryRoot '.github/workflows')) {
     $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot '.github/workflows') -File
 }
 $inputs += Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in @('.ps1','.py') }
+foreach ($name in @('package.json','package-lock.json')) {
+    $rendererInput = Join-Path $PSScriptRoot ('documentation-renderer/' + $name)
+    if (Test-Path -LiteralPath $rendererInput) { $inputs += Get-Item -LiteralPath $rendererInput }
+}
 if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'packaging')) {
     $inputs += Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'packaging') -File -Recurse
 }

@@ -48,4 +48,4 @@ PDFiumは行末のハイフン（U+002D／U+00AD）を、文字抽出時にU+000
 - [PDF Association: Logical Structure Objects](https://pdfa.org/download-area/cheat-sheets/LogicalStructureObjects.pdf) — Alt、MCIDの構造とPhoneme／PhoneticAlphabetのPDF 2.0属性。
 - [Adobe: Reading PDFs with reflow and accessibility features](https://helpx.adobe.com/acrobat/using/reading-pdfs-reflow-accessibility-features.html) — リーダーの読み上げと論理構造の扱い。
 
-検証・配布結果は[dev.267リリースノート](releases/v1.0.0-dev.267.md)へ記録する。
+検証・配布結果は[dev.267リリースノート](archive/releases/v1.0.0-dev.267.md)へ記録する。

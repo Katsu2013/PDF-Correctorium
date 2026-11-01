@@ -4,7 +4,7 @@
 
 利用者がMSIX＋Store＋ZIPを選択し、Store開発者アカウント・直接配布用署名はいずれも未保有と回答した。自己完結型ペイロード、ZIP／MSIX生成、StoreとApp Installerへ委譲する更新設定・メニュー、パッケージ内への書込回避を実装した。Storeの公開識別子・署名・配信先を勝手に作成せず、未署名Development MSIXを明示する。
 
-アプリ版は従来の規定を維持し、Storeコンテナー版をMajor.Minor.DevelopmentRevision.0へ導出する。開発リビジョンはprefix変更時もリセットしない。dev.250で配布基盤を追加し、dev.251で通し試験中に判明した見開き移動と背景キャッシュの競合を修正した。以下は当初の検討記録であり、未確定と記したうち配布形式と版数の導出は上記のとおり確定した。現在の実装・未完了範囲は[運用手順](Distribution-Operations.md)、[dev.251](releases/v1.0.0-dev.251.md)を参照。
+アプリ版は従来の規定を維持し、Storeコンテナー版をMajor.Minor.DevelopmentRevision.0へ導出する。開発リビジョンはprefix変更時もリセットしない。dev.250で配布基盤を追加し、dev.251で通し試験中に判明した見開き移動と背景キャッシュの競合を修正した。以下は当初の検討記録であり、未確定と記したうち配布形式と版数の導出は上記のとおり確定した。現在の実装・未完了範囲は[運用手順](Distribution-Operations.md)、[dev.251](archive/releases/v1.0.0-dev.251.md)を参照。
 
 ## 当初の検討記録
 

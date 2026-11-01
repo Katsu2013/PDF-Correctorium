@@ -32,7 +32,10 @@ jobs:
         with:
           global-json-file: global.json
       - name: Verify source, isolated PDF processing, persistence and exact archive contents
-        run: ./tools/InvokeReleaseVerification.ps1 -OutputDirectory outputs/ci-verification
+        run: |
+          python tools/CheckPublicDocumentation.py
+          if ($LASTEXITCODE -ne 0) { throw 'Public documentation checks failed.' }
+          ./tools/InvokeReleaseVerification.ps1 -OutputDirectory outputs/ci-verification -RequireCleanGit
       - name: Retain generated evidence and the clean unsigned development ZIP
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

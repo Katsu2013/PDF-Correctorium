@@ -24,6 +24,6 @@
 
 ## 確認
 
-実際のミュート再生で、0・0.5・1の音声時間の大小、一時停止中の再生位置、取消と直後の再利用、文字位置キューを検査する。既存の段落／行移動・空ページ・古いイベント拒否も回帰確認する。設定の保存／再読込・移出入と旧整数値を確認する。最終結果は[dev.260](releases/v1.0.0-dev.260.md)へ記録する。
+実際のミュート再生で、0・0.5・1の音声時間の大小、一時停止中の再生位置、取消と直後の再利用、文字位置キューを検査する。既存の段落／行移動・空ページ・古いイベント拒否も回帰確認する。設定の保存／再読込・移出入と旧整数値を確認する。最終結果は[dev.260](archive/releases/v1.0.0-dev.260.md)へ記録する。
 
 参照：[Windows SpeakingRate](https://learn.microsoft.com/en-us/uwp/api/windows.media.speechsynthesis.speechsynthesizeroptions.speakingrate)、[時刻付き音声キュー](https://learn.microsoft.com/en-us/windows/apps/develop/media-playback/system-supported-metadata-cues)。

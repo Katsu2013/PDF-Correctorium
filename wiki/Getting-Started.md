@@ -1,9 +1,9 @@
 # クイックスタート・起動方法
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 現行仕様（v1.0.0-dev.274・コミット前確認）
+## 公開アプリの仕様（v1.0.0-dev.274）
 
-このガイドの現行機能は1.0.0-dev.274のソースと検証候補を対象とする。実際の公開ファイルは[GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認する。前回公開dev.199のZIPは.NET 8 Desktop Runtime x64が必要。新しい自己完結型ZIPは.NET 10.0.14同梱で、別途ランタイム導入は不要。
+このガイドの現行機能は公開版1.0.0-dev.274を対象とする。実際の公開ファイルは[GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認する。前回公開dev.199のZIPは.NET 8 Desktop Runtime x64が必要。新しい自己完結型ZIPは.NET 10.0.14同梱で、別途ランタイム導入は不要。
 
 資料のPDF・プロジェクトはアプリのフォルダーとは別に保管し、更新は新しいフォルダーへ展開する。新しい形式1.14はdev.199で開けないので元プロジェクトを別名で残す。最初のページと表示リンクを優先し、背景確認中の進捗はステータスバーに示す。[dev.199からの変更](Release-Changes.md)。
 <!-- END-CURRENT-RELEASE-SNAPSHOT -->
@@ -16,7 +16,7 @@ PDF Correctorium のダウンロードから起動、基本的な作業の流れ
 
 本アプリは **インストール不要のポータブル版** として配布されています。レジストリやシステム環境を汚さずにすぐ利用できます。
 
-1. **[最新版をダウンロード (v1.0.0-dev.199 .zip)](https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip)** または [GitHub Releases](https://github.com/Katsu2013/PDF-Correctorium/releases) から最新の配布ZIPをダウンロードします。
+1. [GitHub Releasesの一覧](https://github.com/Katsu2013/PDF-Correctorium/releases) から最新の配布ZIPをダウンロードします。
 2. ダウンロードした ZIP を任意のフォルダーに解凍（展開）します。
 3. 展開したフォルダー内の **`PdfCorrectorium.exe`** をダブルクリックして起動します。
 
@@ -43,3 +43,9 @@ PDF Correctorium では、目的に応じて多彩な編集が可能です：
   **「ファイル」➔「プロジェクトを上書き保存 (Ctrl+S)」** または **「プロジェクトを別名で保存... (Ctrl+Shift+S)」** で `.pdfocrproj` 形式で保存します。元PDFは上書きされず、いつでも編集を再開できます。
 * **修正・加工結果を新しいPDFとして書き出したい場合**:  
   **「ファイル」➔「編集済みPDFを別名で出力... (Alt+F ➔ E)」** を選択します。出力前に墨消し範囲内の文字残存や構造の自動チェックが実行され、安全に新しいPDFファイルが書き出されます。
+
+## 動作環境
+
+- Windows 10 バージョン2004（ビルド19041）以降／Windows 11、64ビット（x64）。
+- 実機確認はWindows 11 x64。OSの最低API条件と、MicrosoftがサポートするOSの版・エディションは別です。
+- dev.274の自己完結型ZIPは.NET 10を同梱します。旧dev.199 ZIPの案内と区別してください。

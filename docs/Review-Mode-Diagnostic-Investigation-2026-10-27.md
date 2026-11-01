@@ -1,6 +1,6 @@
 # 校正モード診断の失敗：.NET 8での原因調査
 
-> 以下はdev.247の調査記録です。画面のLoaded処理と専用.appstateの修正を、その後dev.248で本体へ反映しました。.NET 8と.NET 10の両方で元の69項目を維持したまま成功しています。最終配布の結果は[dev.249](releases/v1.0.0-dev.249.md)を参照してください。
+> 以下はdev.247の調査記録です。画面のLoaded処理と専用.appstateの修正を、その後dev.248で本体へ反映しました。.NET 8と.NET 10の両方で元の69項目を維持したまま成功しています。最終配布の結果は[dev.249](archive/releases/v1.0.0-dev.249.md)を参照してください。
 
 調査日：2026-10-27。対象：現行dev.247のソースと.NET 8.0.33。現行アプリのコード・版数・利用者設定は変更せず、独立したコピーで調査した。
 
@@ -104,7 +104,7 @@ ComboBoxひとつだけを測定して先へ進めても、別の部品で同じ
 
 ルート：
 
-`C:\Users\katsu\Documents\Codex\PDF-Correctorium\outputs\review-mode-investigation-20261027-122028`
+`<repo>\outputs\review-mode-investigation-20261027-122028`
 
 | 証跡 | 内容 |
 | --- | --- |

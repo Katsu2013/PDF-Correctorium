@@ -1,4 +1,16 @@
 <Project>
+  <!-- Offline desktop publication needs only NETCore and WindowsDesktop. The
+       SDK otherwise speculatively downloads the unused ASP.NET runtime too
+       when transitive framework resolution is enabled. Never fetch an unpinned
+       web runtime merely to make the desktop build pass. -->
+  <Target Name="RestrictPortableFrameworkPacks" BeforeTargets="ProcessFrameworkReferences"
+          Condition="'$(PdfCorrectoriumPortablePublish)' == 'true'">
+    <Error Condition="'@(FrameworkReference)' != '' And $([System.String]::Copy('@(FrameworkReference)').Contains('Microsoft.AspNetCore.App'))"
+           Text="The offline desktop payload does not include an ASP.NET runtime. Review and lock new framework requirements first." />
+    <ItemGroup>
+      <KnownFrameworkReference Remove="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+  </Target>
   <!-- Runs for solution builds, IDE builds and publish, not just the portable script. -->
   <Target Name="ValidateRepositoryVersion" BeforeTargets="GenerateAssemblyInfo;CoreCompile">
     <XmlPeek XmlInputPath="$(MSBuildThisFileDirectory)Directory.Build.props" Query="/Project/PropertyGroup/ApplicationVersionPrefix/text()">

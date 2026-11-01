@@ -2,6 +2,7 @@
 param(
     [string]$BuildLabel,
     [switch]$NoRestore,
+    [switch]$RequireCleanGit,
     [string]$SigningCertificateThumbprint,
     [string]$TimestampServer
 )
@@ -11,6 +12,10 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'PublishPayload.ps1')
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$sourceCommit = $null
+if ($RequireCleanGit) {
+    $sourceCommit = & (Join-Path $PSScriptRoot 'AssertCommittedSource.ps1')
+}
 $version = & (Join-Path $PSScriptRoot 'GetBuildVersion.ps1')
 if ($BuildLabel -and $BuildLabel -cne $version.BuildLabel) {
     throw "BuildLabel must match $($version.BuildLabel). Update Directory.Build.props; labels cannot override binary versions."
@@ -44,7 +49,8 @@ $publishArguments = @(
     "--self-contained", "true",
     "-r", $version.RuntimeIdentifier,
     ('-p:RuntimeFrameworkVersion=' + $version.BundledRuntimeVersion),
-    "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+    "-p:DisableTransitiveFrameworkReferenceDownloads=false",
+    "-p:PdfCorrectoriumPortablePublish=true",
     "-p:PublishSingleFile=false",
     "-p:PublishTrimmed=false",
     "--no-restore",
@@ -61,7 +67,7 @@ try
     {
         & dotnet restore $projectPath --configfile $nugetConfigPath -r $version.RuntimeIdentifier `
             -p:SelfContained=true ('-p:RuntimeFrameworkVersion=' + $version.BundledRuntimeVersion) `
-            -p:DisableTransitiveFrameworkReferenceDownloads=true -p:PublishSingleFile=false -p:PublishTrimmed=false
+            -p:DisableTransitiveFrameworkReferenceDownloads=false -p:PdfCorrectoriumPortablePublish=true -p:PublishSingleFile=false -p:PublishTrimmed=false
         if ($LASTEXITCODE -ne 0)
         {
             throw "dotnet restore failed with exit code $LASTEXITCODE."
@@ -131,6 +137,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     catch { $gitCommit = $null; $gitDirty = $null }
 }
 $payloadFiles = @(Get-PublishPayloadFiles -Directory $destinationPath | Sort-Object path)
+if ($RequireCleanGit -and ((& (Join-Path $PSScriptRoot 'AssertCommittedSource.ps1')) -cne $sourceCommit -or
+    $gitDirty -ne $false -or $gitCommit -cne $sourceCommit)) {
+    throw 'The committed source changed during publication; this output is not certified.'
+}
 $buildInfo = [ordered]@{
     schemaVersion = 2; version = $verified.Version; numericVersion = $verified.NumericVersion
     builtAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); buildFolder = $buildName

@@ -1,7 +1,7 @@
 # 05-01 データモデル
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 現行仕様（v1.0.0-dev.274・コミット前確認）
+## 現行アプリ仕様（公開版v1.0.0-dev.274基準）
 
 形式1.14／最小読取版dev.262、設定21。資料別OCR辞書（正解語・訂正ルール・無視語）、プロジェクト共通読み方、行ごとの例外、手動段落ID、リンクの幾何固定を保存する。頻度キャッシュは正解の根拠とは別にする。
 
@@ -10,7 +10,12 @@
 
 ## 共通の読み方（dev.262）
 
-PdfCorrectoriumProject.WordReadingsが共通辞書、OcrTextRegion.WordReadingsが行の例外となる。同じ表記は行優先、候補の重なりは最長優先で、曖昧な重複は勝手に選ばない。共通辞書は最大5,000件、表記・読みは各256文字以内、無効・重複・制御文字を保存前に検証する。共通辞書を既存の文書注釈履歴へ含め、行のUndoと区別して復元する。読み方の画面キャッシュは保存しない。形式1.14／最小読込dev.262へ更新し、設定21は維持する。
+- PdfCorrectoriumProject.WordReadingsが共通辞書、OcrTextRegion.WordReadingsが行の例外となる。
+- 同じ表記は行優先、候補の重なりは最長優先で、曖昧な重複は勝手に選ばない。
+- 共通辞書は最大5,000件、表記・読みは各256文字以内、無効・重複・制御文字を保存前に検証する。
+- 共通辞書を既存の文書注釈履歴へ含め、行のUndoと区別して復元する。
+- 読み方の画面キャッシュは保存しない。
+- 形式1.14／最小読込dev.262へ更新し、設定21は維持する。
 
 ## 確認用ルビ（dev.261）
 
@@ -18,33 +23,57 @@ PdfCorrectoriumProject.WordReadingsが共通辞書、OcrTextRegion.WordReadings�
 
 ## 小数の読み上げ速度（dev.260・設定21）
 
-任意のFineSpeechRateを0.5刻みのdoubleとして保存する。欠落時は従来の整数SpeechRateを使い、保存時にも整数の近似値を残す。EffectiveSpeechRateは計算値で保存しない。非有限値と範囲を正規化し、設定画面・移出入・同時起動のマージに保持する。プロジェクトへは格納しない。[互換性](../../../../docs/Speech-Fractional-Speed.md)。
+- 任意のFineSpeechRateを0.5刻みのdoubleとして保存する。
+- 欠落時は従来の整数SpeechRateを使い、保存時にも整数の近似値を残す。
+- EffectiveSpeechRateは計算値で保存しない。
+- 非有限値と範囲を正規化し、設定画面・移出入・同時起動のマージに保持する。
+- プロジェクトへは格納しない。
+- [互換性](../../../../docs/Speech-Fractional-Speed.md)。
 
 ## 手動段落（dev.257・形式1.13）
 
-OcrTextRegion.ParagraphGroupIdはnullで自動、空GUIDで行ごとの独立指定、同じ非空GUIDで明示段落を示す。自動のnullは保存時に省略する。既存ParentRegionIdは保持し、同じページの連続する行へだけ明示グループを設定する。OverlayRegionSnapshotにも保持し、Undoで一括復元する。文字列・文字送り・幾何・ロック・読む順を変えず、語数キャッシュの全再集計を追加しない。[設計](../../../../docs/Speech-Navigation-And-Paragraphs.md)。
+- OcrTextRegion.ParagraphGroupIdはnullで自動、空GUIDで行ごとの独立指定、同じ非空GUIDで明示段落を示す。
+- 自動のnullは保存時に省略する。
+- 既存ParentRegionIdは保持し、同じページの連続する行へだけ明示グループを設定する。
+- OverlayRegionSnapshotにも保持し、Undoで一括復元する。
+- 文字列・文字送り・幾何・ロック・読む順を変えず、語数キャッシュの全再集計を追加しない。
+- [設計](../../../../docs/Speech-Navigation-And-Paragraphs.md)。
 
 ## 資料別OCR辞書（dev.243・プロジェクト形式1.12）
 
-`PdfCorrectoriumProject.OcrLexicon`は正本の`OcrLexicon`。正解語、無視語、安定ID付き`OcrCorrectionRule`（有効・元語・正解・明示自動許可）を保持する。正解語と頻度は別である。`OcrWordCountsCache`はJsonIgnoreの任意データで、パッケージ内の別エントリへ保存する。アプリ設定やPDF出力へ転用しない。
+- `PdfCorrectoriumProject.OcrLexicon`は正本の`OcrLexicon`。
+- 正解語、無視語、安定ID付き`OcrCorrectionRule`（有効・元語・正解・明示自動許可）を保持する。
+- 正解語と頻度は別である。
+- `OcrWordCountsCache`はJsonIgnoreの任意データで、パッケージ内の別エントリへ保存する。
+- アプリ設定やPDF出力へ転用しない。
 
 `OcrLexiconIndex`は不変の共通検索索引、`OcrWordAccumulator`はページ／領域ごとに実際に計数済みの寄与を保持する。本文・削除変更だけ寄与を差し替え、位置・回転・固定状態は頻度を変えない。取り消し・やり直しでも非同期世代は戻さない。辞書だけの編集と、文字／配置＋任意登録の複合編集はそれぞれ既存履歴へまとめる。
 
 ## 配置保存の追加（dev.213・設定形式20）
 
-`ApplicationSettings.WorkspaceLayoutXml`および`WorkspacePreset.WorkspaceLayoutXml`は任意のネイティブAvalonDock配置。アプリ全体のタブ・分割・浮動座標・非表示状態を保持し、プロジェクトには格納しない。上限65,536文字、200要素、既知9個の重複しないContentId（navigation／bookmarks／properties／link-properties／redaction-properties／comment-properties／main-toolbar／page-toolbar／editor）を必須とし、非有限・過大な寸法やDTDを拒否する。旧設定はnullで移行し、既存の左右・幅・浮動情報を利用する。プロジェクト形式1.11／最低読込版dev.206は変更しない。
+- `ApplicationSettings.WorkspaceLayoutXml`および`WorkspacePreset.WorkspaceLayoutXml`は任意のネイティブAvalonDock配置。
+- アプリ全体のタブ・分割・浮動座標・非表示状態を保持し、プロジェクトには格納しない。
+- 上限65,536文字、200要素、既知9個の重複しないContentId（navigation／bookmarks／properties／link-properties／redaction-properties／comment-properties／main-toolbar／page-toolbar／editor）を必須とし、非有限・過大な寸法やDTDを拒否する。
+- 旧設定はnullで移行し、既存の左右・幅・浮動情報を利用する。
+- プロジェクト形式1.11／最低読込版dev.206は変更しない。
 
 ## 当時のモデルの差分（dev.208／形式1.11）
 
 `PdfInternalLink.IsGeometryLocked`は幾何と削除の保護状態である。ロック中は移動・リサイズ・整列・削除を拒否し、移動先や説明の変更は許可する。OCR領域に関連付いたリンクも、ロック中はOCR編集からの枠自動更新を停止する。解除後の追従と元注釈置換は従来の識別情報を使う。保護状態はUndo/Redoと保存・再読込に含む。
 
-`PdfCorrectoriumProject.EditingMode`は任意の`ProjectEditingMode`（OCR編集／読み順／校正・確認／墨消し／リンク編集）。nullの旧プロジェクトは`ApplicationSettings.DefaultEditingMode`へ従う。通常保存で現在モードを記録し、モードだけの変更は編集内容の未保存フラグを立てない。`EditorViewState`は単一／見開き・スクロール・表紙・綴じ方向の状態で、別に管理する。
+- `PdfCorrectoriumProject.EditingMode`は任意の`ProjectEditingMode`（OCR編集／読み順／校正・確認／墨消し／リンク編集）。
+- nullの旧プロジェクトは`ApplicationSettings.DefaultEditingMode`へ従う。
+- 通常保存で現在モードを記録し、モードだけの変更は編集内容の未保存フラグを立てない。
+- `EditorViewState`は単一／見開き・スクロール・表紙・綴じ方向の状態で、別に管理する。
 
 `ApplicationSettings.HiddenToolbarItems`は安定した操作IDの非表示リスト、設定形式は19。アプリ共通で、プロジェクトや名前付き配置プリセットのデータではない。説明の表示は`ShowPropertyHelpText`で全5モードに共通適用するが、選択情報・読込状態・警告・入力エラーは隠さない。
 
 `DocumentBatchCandidate`は自動ページリンク／文字検索墨消し／範囲繰り返しの確認用データ。対象ページ、移動先、適用可否、既定チェック状態、プレビュー座標と適用結果モデルを保持する。確定したリンク／墨消しだけを既存配列へ加え、候補・画面画像はプロジェクトへ保存しない。最大10,000候補で、適用は一つのUndo操作とする。
 
-文字装飾は`PdfTextDecoration`の種類、対象範囲、テンプレート、番号補正、通常位置、任意の偶数ページ位置、色・寸法・不透明度・余白で保持する。日本語フォントは同梱Noto Sans JPを使用する。コメント・タグ、論理ページ列、リンク識別、輪郭墨消しの既存モデルは維持する。[形式仕様](../08_ProjectFormat/08-01_ProjectFormat.md)と[現行索引](../00_Project/00-04_CurrentImplementation.md)を参照。
+- 文字装飾は`PdfTextDecoration`の種類、対象範囲、テンプレート、番号補正、通常位置、任意の偶数ページ位置、色・寸法・不透明度・余白で保持する。
+- 日本語フォントは同梱Noto Sans JPを使用する。
+- コメント・タグ、論理ページ列、リンク識別、輪郭墨消しの既存モデルは維持する。
+- [形式仕様](../08_ProjectFormat/08-01_ProjectFormat.md)と[現行索引](../00_Project/00-04_CurrentImplementation.md)を参照。
 
 ## dev.200で追加したリンクモデル（現行にも維持）
 
@@ -146,7 +175,11 @@ classDiagram
 
 操作ID、相関ID、時刻、対象、変更種別、変更前後の要約を保持する。Undo用コマンドと監査履歴は別データ。
 
-現行dev.143のUndo用ページ構成履歴は保存プロジェクト形式の`ChangeRecord`ではなく、実行中だけ保持する前後スナップショットである。削除・並べ替え・90度回転は`PdfCorrectoriumProject`内の論理ページ列、OCRページ、しおりと選択状態を対で保持し、OCR領域差分と同じ履歴順序へ積む。再生成可能なサムネイルやPDF全体はスナップショットへ含めない。外部ページ挿入だけは複数の物理PDFを統合した新しい元PDFを必要とするため、そのファイル参照を履歴へ持ち、枝の破棄、履歴上限、文書切替、終了で到達不能になった時点で回収する。プロジェクト保存後やアプリ再起動後にUndo履歴そのものを復元する機能、監査履歴として永続化する機能とは区別する。
+- 現行dev.143のUndo用ページ構成履歴は保存プロジェクト形式の`ChangeRecord`ではなく、実行中だけ保持する前後スナップショットである。
+- 削除・並べ替え・90度回転は`PdfCorrectoriumProject`内の論理ページ列、OCRページ、しおりと選択状態を対で保持し、OCR領域差分と同じ履歴順序へ積む。
+- 再生成可能なサムネイルやPDF全体はスナップショットへ含めない。
+- 外部ページ挿入だけは複数の物理PDFを統合した新しい元PDFを必要とするため、そのファイル参照を履歴へ持ち、枝の破棄、履歴上限、文書切替、終了で到達不能になった時点で回収する。
+- プロジェクト保存後やアプリ再起動後にUndo履歴そのものを復元する機能、監査履歴として永続化する機能とは区別する。
 
 ## 3. 幾何モデル
 

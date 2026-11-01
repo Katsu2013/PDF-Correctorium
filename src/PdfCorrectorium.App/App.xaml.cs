@@ -47,6 +47,14 @@ public partial class App : Application
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         var filesTakePriority = StartupArgumentRouting.FilesTakePriority(e.Args);
+        if (!filesTakePriority && StartupArgumentRouting.IsDiagnosticRequest(e.Args) &&
+            !StartupArgumentRouting.DiagnosticsEnabled(Environment.GetEnvironmentVariable(StartupArgumentRouting.DiagnosticsEnvironmentVariable)))
+        {
+            // Explicit developer opt-in; normal users never enter a test handler.
+            // Operational PDF/export workers are not diagnostic requests.
+            Shutdown(2);
+            return;
+        }
         _isSmokeTest = e.Args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest = _isSmokeTest || e.Args.Contains("--render-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--ndl-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--editor-project-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--pdf-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--redaction-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-export-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--project-analysis-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--image-optimize-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--bookmark-test", StringComparer.OrdinalIgnoreCase) || e.Args.Contains("--isolated-pdf-export", StringComparer.OrdinalIgnoreCase) || e.Args.Contains(PdfNativeWorkerClient.WorkerOption, StringComparer.OrdinalIgnoreCase);
         _isNonInteractiveTest |= e.Args.Contains("--sandbox-probe", StringComparer.OrdinalIgnoreCase);

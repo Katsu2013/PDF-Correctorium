@@ -1,7 +1,7 @@
 # PDF Correctorium 公式ドキュメント
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 現行仕様（v1.0.0-dev.274・コミット前確認）
+## 公開アプリの仕様（v1.0.0-dev.274）
 
 現行ソース1.0.0-dev.274の[dev.199からの累積変更](Release-Changes.md)と、[RapidOCR](RapidOCR.md)、[読み上げ](Read-Aloud.md)、[OCR品質・辞書](OCR-Quality-And-Lexicon.md)を追加した。公開済みファイルはReleasesで確認する。文書処理は完全ローカル、Webリンク・更新確認は利用者操作で許可する。作業プロジェクト／キャッシュと、確認済みの完成PDFを区別して共有する。
 <!-- END-CURRENT-RELEASE-SNAPSHOT -->
@@ -12,7 +12,7 @@ PDF Correctorium は、**ページの並べ替え・回転・結合、指定範�
 
 パソコンにインストールせずUSBメモリ等からもすぐに使え、元のPDFファイルを直接上書きしない**元データを壊さない安全設計**を採用しています。作業内容はプロジェクト（`.pdfocrproj`）にいつでも保存して続きから再開でき、編集結果を新しいPDFとして画質を落とさず安全に出力できます。
 
-> ### 🚀 今すぐダウンロード（Windows 10 / 11 対応・ポータブル版）
+> ### 🚀 今すぐダウンロード（Windows 10 2004以降 / Windows 11・x64・ポータブル版）
 > 👉 **[最新版をダウンロード (v1.0.0-dev.199 .zip)](https://github.com/Katsu2013/PDF-Correctorium/releases/download/v1.0.0-dev.199/PdfCorrectorium-v1.0.0-dev.199-win-x64.zip)**  
 > ZIP を解凍し、中の `PdfCorrectorium.exe` を実行するだけですぐに使えます（インストール不要・完全ローカル動作）。
 > 詳しい使い方は [[クイックスタート・起動方法|Getting-Started]] をご覧ください。

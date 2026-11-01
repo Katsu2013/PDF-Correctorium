@@ -1,9 +1,11 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$OutputDirectory)
+param([Parameter(Mandatory=$true)][string]$OutputDirectory, [switch]$RequireCleanGit)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSEdition -ne 'Desktop') { throw 'Run release verification with Windows PowerShell 5.1.' }
 $repo=Split-Path -Parent $PSScriptRoot
+$diagnosticsBefore = $env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS
+$env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS = '1'
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $out) { throw 'Use a new verification directory.' }
 $null=New-Item -ItemType Directory -Path $out
@@ -31,12 +33,12 @@ function AppCheck([string]$Mode,[string]$Report='checks.txt',[string[]]$Extra=@(
 Push-Location $repo
 try {
     & (Join-Path $PSScriptRoot 'RestoreLockedPackages.ps1') *> (Join-Path $out 'dependency-restore.log')
-    Native @('restore','PdfCorrectorium.sln','--configfile','NuGet.Config','-p:DisableTransitiveFrameworkReferenceDownloads=true') 'restore.log'
+    Native @('restore','PdfCorrectorium.sln','--configfile','NuGet.Config','-p:DisableTransitiveFrameworkReferenceDownloads=false') 'restore.log'
     Native @('build','PdfCorrectorium.sln','-c','Release','--no-restore') 'release-build.log'
     Native @('run','--project','tests/PdfCorrectorium.ContractTests','-c','Release','--no-build','--no-restore') 'contracts.log'
     & (Join-Path $PSScriptRoot 'TestPublishPayload.ps1') -OutputDirectory (Join-Path $out 'payload-policy') *> (Join-Path $out 'payload-policy.log')
     & (Join-Path $PSScriptRoot 'TestDistributions.ps1') -OutputDirectory (Join-Path $out 'distribution-policy') *> (Join-Path $out 'distribution-policy.log')
-    $buildOutput=@(& (Join-Path $PSScriptRoot 'BuildPortable.ps1') | Tee-Object -FilePath (Join-Path $out 'portable-build.log'))
+    $buildOutput=@(& (Join-Path $PSScriptRoot 'BuildPortable.ps1') -RequireCleanGit:$RequireCleanGit | Tee-Object -FilePath (Join-Path $out 'portable-build.log'))
     $completion=@($buildOutput|Where-Object {$_ -is [string] -and $_.StartsWith('Build completed: ')})
     if ($completion.Count -ne 1) { throw 'BuildPortable did not identify exactly one new certified payload.' }
     $publish=$completion[0].Substring('Build completed: '.Length)
@@ -90,4 +92,4 @@ try {
 } catch {
     $_|Out-String|Set-Content -LiteralPath (Join-Path $out 'failure.txt') -Encoding utf8
     throw
-} finally { Pop-Location }
+} finally { Pop-Location; $env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS = $diagnosticsBefore }
