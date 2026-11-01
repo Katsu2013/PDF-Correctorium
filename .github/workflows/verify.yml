@@ -50,3 +50,6 @@ jobs:
             outputs/ci-verification/verified-build-info.json
             outputs/ci-verification/PdfCorrectorium-*.zip
             outputs/ci-verification/**/checks.txt
+            outputs/ci-verification/**/failure.txt
+            outputs/ci-verification/**/result.txt
+            outputs/ci-verification/diagnostic-stage/logs/*.log

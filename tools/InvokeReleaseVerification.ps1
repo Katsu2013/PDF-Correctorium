@@ -5,7 +5,6 @@ $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSEdition -ne 'Desktop') { throw 'Run release verification with Windows PowerShell 5.1.' }
 $repo=Split-Path -Parent $PSScriptRoot
 $diagnosticsBefore = $env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS
-$env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS = '1'
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $out) { throw 'Use a new verification directory.' }
 $null=New-Item -ItemType Directory -Path $out
@@ -26,12 +25,23 @@ function AppCheck([string]$Mode,[string]$Report='checks.txt',[string[]]$Extra=@(
     $process=Start-Process -FilePath (Join-Path $diagnosticStage 'PdfCorrectorium.exe') -ArgumentList $arguments -WindowStyle Hidden -PassThru
     if (!$process.WaitForExit(600000)) { $process.Kill(); throw ('Application diagnostic timed out: '+$Mode) }
     $process.Refresh()
-    if ($process.ExitCode -ne 0) { throw ('Application diagnostic failed: '+$Mode+'; see '+$result) }
+    if ($process.ExitCode -ne 0) {
+        $logRoot=Join-Path $diagnosticStage 'logs'
+        if (Test-Path -LiteralPath $logRoot) {
+            $log=@(Get-ChildItem -LiteralPath $logRoot -Filter ('startup-*-p'+$process.Id+'.log') -File)
+            if ($log.Count -eq 1) {
+                Copy-Item -LiteralPath $log[0].FullName -Destination (Join-Path $out ($Mode+'-startup.log'))
+                Get-Content -LiteralPath $log[0].FullName -Tail 100 | Write-Output
+            }
+        }
+        throw ('Application diagnostic failed: '+$Mode+'; exit='+$process.ExitCode+'; see '+$result)
+    }
     $reportPath=Join-Path $result $Report
     if (!(Test-Path -LiteralPath $reportPath) -or (Get-Item -LiteralPath $reportPath).Length -eq 0) { throw ('Application diagnostic did not produce checks: '+$Mode) }
 }
 Push-Location $repo
 try {
+    $env:PDFCORRECTORIUM_ENABLE_DIAGNOSTICS = '1'
     & (Join-Path $PSScriptRoot 'RestoreLockedPackages.ps1') *> (Join-Path $out 'dependency-restore.log')
     Native @('restore','PdfCorrectorium.sln','--configfile','NuGet.Config','-p:DisableTransitiveFrameworkReferenceDownloads=false') 'restore.log'
     Native @('build','PdfCorrectorium.sln','-c','Release','--no-restore') 'release-build.log'

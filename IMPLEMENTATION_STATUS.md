@@ -1,6 +1,10 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.278
+## Current repository snapshot: v1.0.0-dev.279
+
+Preserve exact per-process application failure logs and diagnostic failure/result files in CI. No diagnostic is skipped or converted to success. The dev.278 audit passed on CI, followed by a page-history diagnostic failure that is under investigation.
+
+## Previous repository snapshot: v1.0.0-dev.278
 
 CI audit fixture correction: explicitly assign the current user as owner of synthetic orphan directories and leases. Production cleanup still rejects foreign ownership and reparse points. Local verification PASSED: seven-project Release (0 warnings/errors), 76 contracts, exact self-contained payload, 29 audit checks, document UI/version display and 32 versioning checks. Final GitHub CI remains a separate result: docs/releases/v1.0.0-dev.278.md.
 
