@@ -3,12 +3,12 @@
 現行ソース **1.0.0-dev.281**（外部レビュー指摘への対応）。前回公開版dev.199以降の累積変更を取り込んだ正本です。公開済み成果物はGitHub Releasesで別途確認してください。
 
 - アプリ版はDirectory.Build.propsの2つの入力から導出します。CIでもコミットIDを版番号へ自動付加しません。
-- [公開・CI運用の最新追記](../../docs/releases/v1.0.0-dev.281.md)。公開版dev.274と開発ソースの検証は区別します。
+- [公開・CI運用の最新追記](../../docs/releases/v1.0.0-dev.281.md)。[dev.281開発版の配布内容](../../docs/releases/v1.0.0-dev.281-publication.md)と、署名・審査済みの正式版は区別します。
 - 新規保存のプロジェクト形式は1.14、最小読取版dev.262。設定形式21とは別です。
 - [dev.199からの変更と現行検証](../../docs/releases/v1.0.0-dev.274.md)
 - [機能と文書の追跡・確認表](../../docs/Release-Documentation-Coverage.md)
 - [利用者向け操作ガイド原稿](../../wiki/Home.md)
-- [設計PDF](PDF-Correctorium-Design-Documentation-dev281-20261102.pdf)
+- [設計PDF](PDF-Correctorium-Design-Documentation-dev281-20261102-release.pdf)
 
 ## まず全体像を確認
 
@@ -45,15 +45,15 @@
 
 Mermaidコードは公式CLIで図へ変換します。初回は`npm ci --prefix tools/documentation-renderer --ignore-scripts`で固定依存を復元してください（PUPPETEER_SKIP_DOWNLOAD=true）。変換には既存Chromeを指定し、文書の生成中は外部サービスへ送信しません。描画失敗はエラーで停止します。旧PDF・更新記録・旧図はarchive配下に保持し、現行PDFへ旧図を列挙しません。
 
-## dev.277の外部レビュー対応（未公開候補）
+## dev.277の外部レビュー対応（当時の未公開候補）
 
 - 公開入口、動作環境、個人パス、Wiki同期手順を整理。
 - CIの固定ランタイム解決と、公開用のクリーンなコミット検査を追加。
 - 診断は明示的に有効化した場合だけ実行する。通常のPDFワーカーは維持する。
-- 公開版はdev.274。GitHubでの反映状況と未完了条件は[対応表](../../docs/External-Review-Response-2026-11-02.md)を参照する。
+- この検証時点の公開版はdev.274。dev.281の配布情報と反映状況と未完了条件は[対応表](../../docs/External-Review-Response-2026-11-02.md)を参照する。
 
 ## dev.278の監査データ修正
 
 - CIで本人所有の回収テストが停止したため、監査用フォルダーと所有者記録のNTFS所有者を明示する。
 - 本番の所有者・経路・ロック検査は維持する。アプリの編集機能・保存形式の変更ではない。
-- [検証記録](../../docs/releases/v1.0.0-dev.278.md)と[CI](https://github.com/Katsu2013/PDF-Correctorium/actions/workflows/verify.yml)を区別して確認する。公開済みアプリは引き続きdev.274。
+- [検証記録](../../docs/releases/v1.0.0-dev.278.md)と[CI](https://github.com/Katsu2013/PDF-Correctorium/actions/workflows/verify.yml)を区別して確認する。この検証時点の公開済みアプリはdev.274だった。改善を含むdev.281を開発版として配布する。

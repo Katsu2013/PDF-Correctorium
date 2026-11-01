@@ -4,7 +4,7 @@
 ローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。実際の配布状況と添付ファイルはGitHub Releasesで確認してください。署名・審査済みの正式版とは区別します。
 
 
-現行ソースは1.0.0-dev.274。前回公開dev.199からの累積変更は、[リリース文書](../docs/releases/v1.0.0-dev.274.md)を参照してください。GitHubで実際に取得できる配布物は[Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認してください。
+現行開発版は1.0.0-dev.281。[dev.274からの公開文書・配布・CIの改善](../docs/releases/v1.0.0-dev.281-publication.md)を含みます。前回公開dev.199からの累積変更は、[リリース文書](../docs/releases/v1.0.0-dev.274.md)を参照してください。GitHubで実際に取得できる配布物は[Releases](https://github.com/Katsu2013/PDF-Correctorium/releases)で確認してください。
 
 - [RapidOCRによる行の再認識](RapidOCR.md)
 - [OCR品質分析と資料の辞書](OCR-Quality-And-Lexicon.md)

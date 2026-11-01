@@ -125,7 +125,7 @@
 ## dev.199からの主な追加機能
 
 <!-- FINAL-LOCAL-VERIFICATION -->
-ローカル確認：dev.274のRelease・契約・21種類のアプリ診断・ZIP照合は成功。配布状況と添付ファイルはGitHub Releasesで確認してください。未署名の開発版であり、署名・審査済みの正式版とは区別します。
+dev.281のCIでRelease・契約・アプリ診断21グループ・完成ZIPの照合が成功しています。[開発版の配布ページ](https://github.com/Katsu2013/PDF-Correctorium/releases/tag/v1.0.0-dev.281)で添付ファイルを確認してください。未署名の開発版であり、署名・審査済みの正式版とは区別します。
 
 
 - 選択行RapidOCR再認識と資料別OCR辞書、類似語・文字密度の校正。[操作](wiki/RapidOCR.md)
@@ -134,14 +134,15 @@
 - ライト／ダーク／OS追従、独立パネルと左右収納、ツールバー表示の保存。
 - TXT／CSV作業データと完成PNG／JPEG、自己完結型.NET 10配布。[出力](wiki/Data-Exports.md)
 
-[累積変更・互換性・制約と検証](docs/releases/v1.0.0-dev.274.md)。この節はdev.274の開発版ソースを説明します。未OCRページ／PDF全体の新規認識、署名済みMSIX・Store実公開は未完了です。Wiki原稿はリポジトリ内で更新しており、GitHub Wikiへの別途公開は行っていません。
+[累積変更・互換性・制約と検証](docs/releases/v1.0.0-dev.274.md)。機能の累積説明はdev.274を基準とし、[dev.274からdev.281の変更](docs/releases/v1.0.0-dev.281-publication.md)を追加しています。未OCRページ／PDF全体の新規認識、署名済みMSIX・Store実公開は未完了です。[GitHub Wiki](https://github.com/Katsu2013/PDF-Correctorium/wiki)も同期しています。
 
 ## 🗺️ 開発ロードマップと現在のバージョン
 
 本プロジェクトは、**「日常業務で高価な市販ソフトの代わりに使える、実用的なオープンソースPDF総合エディタ」** の実現を目指して継続的に開発されています。
 
 - **現在のリポジトリSnapshot**: `v1.0.0-dev.281`（現行開発版ソース。公開状況はReleases参照）
-- **今回の比較元となる公開版**: `v1.0.0-dev.199`
+- **直前の公開版**: `v1.0.0-dev.274`（[dev.281の変更内容](docs/releases/v1.0.0-dev.281-publication.md)）
+- **累積機能説明の比較元**: `v1.0.0-dev.199`
 
 [前回公開dev.199からの累積変更](docs/releases/v1.0.0-dev.274.md)：RapidOCRによる行の再認識、共通OCR辞書・品質分析、リンク編集と一括処理、読み上げ・段落・読み方、テーマとドッキング改善、.NET同梱と安全な配布基盤をまとめています。署名・正式公開は別途準備が必要です。
 

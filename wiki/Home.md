@@ -1,9 +1,9 @@
 # PDF Correctorium 公式ドキュメント
 
 <!-- CURRENT-RELEASE-SNAPSHOT -->
-## 公開アプリの仕様（v1.0.0-dev.274）
+## 公開アプリの仕様（v1.0.0-dev.281）
 
-現行ソース1.0.0-dev.274の[dev.199からの累積変更](Release-Changes.md)と、[RapidOCR](RapidOCR.md)、[読み上げ](Read-Aloud.md)、[OCR品質・辞書](OCR-Quality-And-Lexicon.md)を追加した。公開済みファイルはReleasesで確認する。文書処理は完全ローカル、Webリンク・更新確認は利用者操作で許可する。作業プロジェクト／キャッシュと、確認済みの完成PDFを区別して共有する。
+現行開発版1.0.0-dev.281の[dev.199からの累積変更](Release-Changes.md)と、[RapidOCR](RapidOCR.md)、[読み上げ](Read-Aloud.md)、[OCR品質・辞書](OCR-Quality-And-Lexicon.md)を追加した。[dev.274からの変更](../docs/releases/v1.0.0-dev.281-publication.md)と[開発版の配布ファイル](https://github.com/Katsu2013/PDF-Correctorium/releases/tag/v1.0.0-dev.281)を確認できる。文書処理は完全ローカル、Webリンク・更新確認は利用者操作で許可する。作業プロジェクト／キャッシュと、確認済みの完成PDFを区別して共有する。
 <!-- END-CURRENT-RELEASE-SNAPSHOT -->
 
 PDF Correctorium（PDFコレクトリウム）の公式マニュアルへようこそ！

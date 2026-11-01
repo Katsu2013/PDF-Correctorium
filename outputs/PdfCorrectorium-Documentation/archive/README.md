@@ -11,3 +11,4 @@
 - [dev.277 設計PDF](pdf/PDF-Correctorium-Design-Documentation-dev277-20261102.pdf)
 - [dev.278 設計PDF](pdf/PDF-Correctorium-Design-Documentation-dev278-20261102.pdf)
 - [dev.280 設計PDF](pdf/PDF-Correctorium-Design-Documentation-dev280-20261102.pdf)
+- [dev.281 公開前設計PDF](pdf/PDF-Correctorium-Design-Documentation-dev281-20261102.pdf)
