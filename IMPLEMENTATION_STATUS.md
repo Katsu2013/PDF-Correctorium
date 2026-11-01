@@ -1,6 +1,10 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.280
+## Current repository snapshot: v1.0.0-dev.281
+
+Explicit speech verification profiles separate native playback (local default) from CI synthesis-only operation. Both use the same Windows synthesis path; CI verifies real WAV/rate/cancellation/reuse and retains Japanese reading/paragraph/PDF checks. CI never claims native playback coverage. The dev.280 CI passed the other 20 app groups and failed in MediaPlayer playback; the precise renderer cause is not established. Playback errors now include error kind/HRESULT. Local Release, 76 contracts, 29 audit, 34 versioning, NativePlayback 275, SynthesisOnly 276 and document UI 211 PASSED. GitHub CI is a separate pending result: docs/releases/v1.0.0-dev.281.md.
+
+## Previous repository snapshot: v1.0.0-dev.280
 
 CI speech diagnostics select an installed Microsoft voice (prefer Japanese), retaining native WAV/cue/pause/cancellation/rate checks and Japanese reading/paragraph/export checks. The dev.279 CI page-history diagnostic passed; speech then failed because the runner lacks Japanese voices. All app groups now run before reporting aggregate failures. InformationalVersion is exact across CI/local builds; source commit remains in build-info.json. Verification is pending; details: docs/releases/v1.0.0-dev.280.md.
 

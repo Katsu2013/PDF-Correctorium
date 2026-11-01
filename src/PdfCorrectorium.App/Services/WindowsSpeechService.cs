@@ -78,23 +78,11 @@ internal sealed class WindowsSpeechService : ISpeechPlayback
         Action? detach = null;
         try
         {
-            var synthesis = await dispatcher.InvokeAsync(() =>
-            {
-                cancellation.ThrowIfCancellationRequested();
-                if (voice.Length > 0)
-                    _synth!.Voice = SpeechSynthesizer.AllVoices.FirstOrDefault(item => VoiceNamesMatch(item.DisplayName, voice)) ??
-                        throw new InvalidOperationException("The selected Windows voice is no longer installed.");
-                _synth!.Options.SpeakingRate = SpeakingRate(rate);
-                return _synth.SynthesizeTextToStreamAsync(text).AsTask(cancellation);
-            });
-            stream = await synthesis;
+            stream = await SynthesizeAsync(dispatcher, text, voice, rate, cancellation);
             cancellation.ThrowIfCancellationRequested();
             if (_wavePath is not null)
             {
-                using var copy = stream.CloneStream(); copy.Seek(0);
-                using var input = copy.AsStreamForRead();
-                await using var output = File.Create(_wavePath);
-                await input.CopyToAsync(output, cancellation);
+                await WriteDiagnosticWaveAsync(stream, cancellation);
             }
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             await dispatcher.InvokeAsync(() =>
@@ -130,7 +118,12 @@ internal sealed class WindowsSpeechService : ISpeechPlayback
                 player.CommandManager.IsEnabled = false;
                 void Ended(MediaPlayer sender, object args) { if (Volatile.Read(ref active) != 0) completion.TrySetResult(); }
                 void Failed(MediaPlayer sender, MediaPlayerFailedEventArgs args)
-                { if (Volatile.Read(ref active) != 0) completion.TrySetException(new InvalidOperationException(args.ErrorMessage)); }
+                {
+                    if (Volatile.Read(ref active) != 0)
+                        completion.TrySetException(new InvalidOperationException(
+                            $"Windows audio playback failed: {args.Error} (0x{args.ExtendedErrorCode?.HResult ?? 0:X8}). {args.ErrorMessage}",
+                            args.ExtendedErrorCode));
+                }
                 player.MediaEnded += Ended;
                 player.MediaFailed += Failed;
                 detach = () =>
@@ -158,6 +151,43 @@ internal sealed class WindowsSpeechService : ISpeechPlayback
             }); }
             finally { _serial.Release(); }
         }
+    }
+
+    private async Task<SpeechSynthesisStream> SynthesizeAsync(Dispatcher dispatcher, string text, string voice, double rate, CancellationToken cancellation)
+    {
+        var synthesis = await dispatcher.InvokeAsync(() =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (voice.Length > 0)
+                _synth!.Voice = SpeechSynthesizer.AllVoices.FirstOrDefault(item => VoiceNamesMatch(item.DisplayName, voice)) ??
+                    throw new InvalidOperationException("The selected Windows voice is no longer installed.");
+            _synth!.Options.SpeakingRate = SpeakingRate(rate);
+            return _synth.SynthesizeTextToStreamAsync(text).AsTask(cancellation);
+        });
+        return await synthesis;
+    }
+
+    private async Task WriteDiagnosticWaveAsync(SpeechSynthesisStream stream, CancellationToken cancellation)
+    {
+        using var copy = stream.CloneStream(); copy.Seek(0);
+        using var input = copy.AsStreamForRead();
+        await using var output = File.Create(_wavePath!);
+        await input.CopyToAsync(output, cancellation);
+    }
+
+    internal async Task SynthesizeForDiagnosticsAsync(string text, string voice, double rate, CancellationToken token)
+    {
+        if (_wavePath is null || Environment.GetEnvironmentVariable("PDFCORRECTORIUM_ENABLE_DIAGNOSTICS") != "1")
+            throw new InvalidOperationException("Diagnostic synthesis requires an explicit opt-in and a WAV output path.");
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+        await InitializeAsync().WaitAsync(linked.Token);
+        await _serial.WaitAsync(linked.Token);
+        try
+        {
+            using var stream = await SynthesizeAsync(await _ready.Task, text, voice, rate, linked.Token);
+            await WriteDiagnosticWaveAsync(stream, linked.Token);
+        }
+        finally { _serial.Release(); }
     }
 
     public async Task PauseAsync(bool paused)

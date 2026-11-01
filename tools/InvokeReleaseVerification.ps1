@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$OutputDirectory, [switch]$RequireCleanGit)
+param([Parameter(Mandatory=$true)][string]$OutputDirectory, [switch]$RequireCleanGit,
+    [ValidateSet('NativePlayback','SynthesisOnly')][string]$SpeechVerificationMode='NativePlayback')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSEdition -ne 'Desktop') { throw 'Run release verification with Windows PowerShell 5.1.' }
@@ -79,7 +80,8 @@ try {
     $applicationFailures = [Collections.Generic.List[string]]::new()
     foreach($mode in $applicationChecks) {
         try {
-            if ($mode -eq 'document-organization') { AppCheck $mode 'result.txt' }
+            if ($mode -eq 'theme-speech' -and $SpeechVerificationMode -eq 'SynthesisOnly') { AppCheck $mode 'checks.txt' @('--speech-synthesis-only') }
+            elseif ($mode -eq 'document-organization') { AppCheck $mode 'result.txt' }
             else { AppCheck $mode }
         }
         catch {
@@ -98,6 +100,7 @@ try {
         releaseBuildPassed=$true;contractsPassed=$true;packagedSecurityPassed=$true;packagedSandboxPassed=$true
         packagedPersistencePassed=$true;packagedPageHistoryPassed=$true;versioningPassed=$true
         applicationDiagnosticsPassed=$applicationChecks
+        speechVerificationMode=$SpeechVerificationMode;nativeSpeechPlaybackVerified=($SpeechVerificationMode -eq 'NativePlayback')
         redactionResidualChecksPassed=$true;malformedInputChecksPassed=$true
         publishDirectory=$publish;releaseStage=$releaseStage;gitCommit=$info.gitCommit;gitDirty=$info.gitDirty
         zip=[ordered]@{path=$archive;sha256=(Get-FileHash -LiteralPath $archive).Hash}

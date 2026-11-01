@@ -332,37 +332,48 @@ public partial class App
                 Check(protectedPage.Segments.All(segment => !segment.Text.Contains("SECRET", StringComparison.Ordinal)), "An unsaved imported row moved away from its original mask is never spoken.");
             }
 
-            var wave = Path.Combine(output, "windows-speech.wav");
-            await using (var engine = new WindowsSpeechService(wave))
+            var synthesisOnly = args.Contains("--speech-synthesis-only", StringComparer.OrdinalIgnoreCase);
+            if (synthesisOnly) await VerifySpeechSynthesisOnlyAsync(output, Check);
+            else
             {
-                var voices = await engine.InitializeAsync();
-                var voice = SelectDiagnosticSpeechVoice(voices);
-                var japanese = voice.Language.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
-                File.WriteAllText(Path.Combine(output, "speech-voice.json"), System.Text.Json.JsonSerializer.Serialize(voice));
-                Check(SelectDiagnosticSpeechVoice([new("English fixture", "en-US", true)]).Language == "en-US",
-                    "Native speech diagnostics use an installed voice when Japanese is not installed.");
-                Check(voice.Name.Length > 0, "Actual Windows synthesis service enumerates an installed Microsoft voice: " + voice.Language);
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var progressPositions = new System.Collections.Concurrent.ConcurrentQueue<int>();
-                var synthesisText = japanese ? "PDFの読み上げを確認します。" : "Checking speech playback for PDF documents.";
-                await engine.SpeakAsync(synthesisText, voice.Name, 0, timeout.Token, position => progressPositions.Enqueue(position));
-                Check(true, "Actual asynchronous Windows synthesis completes without using the speakers.");
-                Check(progressPositions.Any(position => position > 0) && progressPositions.All(position => position >= 0 && position < synthesisText.Length), "Actual timed Windows speech cues report source character positions during playback.");
-                using var cancellation = new CancellationTokenSource();
-                var speaking = engine.SpeakAsync(string.Concat(Enumerable.Repeat(japanese ? "読み上げの停止を確認します。" : "Checking speech cancellation. ", 500)), voice.Name, -5, cancellation.Token);
-                await engine.PauseAsync(true); await engine.PauseAsync(false); cancellation.Cancel();
-                var cancelled = false;
-                try { await speaking.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { cancelled = true; }
-                Check(cancelled, "Actual Windows synthesis cancellation completes promptly after pause/resume requests.");
+                var wave = Path.Combine(output, "windows-speech.wav");
+                await using (var engine = new WindowsSpeechService(wave))
+                {
+                    var voices = await engine.InitializeAsync();
+                    var voice = SelectDiagnosticSpeechVoice(voices);
+                    var japanese = voice.Language.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
+                    File.WriteAllText(Path.Combine(output, "speech-voice.json"), System.Text.Json.JsonSerializer.Serialize(voice));
+                    Check(SelectDiagnosticSpeechVoice([new("English fixture", "en-US", true)]).Language == "en-US",
+                        "Native speech diagnostics use an installed voice when Japanese is not installed.");
+                    Check(voice.Name.Length > 0, "Actual Windows synthesis service enumerates an installed Microsoft voice: " + voice.Language);
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    var progressPositions = new System.Collections.Concurrent.ConcurrentQueue<int>();
+                    var synthesisText = japanese ? "PDFの読み上げを確認します。" : "Checking speech playback for PDF documents.";
+                    await engine.SpeakAsync(synthesisText, voice.Name, 0, timeout.Token, position => progressPositions.Enqueue(position));
+                    Check(true, "Actual asynchronous Windows synthesis completes without using the speakers.");
+                    Check(progressPositions.Any(position => position > 0) && progressPositions.All(position => position >= 0 && position < synthesisText.Length), "Actual timed Windows speech cues report source character positions during playback.");
+                    using var cancellation = new CancellationTokenSource();
+                    var speaking = engine.SpeakAsync(string.Concat(Enumerable.Repeat(japanese ? "読み上げの停止を確認します。" : "Checking speech cancellation. ", 500)), voice.Name, -5, cancellation.Token);
+                    await engine.PauseAsync(true); await engine.PauseAsync(false); cancellation.Cancel();
+                    var cancelled = false;
+                    try { await speaking.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { cancelled = true; }
+                    Check(cancelled, "Actual Windows synthesis cancellation completes promptly after pause/resume requests.");
+                }
+                var bytes = await File.ReadAllBytesAsync(wave);
+                Check(bytes.Length > 1000 && Encoding.ASCII.GetString(bytes, 0, 4) == "RIFF" && bytes.Skip(80).Any(value => value != 0), "Microsoft voice produces a real nonempty WAV stream.");
+                await VerifyHalfStepSpeechAsync(output, Check);
             }
-            var bytes = await File.ReadAllBytesAsync(wave);
-            Check(bytes.Length > 1000 && Encoding.ASCII.GetString(bytes, 0, 4) == "RIFF" && bytes.Skip(80).Any(value => value != 0), "Microsoft voice produces a real nonempty WAV stream.");
-            await VerifyHalfStepSpeechAsync(output, Check);
             await VerifyMixedParagraphAsync(main, output, Check, Picture);
             await VerifyParagraphFramesAsync(main, output, Check, Picture);
             await VerifyWordReadingsAsync(main, output, Check, Picture);
             await VerifySharedReadingsAndDockAsync(main, output, Check, Picture);
             await VerifyPdfReadingExportAsync(output, Check);
+            File.WriteAllText(Path.Combine(output, "speech-verification.json"), System.Text.Json.JsonSerializer.Serialize(new
+            {
+                mode = synthesisOnly ? "SynthesisOnly" : "NativePlayback",
+                nativePlaybackVerified = !synthesisOnly,
+                note = "A successful synthesis-only run does not verify physical audio playback, cues or native pause/resume."
+            }));
             File.WriteAllLines(Path.Combine(output, "checks.txt"), checks);
             main.Close(); Shutdown(0);
         }
