@@ -49,7 +49,7 @@ if ($PublishDirectory) {
         $binary = Get-Item -LiteralPath (Join-Path $resolvedDirectory $fileName)
         $details = $binary.VersionInfo
         if ($details.FileVersion -ne $properties.FileVersion -or
-            ($details.ProductVersion -split '\+')[0] -ne $properties.Version) {
+            $details.ProductVersion -cne $properties.Version) {
             throw "Published version mismatch: $fileName ($($details.FileVersion), $($details.ProductVersion))"
         }
         $assemblyVersion = $null

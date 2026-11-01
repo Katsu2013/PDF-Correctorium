@@ -336,17 +336,20 @@ public partial class App
             await using (var engine = new WindowsSpeechService(wave))
             {
                 var voices = await engine.InitializeAsync();
-                var voice = voices.FirstOrDefault(item => item.IsMicrosoft && item.Language.StartsWith("ja", StringComparison.Ordinal)) ??
-                    throw new InvalidOperationException("A Microsoft Japanese voice is required for this machine diagnostic.");
-                Check(voice.Name.Length > 0, "Actual Windows synthesis service enumerates the installed Microsoft Japanese voice.");
+                var voice = SelectDiagnosticSpeechVoice(voices);
+                var japanese = voice.Language.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
+                File.WriteAllText(Path.Combine(output, "speech-voice.json"), System.Text.Json.JsonSerializer.Serialize(voice));
+                Check(SelectDiagnosticSpeechVoice([new("English fixture", "en-US", true)]).Language == "en-US",
+                    "Native speech diagnostics use an installed voice when Japanese is not installed.");
+                Check(voice.Name.Length > 0, "Actual Windows synthesis service enumerates an installed Microsoft voice: " + voice.Language);
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 var progressPositions = new System.Collections.Concurrent.ConcurrentQueue<int>();
-                const string synthesisText = "PDFの読み上げを確認します。";
+                var synthesisText = japanese ? "PDFの読み上げを確認します。" : "Checking speech playback for PDF documents.";
                 await engine.SpeakAsync(synthesisText, voice.Name, 0, timeout.Token, position => progressPositions.Enqueue(position));
-                Check(true, "Actual asynchronous Japanese synthesis completes without using the speakers.");
+                Check(true, "Actual asynchronous Windows synthesis completes without using the speakers.");
                 Check(progressPositions.Any(position => position > 0) && progressPositions.All(position => position >= 0 && position < synthesisText.Length), "Actual timed Windows speech cues report source character positions during playback.");
                 using var cancellation = new CancellationTokenSource();
-                var speaking = engine.SpeakAsync(string.Concat(Enumerable.Repeat("読み上げの停止を確認します。", 500)), voice.Name, -5, cancellation.Token);
+                var speaking = engine.SpeakAsync(string.Concat(Enumerable.Repeat(japanese ? "読み上げの停止を確認します。" : "Checking speech cancellation. ", 500)), voice.Name, -5, cancellation.Token);
                 await engine.PauseAsync(true); await engine.PauseAsync(false); cancellation.Cancel();
                 var cancelled = false;
                 try { await speaking.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { cancelled = true; }

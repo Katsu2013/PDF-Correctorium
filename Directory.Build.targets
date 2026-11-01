@@ -33,8 +33,7 @@
            Text="DevelopmentRevision exceeds the Windows assembly-version limit (65534)." />
     <Error Condition="'$(Version)' != '$(_ExpectedApplicationVersion)' Or '$(AssemblyVersion)' != '$(_ExpectedNumericVersion)' Or '$(FileVersion)' != '$(_ExpectedNumericVersion)'"
            Text="Version, AssemblyVersion and FileVersion must derive from Directory.Build.props; do not override them per project or command line." />
-    <!-- The SDK can append the source commit after '+'. The release label must still match. -->
-    <Error Condition="'$(InformationalVersion)' != '$(_ExpectedApplicationVersion)' And !$([System.String]::Copy('$(InformationalVersion)').StartsWith('$(_ExpectedApplicationVersion)+'))"
+    <Error Condition="'$(InformationalVersion)' != '$(_ExpectedApplicationVersion)' Or '$(IncludeSourceRevisionInInformationalVersion)' != 'false'"
            Text="InformationalVersion does not match the repository development revision." />
   </Target>
 </Project>

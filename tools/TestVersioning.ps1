@@ -29,7 +29,8 @@ try {
         }
     }
     foreach ($invalidProperty in @('Version=9.0.0-dev.1', 'AssemblyVersion=9.0.0.1', 'FileVersion=9.0.0.1',
-        'InformationalVersion=9.0.0-dev.1', 'DevelopmentRevision=0', 'DevelopmentRevision=65535', 'DevelopmentRevision=0124',
+        'InformationalVersion=9.0.0-dev.1', ('InformationalVersion='+$current.Version+'+untracked'),
+        'IncludeSourceRevisionInInformationalVersion=true', 'DevelopmentRevision=0', 'DevelopmentRevision=65535', 'DevelopmentRevision=0124',
         'DevelopmentRevision=54321', 'ApplicationVersionPrefix=9.0.0')) {
         Check "MSBuild rejects $invalidProperty." {
             $savedPreference = $ErrorActionPreference

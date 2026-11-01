@@ -1,6 +1,10 @@
 # Implementation status
 
-## Current repository snapshot: v1.0.0-dev.279
+## Current repository snapshot: v1.0.0-dev.280
+
+CI speech diagnostics select an installed Microsoft voice (prefer Japanese), retaining native WAV/cue/pause/cancellation/rate checks and Japanese reading/paragraph/export checks. The dev.279 CI page-history diagnostic passed; speech then failed because the runner lacks Japanese voices. All app groups now run before reporting aggregate failures. InformationalVersion is exact across CI/local builds; source commit remains in build-info.json. Verification is pending; details: docs/releases/v1.0.0-dev.280.md.
+
+## Previous repository snapshot: v1.0.0-dev.279
 
 Preserve exact per-process application failure logs and diagnostic failure/result files in CI. No diagnostic is skipped or converted to success. The dev.278 audit passed on CI, followed by a page-history diagnostic failure that is under investigation.
 

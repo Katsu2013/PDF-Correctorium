@@ -8,6 +8,11 @@ namespace PdfCorrectorium.App;
 
 public partial class App
 {
+    private static WindowsSpeechVoice SelectDiagnosticSpeechVoice(IReadOnlyList<WindowsSpeechVoice> voices) =>
+        voices.FirstOrDefault(voice => voice.IsMicrosoft && voice.Language.StartsWith("ja", StringComparison.OrdinalIgnoreCase)) ??
+        voices.FirstOrDefault(voice => voice.IsMicrosoft) ??
+        throw new InvalidOperationException("At least one installed Microsoft Windows voice is required for the native speech diagnostic.");
+
     private static async Task VerifyHalfStepSpeechAsync(string output, Action<bool, string> check)
     {
         static double Duration(byte[] bytes)
@@ -34,9 +39,11 @@ public partial class App
             var wave = Path.Combine(output, "speed-" + adjustment.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + ".wav");
             await using var engine = new WindowsSpeechService(wave);
             var voices = await engine.InitializeAsync();
-            var voice = voices.First(item => item.Language.StartsWith("ja", StringComparison.Ordinal));
+            var voice = SelectDiagnosticSpeechVoice(voices);
+            var japanese = voice.Language.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
+            var synthesisText = japanese ? "読み上げ速度の中間値を確認します。" : "Checking intermediate values for the speech playback speed.";
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var speaking = engine.SpeakAsync("読み上げ速度の中間値を確認します。", voice.Name, adjustment, timeout.Token);
+            var speaking = engine.SpeakAsync(synthesisText, voice.Name, adjustment, timeout.Token);
             if (adjustment == .5)
             {
                 await Until(() => engine.DiagnosticState == MediaPlaybackState.Playing);
@@ -55,13 +62,13 @@ public partial class App
                 await using var cancelEngine = new WindowsSpeechService(Path.Combine(output, "speed-cancel-reuse.wav"));
                 await cancelEngine.InitializeAsync();
                 using var cancellation = new CancellationTokenSource();
-                var cancelledSpeech = cancelEngine.SpeakAsync("読み上げ速度の中間値を確認します。", voice.Name, adjustment, cancellation.Token);
+                var cancelledSpeech = cancelEngine.SpeakAsync(synthesisText, voice.Name, adjustment, cancellation.Token);
                 await Until(() => cancelEngine.DiagnosticState == MediaPlaybackState.Playing);
                 cancellation.Cancel();
                 var cancelled = false;
                 try { await cancelledSpeech.WaitAsync(TimeSpan.FromSeconds(3)); } catch (OperationCanceledException) { cancelled = true; }
                 check(cancelled && cancelEngine.DiagnosticState is null, "Cancelling active native playback releases the player promptly.");
-                await cancelEngine.SpeakAsync("再開します。", voice.Name, adjustment, timeout.Token);
+                await cancelEngine.SpeakAsync(japanese ? "再開します。" : "Resuming playback.", voice.Name, adjustment, timeout.Token);
                 check(true, "The native speech engine can immediately synthesize and play again after cancellation.");
             }
         }

@@ -18,7 +18,7 @@
 
 数値版番号の4番目が開発リビジョンである。`.sln`の`VisualStudioVersion`はソリューションを扱う開発ツールの版であり、アプリの版番号ではない。`app.manifest`内の`1.0.0.0`はテンプレート値であり、ビルド時に中間フォルダーへコピーして数値版番号を書き込み、その生成版をEXEへ埋め込む。
 
-Git情報が利用できる場合、SDKがInformationalVersion末尾へ`+コミットID`を付加することがある。表示用の開発リビジョンは変わらず、バージョン情報画面と起動ログには完全な文字列を表示する。
+`IncludeSourceRevisionInInformationalVersion=false`により、CIでもInformationalVersionへコミットIDを自動付加しない。製品版は`<prefix>-dev.<revision>`と完全一致させる。コミットIDと作業ツリーの状態は`build-info.json`へ記録する。
 
 ## 必須の更新手順
 

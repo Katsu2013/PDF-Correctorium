@@ -76,10 +76,18 @@ try {
         'review-mode','similar-word','rapid-ocr','ocr-notices','pane-visibility','recent-files',
         'settings','updates','keyboard','ocr-rendering','link-editing','ocr-property',
         'document-data','avalondock','file-launch','character-estimation','document-organization')
+    $applicationFailures = [Collections.Generic.List[string]]::new()
     foreach($mode in $applicationChecks) {
-        if ($mode -eq 'document-organization') { AppCheck $mode 'result.txt' }
-        else { AppCheck $mode }
+        try {
+            if ($mode -eq 'document-organization') { AppCheck $mode 'result.txt' }
+            else { AppCheck $mode }
+        }
+        catch {
+            $applicationFailures.Add($mode+': '+$_.Exception.Message)
+            Write-Warning $applicationFailures[$applicationFailures.Count-1]
+        }
     }
+    if ($applicationFailures.Count -gt 0) { throw ('Application diagnostics failed: '+($applicationFailures -join '; ')) }
     $null=Assert-PublishPayload -Directory $releaseStage
     $archive=Join-Path $out ('PdfCorrectorium-'+$version.BuildLabel+'-win-x64.zip')
     New-PublishArchive -ArchivePath $archive -PayloadDirectory $releaseStage
