@@ -41,30 +41,17 @@
 
 ## 📸 アプリケーション画面
 
-<p align="center">
-  <img src="outputs/PdfCorrectorium-Documentation/archive/assets/svg/SCR-001_MainWindow_Wireframe-v1.0.0-dev165.svg" alt="PDF Correctorium メイン画面" width="90%">
-  <br>
-  <em>直感的なサムネイル操作、多彩なツールバー、ドッキング可能なパネルを備えた作業画面</em>
-</p>
+利用者提供の **v1.0.0-dev.283 実機スクリーンショット**です。表示中のPDFはアプリ自身の設計資料で、資料内の版番号はその作成時点のものです。
 
-<div align="center">
-  <table>
-    <tr>
-      <td width="50%" align="center">
-        <img src="outputs/PdfCorrectorium-Documentation/archive/assets/svg/SCR-013_Redaction-v1.0.0-dev165.svg" alt="指定範囲を除去して検証する墨消し" width="100%">
-        <br>
-        <strong>🛡️ 指定範囲の文字を除去する「本物の墨消し」</strong><br>
-        <sub>文字描画命令そのものを完全消去。スポイト機能・自動検証付き</sub>
-      </td>
-      <td width="50%" align="center">
-        <img src="outputs/PdfCorrectorium-Documentation/archive/assets/svg/SCR-009_ReviewMode_Wireframe-v1.0.0-dev165.svg" alt="OCR校正・確認モード" width="100%">
-        <br>
-        <strong>✏️ 精密なOCR文字校正（NDLOCR連携）</strong><br>
-        <sub>枠ズレ修正、縦書き・読み順整理、テンポよく確認できる専用モード</sub>
-      </td>
-    </tr>
-  </table>
-</div>
+![ページ全体とサムネイル](site/assets/screenshots/01-overview.png)
+
+| 選択行をRapidOCRで再認識 | 文字に設定したページリンクを編集 |
+|---|---|
+| ![原画像・再認識結果・差分の確認](site/assets/screenshots/02-ocr-rerecognition.png) | ![リンク編集](site/assets/screenshots/03-link-editing.png) |
+
+![ダークテーマと読み上げパネル](site/assets/screenshots/04-dark-read-aloud.png)
+
+画像の原本と掲載順は [スクリーンショット一覧](site/assets/screenshots/README.md)、紹介ページの公開手順は [GitHub Pages公開ガイド](docs/GitHub-Pages-Publishing.md)を参照してください。
 
 ---
 
